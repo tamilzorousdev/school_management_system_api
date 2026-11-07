@@ -23,6 +23,8 @@ export interface ReceiptPdfData {
   invoice_total: number;
   paid_to_date: number;
   balance: number;
+  school_signature?: Buffer | null;
+  school_seal?: Buffer | null;
 }
 
 export async function receiptPdf(data: ReceiptPdfData): Promise<Buffer> {
@@ -128,14 +130,35 @@ export async function receiptPdf(data: ReceiptPdfData): Promise<Buffer> {
     .fillColor('#ffffff')
     .text(amountInWords(data.amount), left + 220, paidY + 17, { width: width - 234, align: 'right' });
 
+  const authY = paidY + 58;
+  if (data.school_seal) {
+    try {
+      doc.image(data.school_seal, left + 40, authY - 8, { fit: [65, 65] });
+    } catch {
+      // ignore
+    }
+  }
+  const sigX = left + width - 150;
+  if (data.school_signature) {
+    try {
+      doc.image(data.school_signature, sigX + 10, authY - 4, { fit: [130, 36], align: 'center' });
+    } catch {
+      // ignore
+    }
+  }
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(8.5)
+    .fillColor(BRAND.dark)
+    .text('Authorized Signatory', sigX, authY + 36, { width: 150, align: 'center' });
   doc
     .font('Helvetica')
-    .fontSize(8.5)
+    .fontSize(8)
     .fillColor(BRAND.muted)
     .text(
-      `${data.received_by ? `Received by ${data.received_by}. ` : ''}This is a computer generated receipt and does not need a signature.`,
+      `${data.received_by ? `Received by ${data.received_by}. ` : ''}This is an official computer-generated fee receipt.`,
       left,
-      paidY + 66,
+      authY + 54,
       { width, align: 'center' },
     );
   return renderPdf(doc);

@@ -25,6 +25,7 @@ export function toUserProfile(
   access: UserAccess,
   logoUrl: string | null = null,
   signatureUrl: string | null = null,
+  sealUrl: string | null = null,
 ): UserProfileDto {
   const { user } = access;
   return {
@@ -36,6 +37,7 @@ export function toUserProfile(
           code: user.school.code,
           logo_url: logoUrl,
           signature_url: signatureUrl,
+          seal_url: sealUrl,
         }
       : null,
     apps: access.apps,

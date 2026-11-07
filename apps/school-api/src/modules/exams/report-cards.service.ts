@@ -451,9 +451,10 @@ export class ReportCardsService {
   }
 
   private async pdfData(schoolId: number, card: ReportCardDto): Promise<ReportCardPdfData> {
-    const [school] = await this.dataSource.query(`SELECT logo_file_id, signature_file_id FROM schools WHERE id = $1`, [
-      schoolId,
-    ]);
+    const [school] = await this.dataSource.query(
+      `SELECT logo_file_id, signature_file_id, seal_file_id FROM schools WHERE id = $1`,
+      [schoolId],
+    );
     const [student] = await this.dataSource.query(`SELECT photo_file_id FROM students WHERE id = $1`, [
       card.student.id,
     ]);
@@ -461,6 +462,7 @@ export class ReportCardsService {
       card,
       logo: await this.files.readImage(school?.logo_file_id ?? null),
       signature: await this.files.readImage(school?.signature_file_id ?? null),
+      seal: await this.files.readImage(school?.seal_file_id ?? null),
       photo: await this.files.readImage(student?.photo_file_id ?? null),
       generated_on: todayIn(this.app.timeZone),
     };

@@ -183,7 +183,7 @@ export class FilesService {
   private async processImage(buffer: Buffer, mimetype: string, purpose?: string) {
     try {
       let pipeline = sharp(buffer, { failOn: 'error' }).rotate();
-      if (purpose === 'school_signature') {
+      if (purpose === 'school_signature' || purpose === 'school_seal') {
         pipeline = pipeline.trim();
       }
       const resized = pipeline

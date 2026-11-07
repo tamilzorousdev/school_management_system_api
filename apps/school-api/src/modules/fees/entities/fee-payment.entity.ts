@@ -22,7 +22,7 @@ export class FeePayment extends SchoolScopedEntity {
   @Column({ type: 'varchar', length: 16 })
   mode: PaymentMode;
 
-  @Column({ type: 'varchar', length: 60, nullable: true })
+  @Column({ type: 'varchar', length: 200, nullable: true })
   reference: string | null;
 
   @Index()

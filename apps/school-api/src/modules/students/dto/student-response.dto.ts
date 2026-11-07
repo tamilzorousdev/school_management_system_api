@@ -169,6 +169,18 @@ export class StudentDetailDto extends StudentListItemDto {
   @ApiProperty({ nullable: true, type: String, example: 'A mole on the left cheek' })
   identification_marks: string | null;
 
+  @ApiProperty({ example: false })
+  is_specially_abled: boolean;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Locomotor' })
+  disability_category: string | null;
+
+  @ApiProperty({ nullable: true, type: Number, example: 40 })
+  disability_percentage: number | null;
+
+  @ApiProperty({ example: false })
+  is_adopted: boolean;
+
   @ApiProperty({ type: [StudentGuardianDetailDto] })
   guardian_details: StudentGuardianDetailDto[];
 

@@ -77,6 +77,7 @@ export class SchoolsService {
     }
     await this.assertLogo(id, dto.logo_file_id);
     await this.assertSignature(id, dto.signature_file_id);
+    await this.assertSeal(id, dto.seal_file_id);
     this.assertOfficeHours(school, dto);
     await this.schools.update(id, dto);
     return this.get(id);
@@ -86,6 +87,7 @@ export class SchoolsService {
     const school = await this.find(id);
     await this.assertLogo(id, dto.logo_file_id);
     await this.assertSignature(id, dto.signature_file_id);
+    await this.assertSeal(id, dto.seal_file_id);
     this.assertOfficeHours(school, dto);
     await this.schools.update(id, dto);
     return this.get(id);
@@ -120,6 +122,14 @@ export class SchoolsService {
       throw AppException.validation([
         { field: 'signature_file_id', message: 'The signature must be an image (PNG or JPG)' },
       ]);
+    }
+  }
+
+  private async assertSeal(schoolId: number, fileId: number | null | undefined): Promise<void> {
+    if (!fileId) return;
+    const file = await this.files.assertAttachable(fileId, schoolId, 'seal_file_id');
+    if (!file.mime_type.startsWith('image/')) {
+      throw AppException.validation([{ field: 'seal_file_id', message: 'The seal must be an image (PNG or JPG)' }]);
     }
   }
 
@@ -165,6 +175,8 @@ export class SchoolsService {
       logo_url: this.files.linkFor(school.logo_file_id),
       signature_file_id: school.signature_file_id,
       signature_url: this.files.linkFor(school.signature_file_id),
+      seal_file_id: school.seal_file_id,
+      seal_url: this.files.linkFor(school.seal_file_id),
       is_active: school.is_active,
       student_count: count.students,
       user_count: count.users,

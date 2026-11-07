@@ -46,6 +46,9 @@ export class School extends TrackedEntity {
   @Column({ type: 'int', nullable: true })
   signature_file_id: number | null;
 
+  @Column({ type: 'int', nullable: true })
+  seal_file_id: number | null;
+
   @Column({ type: 'varchar', length: 50, default: 'Asia/Kolkata' })
   timezone: string;
 

@@ -6,6 +6,7 @@ export interface ReportCardPdfData {
   card: ReportCardDto;
   logo: Buffer | null;
   signature?: Buffer | null;
+  seal?: Buffer | null;
   photo: Buffer | null;
   generated_on: string;
 }
@@ -123,7 +124,7 @@ export function drawReportCard(doc: Pdf, data: ReportCardPdfData): void {
   // 7. Grading System Table
   const gradingBottom = gradingTable(doc, card, layout, summaryBottom);
 
-  // 8. Signatures Section with 3 Bordered Rectangles
+  // 8. Signatures & Verification Section
   signatures(doc, data, layout, gradingBottom);
 
   // 9. Page Number (1 centered at bottom)
@@ -711,17 +712,18 @@ function gradingTable(doc: Pdf, card: ReportCardDto, layout: Layout, summaryBott
 }
 
 function signatures(doc: Pdf, data: ReportCardPdfData, layout: Layout, gradingBottom: number): void {
-  const { card, signature } = data;
+  const { card, signature, seal } = data;
   const { left, width, pageHeight } = layout;
   const sigY = Math.max(gradingBottom + 20, pageHeight - 110);
-  const boxWidth = 100;
+  const boxWidth = 92;
   const boxHeight = 24;
 
   const principalName = card.school.principal_name || 'Meenakshi Sundaram';
   const cols = [
-    { label: 'Class Teacher', name: card.student.class_teacher || '' },
-    { label: 'Principal', name: principalName },
-    { label: 'Parents', name: card.student.parent_name || '' },
+    { type: 'sig' as const, label: 'Class Teacher', name: card.student.class_teacher || '' },
+    { type: 'sig' as const, label: 'Parents', name: card.student.parent_name || '' },
+    { type: 'seal' as const, label: 'School Seal' },
+    { type: 'sig' as const, label: 'Principal', name: principalName, isPrincipal: true },
   ];
 
   const colSlot = width / cols.length;
@@ -730,44 +732,84 @@ function signatures(doc: Pdf, data: ReportCardPdfData, layout: Layout, gradingBo
     const centerX = left + idx * colSlot + colSlot / 2;
     const boxX = centerX - boxWidth / 2;
 
-    // Name above
-    if (col.name) {
-      doc.font('Helvetica').fontSize(7.5).fillColor('#111827').text(col.name, boxX, sigY, {
-        width: boxWidth,
-        align: 'center',
-        lineBreak: false,
-        ellipsis: true,
-      });
-    }
-
-    // Rectangular signature box
-    doc
-      .rect(boxX, sigY + 11, boxWidth, boxHeight)
-      .lineWidth(0.8)
-      .strokeColor('#000000')
-      .stroke();
-
-    if (col.label === 'Principal' && signature) {
-      try {
-        doc.image(signature, boxX + 4, sigY + 12, {
-          fit: [boxWidth - 8, boxHeight - 2],
+    if (col.type === 'sig') {
+      // Name above
+      if (col.name) {
+        doc.font('Helvetica').fontSize(7.5).fillColor('#111827').text(col.name, boxX, sigY, {
+          width: boxWidth,
           align: 'center',
-          valign: 'center',
+          lineBreak: false,
+          ellipsis: true,
         });
-      } catch {
-        // preserve clean box
       }
-    }
 
-    // Label below
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(8)
-      .fillColor('#111827')
-      .text(col.label, boxX, sigY + 11 + boxHeight + 4, {
-        width: boxWidth,
-        align: 'center',
-        lineBreak: false,
-      });
+      // Rectangular signature box
+      doc
+        .rect(boxX, sigY + 11, boxWidth, boxHeight)
+        .lineWidth(0.8)
+        .strokeColor('#000000')
+        .stroke();
+
+      if (col.isPrincipal && signature) {
+        try {
+          doc.image(signature, boxX + 4, sigY + 12, {
+            fit: [boxWidth - 8, boxHeight - 2],
+            align: 'center',
+            valign: 'center',
+          });
+        } catch {
+          // preserve clean box
+        }
+      }
+
+      // Label below
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor('#111827')
+        .text(col.label, boxX, sigY + 11 + boxHeight + 4, {
+          width: boxWidth,
+          align: 'center',
+          lineBreak: false,
+        });
+    } else if (col.type === 'seal') {
+      if (seal) {
+        try {
+          const sealSize = 42;
+          doc.image(seal, centerX - sealSize / 2, sigY + 2, {
+            fit: [sealSize, sealSize],
+            align: 'center',
+            valign: 'center',
+          });
+        } catch {
+          // ignore
+        }
+      } else {
+        doc.save();
+        doc
+          .circle(centerX, sigY + 23, 20)
+          .lineWidth(0.8)
+          .dash(3, { space: 2 })
+          .strokeColor('#9ca3af')
+          .stroke();
+        doc
+          .font('Helvetica')
+          .fontSize(6)
+          .fillColor('#9ca3af')
+          .text('AFFIX SEAL', centerX - 25, sigY + 20, { width: 50, align: 'center', lineBreak: false });
+        doc.restore();
+      }
+
+      // Label below
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor('#111827')
+        .text(col.label, centerX - boxWidth / 2, sigY + 11 + boxHeight + 4, {
+          width: boxWidth,
+          align: 'center',
+          lineBreak: false,
+        });
+    }
   });
 }

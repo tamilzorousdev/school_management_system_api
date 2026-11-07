@@ -55,6 +55,12 @@ export class GuardiansService {
     input: GuardianInputDto,
   ): Promise<{ guardian: Guardian; invite: Invite | null }> {
     const existing = await manager.findOneBy(Guardian, { school_id: schoolId, mobile: input.mobile });
+    if (existing && existing.name.trim().toLowerCase() !== input.name.trim().toLowerCase()) {
+      throw AppException.badRequest(
+        `This mobile number (${input.mobile}) is already registered to ${existing.name}. Please verify the name or select the existing parent.`,
+        'GUARDIAN_MOBILE_NAME_MISMATCH',
+      );
+    }
     const profile = {
       name: input.name,
       alt_mobile: input.alt_mobile,

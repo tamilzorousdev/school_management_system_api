@@ -469,9 +469,10 @@ export class FeesService {
     const [lines, refs, [school], users] = await Promise.all([
       this.lines.find({ where: { invoice_id: invoice.id }, order: { sort_order: 'ASC', id: 'ASC' } }),
       this.studentRefs(schoolId, [payment.student_id]),
-      this.dataSource.query(`SELECT name, address, city, state, pincode, logo_file_id FROM schools WHERE id = $1`, [
-        schoolId,
-      ]),
+      this.dataSource.query(
+        `SELECT name, address, city, state, pincode, logo_file_id, signature_file_id, seal_file_id FROM schools WHERE id = $1`,
+        [schoolId],
+      ),
       this.userNames(payment.received_by ? [payment.received_by] : []),
     ]);
     const paidToDate = sumAmounts(
@@ -485,6 +486,8 @@ export class FeesService {
       school_address:
         [school?.address, school?.city, school?.state, school?.pincode].filter(Boolean).join(', ') || null,
       school_logo: await this.files.readImage(school?.logo_file_id ?? null),
+      school_signature: await this.files.readImage(school?.signature_file_id ?? null),
+      school_seal: await this.files.readImage(school?.seal_file_id ?? null),
       receipt_no: payment.receipt_no,
       paid_on: payment.paid_on,
       student_name: student.full_name,

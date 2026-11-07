@@ -61,6 +61,27 @@ export class Student extends SchoolScopedEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   identification_marks: string | null;
 
+  @Column({ type: 'boolean', default: false })
+  is_specially_abled: boolean;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  disability_category: string | null;
+
+  @Column({
+    type: 'numeric',
+    precision: 5,
+    scale: 1,
+    nullable: true,
+    transformer: {
+      to: (val: number | null | undefined) => (val != null ? String(val) : null),
+      from: (val: string | null) => (val != null ? Number(val) : null),
+    },
+  })
+  disability_percentage: number | null;
+
+  @Column({ type: 'boolean', default: false })
+  is_adopted: boolean;
+
   @Column({ type: 'smallint', default: 1 })
   card_version: number;
 

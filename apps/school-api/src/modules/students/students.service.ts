@@ -23,6 +23,7 @@ import { StudentDetailDto, StudentInsightsDto, StudentListItemDto } from './dto/
 import { EmergencyContact } from './entities/emergency-contact.entity';
 import { StudentEnrollment } from './entities/student-enrollment.entity';
 import { StudentGuardian } from './entities/student-guardian.entity';
+import { Guardian } from './entities/guardian.entity';
 import { Student } from './entities/student.entity';
 import { GuardiansService, Invite } from './guardians.service';
 
@@ -71,6 +72,30 @@ export class StudentsService {
     if (new Set(mobiles).size !== mobiles.length) {
       throw AppException.badRequest('Two guardians have the same mobile number', 'DUPLICATE_GUARDIAN_MOBILE');
     }
+    const fathers = dto.guardians.filter((g) => g.relation === 'father');
+    if (fathers.length > 1) {
+      throw AppException.badRequest('A student can only have one Father', 'DUPLICATE_FATHER');
+    }
+    const mothers = dto.guardians.filter((g) => g.relation === 'mother');
+    if (mothers.length > 1) {
+      throw AppException.badRequest('A student can only have one Mother', 'DUPLICATE_MOTHER');
+    }
+    const extraContacts = dto.guardians.filter((g) => g.relation !== 'father' && g.relation !== 'mother');
+    if (extraContacts.length > 3) {
+      throw AppException.badRequest(
+        'You can add up to 3 extra emergency contacts or caregivers',
+        'TOO_MANY_EXTRA_CONTACTS',
+      );
+    }
+    for (const g of dto.guardians) {
+      const existing = await manager.findOneBy(Guardian, { school_id: schoolId, mobile: g.mobile });
+      if (existing && existing.name.trim().toLowerCase() !== g.name.trim().toLowerCase()) {
+        throw AppException.badRequest(
+          `This mobile number (${g.mobile}) is already registered to ${existing.name}. Please verify the name or select the existing parent.`,
+          'GUARDIAN_MOBILE_NAME_MISMATCH',
+        );
+      }
+    }
 
     const admissionNo = dto.admission_no ?? (await this.nextAdmissionNo(manager, schoolId, year));
     if (await manager.exists(Student, { where: { school_id: schoolId, admission_no: admissionNo } })) {
@@ -95,6 +120,10 @@ export class StudentsService {
         pincode: dto.pincode ?? null,
         previous_school: dto.previous_school ?? null,
         identification_marks: dto.identification_marks ?? null,
+        is_specially_abled: dto.is_specially_abled ?? false,
+        disability_category: dto.disability_category ?? null,
+        disability_percentage: dto.disability_percentage ?? null,
+        is_adopted: dto.is_adopted ?? false,
       }),
     );
     await manager.insert(StudentEnrollment, {
@@ -250,6 +279,10 @@ export class StudentsService {
       pincode: student.pincode,
       previous_school: student.previous_school,
       identification_marks: student.identification_marks,
+      is_specially_abled: Boolean(student.is_specially_abled),
+      disability_category: student.disability_category ?? null,
+      disability_percentage: student.disability_percentage ? Number(student.disability_percentage) : null,
+      is_adopted: Boolean(student.is_adopted),
       guardian_details: links
         .sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
         .map((link) => ({

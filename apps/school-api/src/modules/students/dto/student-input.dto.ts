@@ -198,6 +198,31 @@ export class StudentProfileDto {
   @IsInt()
   @Min(1)
   photo_file_id?: number | null;
+
+  @ApiPropertyOptional({ default: false, description: 'Specially abled / CWSN child' })
+  @IsOptional()
+  @IsBoolean()
+  is_specially_abled?: boolean;
+
+  @ApiPropertyOptional({ example: 'Locomotor', nullable: true, type: String })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(80)
+  disability_category?: string | null;
+
+  @ApiPropertyOptional({ example: 40, nullable: true, type: Number })
+  @IsOptional()
+  @ValidateIf(notNull)
+  @Min(0)
+  @Max(100)
+  disability_percentage?: number | null;
+
+  @ApiPropertyOptional({ default: false, description: 'Adopted child' })
+  @IsOptional()
+  @IsBoolean()
+  is_adopted?: boolean;
 }
 
 export class CreateStudentDto extends StudentProfileDto {
@@ -236,7 +261,7 @@ export class CreateStudentDto extends StudentProfileDto {
   @ApiProperty({ type: [GuardianInputDto] })
   @IsArray()
   @ArrayMinSize(1, { message: 'Add at least one parent or guardian' })
-  @ArrayMaxSize(4)
+  @ArrayMaxSize(5, { message: 'Maximum 5 parents / contacts allowed' })
   @ValidateNested({ each: true })
   @Type(() => GuardianInputDto)
   guardians: GuardianInputDto[];

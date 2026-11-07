@@ -349,7 +349,7 @@ export class PaymentInputDto {
   @IsOptional()
   @Transform(trim)
   @IsString()
-  @MaxLength(60)
+  @MaxLength(200)
   reference?: string;
 
   @IsDateOnly('2026-11-03', true)

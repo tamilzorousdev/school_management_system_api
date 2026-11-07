@@ -9,6 +9,7 @@ export interface PayslipPdfData {
   school_address: string | null;
   school_logo: Buffer | null;
   school_signature?: Buffer | null;
+  school_seal?: Buffer | null;
   month_label: string;
   employee_no: string;
   name: string;
@@ -374,8 +375,15 @@ export async function payslipPdf(data: PayslipPdfData): Promise<Buffer> {
   const accText = `Account Number: ${data.bank || 'Canara Bank ····5678'}  ·  Paid Days: ${data.paid_days}/${data.working_days}`;
   doc.text(accText, left, bottomY + 23, { width: 320, lineBreak: false });
 
-  // Right: Stylized Signature
+  // Right: Seal & Stylized Signature
   const sigX = right - 130;
+  if (data.school_seal) {
+    try {
+      doc.image(data.school_seal, sigX - 60, bottomY - 14, { fit: [50, 50] });
+    } catch {
+      // ignore
+    }
+  }
   if (data.school_signature) {
     try {
       doc.image(data.school_signature, sigX + 10, bottomY - 6, {

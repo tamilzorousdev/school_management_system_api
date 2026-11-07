@@ -34,6 +34,7 @@ export class UsersService {
       access,
       this.files.linkFor(access.user.school?.logo_file_id ?? null),
       this.files.linkFor(access.user.school?.signature_file_id ?? null),
+      this.files.linkFor(access.user.school?.seal_file_id ?? null),
     );
   }
 

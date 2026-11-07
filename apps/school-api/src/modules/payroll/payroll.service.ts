@@ -343,7 +343,7 @@ export class PayrollService {
       slip && run && (ownerId ? slip.user_id === ownerId && run.status === 'finalized' : slip.school_id === schoolId);
     if (!allowed) throw AppException.notFound('Payslip not found', 'PAYSLIP_NOT_FOUND');
     const [school] = await this.dataSource.query(
-      `SELECT name, code, address, city, state, pincode, phone, email, logo_file_id, signature_file_id FROM schools WHERE id = $1`,
+      `SELECT name, code, address, city, state, pincode, phone, email, logo_file_id, signature_file_id, seal_file_id FROM schools WHERE id = $1`,
       [slip.school_id],
     );
     const pick = (labels: [keyof Payslip, string][]) =>
@@ -359,6 +359,7 @@ export class PayrollService {
         [school?.address, school?.city, school?.state, school?.pincode].filter(Boolean).join(', ') || null,
       school_logo: await this.files.readImage(school?.logo_file_id ?? null),
       school_signature: await this.files.readImage(school?.signature_file_id ?? null),
+      school_seal: await this.files.readImage(school?.seal_file_id ?? null),
       month_label: monthLabel(run.month),
       employee_no: slip.employee_no,
       name: slip.name,
