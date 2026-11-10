@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { App, cert, initializeApp, ServiceAccount } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 import { pushConfig, PushConfig } from '../../config/configuration';
-import { KAFKA_PUSH_TEMPLATE, KafkaNotifyService } from '../sms/kafka-notify.service';
+import { KAFKA_CALL_TEMPLATE, KAFKA_PUSH_TEMPLATE, KafkaNotifyService } from '../sms/kafka-notify.service';
 
 export interface PushMessage {
   tokens: string[];
@@ -12,6 +12,13 @@ export interface PushMessage {
   data: Record<string, string>;
   userId?: number;
   variables?: Record<string, string>;
+}
+
+export interface DataPushMessage {
+  userId: number;
+  tokens: string[];
+  data: Record<string, string>;
+  ttlSeconds: number;
 }
 
 export interface PushResult {
@@ -67,6 +74,83 @@ export class PushService {
       return this.sendOneSignal(message);
     }
     return this.sendFcm(message);
+  }
+
+  async sendData(message: DataPushMessage): Promise<PushResult> {
+    const driver = this.config.callDriver;
+    if (driver === 'off') {
+      return { status: 'skipped', provider: 'off', successCount: 0, invalidTokens: [], error: 'Call push is off' };
+    }
+    if (driver === 'kafka') {
+      await this.kafka.sendPush({
+        templateId: this.kafka.templateId(KAFKA_CALL_TEMPLATE),
+        variables: message.data,
+        externalIds: [String(message.userId)],
+        playerIds: message.tokens,
+        dataOnly: { data: message.data, ttlSeconds: message.ttlSeconds },
+      });
+      return { status: 'sent', provider: 'kafka', successCount: 1, invalidTokens: [] };
+    }
+    if (driver === 'onesignal') return this.sendOneSignalData(message);
+    if (!message.tokens.length) {
+      return {
+        status: 'skipped',
+        provider: 'fcm',
+        successCount: 0,
+        invalidTokens: [],
+        error: 'No registered device for this user',
+      };
+    }
+    const response = await getMessaging(this.firebase()).sendEachForMulticast({
+      tokens: message.tokens,
+      data: message.data,
+      android: { priority: 'high', ttl: message.ttlSeconds * 1000 },
+      apns: {
+        headers: { 'apns-priority': '10', 'apns-push-type': 'background' },
+        payload: { aps: { contentAvailable: true } },
+      },
+    });
+    const invalidTokens = response.responses
+      .map((result, index) =>
+        !result.success && result.error && INVALID_TOKEN_CODES.has(result.error.code) ? message.tokens[index] : null,
+      )
+      .filter((token): token is string => token !== null);
+    return {
+      status: response.successCount > 0 ? 'sent' : 'failed',
+      provider: 'fcm',
+      successCount: response.successCount,
+      invalidTokens,
+    };
+  }
+
+  private async sendOneSignalData(message: DataPushMessage): Promise<PushResult> {
+    if (!this.config.oneSignalAppId || !this.config.oneSignalApiKey) {
+      return {
+        status: 'failed',
+        provider: 'onesignal',
+        successCount: 0,
+        invalidTokens: [],
+        error: 'OneSignal App ID or REST API Key is missing in .env',
+      };
+    }
+    const response = await fetch('https://api.onesignal.com/notifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Key ${this.config.oneSignalApiKey}` },
+      body: JSON.stringify({
+        app_id: this.config.oneSignalAppId,
+        target_channel: 'push',
+        include_aliases: { external_id: [String(message.userId)] },
+        data: message.data,
+        content_available: true,
+        priority: 10,
+        ttl: message.ttlSeconds,
+      }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { id?: string; errors?: unknown };
+    if (!response.ok || !body.id) {
+      throw new Error(`OneSignal error (${response.status}): ${JSON.stringify(body.errors ?? body)}`);
+    }
+    return { status: 'sent', provider: 'onesignal', successCount: 1, invalidTokens: [] };
   }
 
   private async sendKafka(message: PushMessage): Promise<PushResult> {

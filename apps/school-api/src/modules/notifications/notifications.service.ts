@@ -18,7 +18,7 @@ import {
 import { Notification } from './entities/notification.entity';
 import { NotificationTemplate } from './entities/notification-template.entity';
 import { JOB_QUEUE, JobQueue } from './queue/job-queue';
-import { PushService } from './push.service';
+import { PushResult, PushService } from './push.service';
 import { renderTemplate, TemplateData, toStringData } from './template.renderer';
 
 export interface Audience {
@@ -246,6 +246,19 @@ export class NotificationsService implements OnModuleInit {
       dlt_template_id: followUp.dlt_template_id,
       language: followUp.language,
     });
+  }
+
+  async sendCallPush(userId: number, data: Record<string, string>, ttlSeconds: number): Promise<PushResult> {
+    const devices = await this.devices.tokensFor(userId);
+    const result = await this.push.sendData({
+      userId,
+      tokens: devices.map((device) => device.fcm_token),
+      data,
+      ttlSeconds,
+    });
+    await this.devices.removeTokens(result.invalidTokens);
+    this.logger.log(`call ${data.event} ${data.call_id} to user ${userId}: ${result.status} via ${result.provider}`);
+    return result;
   }
 
   private async deliverPush(job: PushJob, attempt: number): Promise<void> {

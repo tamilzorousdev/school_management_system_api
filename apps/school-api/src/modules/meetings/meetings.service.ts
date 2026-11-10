@@ -33,6 +33,16 @@ import {
 import { MeetingCallLog } from './entities/meeting-call-log.entity';
 import { Meeting, MeetingParty, MeetingResponse, MeetingStatus } from './entities/meeting.entity';
 import { replyError } from './meeting-reply';
+import {
+  CallCancelReason,
+  callerLeft,
+  callPayload,
+  canReject,
+  joinOutcome,
+  newCallId,
+  otherParty,
+  RING_TIMEOUT_SECONDS,
+} from './meeting-ring';
 import { agoraUid, participantOf } from './meeting-uid';
 import {
   ACTIVE_STATUSES,
@@ -43,6 +53,8 @@ import {
   canJoin,
   channelName,
   EMPTY_CLOSE_MINUTES,
+  HARD_STOP_MINUTES,
+  hardStopAt,
   END_REMINDER_MINUTES,
   endsAt,
   extendedEnd,
@@ -207,7 +219,14 @@ export class MeetingsService {
       party,
       action: 'joined',
     });
+    this.later(`ring for meeting ${saved.id}`, () => this.ringOnJoin(saved, actor, party));
     return this.grantResponse(saved, actor, party, grant);
+  }
+
+  async rejectCall(actor: AuthUser, party: MeetingParty, id: number): Promise<MeetingDto> {
+    const meeting = await this.findForParty(actor, party, id);
+    if (canReject(meeting, party)) await this.stopRing(meeting.id, 'declined');
+    return (await this.present([await this.meetings.findOneByOrFail({ id: meeting.id })]))[0];
   }
 
   async renewToken(actor: AuthUser, party: MeetingParty, id: number): Promise<MeetingJoinDto> {
@@ -225,6 +244,8 @@ export class MeetingsService {
   async leave(actor: AuthUser, party: MeetingParty, id: number): Promise<MeetingDto> {
     const meeting = await this.findForParty(actor, party, id);
     await this.closeOpenLogs(this.dataSource.manager, meeting.id, new Date(), actor.id, 'left');
+    if (callerLeft(meeting, party))
+      this.later(`ring stop ${meeting.id}`, () => this.stopRing(meeting.id, 'caller_left'));
     this.realtime.toUsers(this.members(meeting), 'meeting.participant', {
       meeting_id: meeting.id,
       user_id: actor.id,
@@ -272,6 +293,7 @@ export class MeetingsService {
       return manager.save(meeting);
     });
     this.announceStatus(saved, actor.id);
+    this.later(`ring stop ${saved.id}`, () => this.stopRing(saved.id, 'ended'));
     const kicked = await this.agora.endChannel(saved.channel_name);
     if (kicked.rule_id) {
       await this.meetings.update(saved.id, { agora_kick_rule_id: kicked.rule_id });
@@ -464,6 +486,12 @@ export class MeetingsService {
       where: { meeting_id: meeting.id, user_id: userId, left_at: IsNull() },
       order: { joined_at: 'DESC' },
     });
+    if (joining && meeting.ring_to === party) {
+      this.later(`ring stop ${meeting.id}`, () => this.stopRing(meeting.id, 'answered'));
+    }
+    if (leaving && callerLeft(meeting, party)) {
+      this.later(`ring stop ${meeting.id}`, () => this.stopRing(meeting.id, 'caller_left'));
+    }
     if (joining) {
       if (open) {
         if (!open.confirmed_at) await this.logs.update(open.id, { confirmed_at: at, client_seq: seq });
@@ -511,6 +539,8 @@ export class MeetingsService {
       ['end reminders', () => this.sendEndReminders(now)],
       ['no-shows', () => this.markMissed(now)],
       ['empty meetings', () => this.closeEmpty(now)],
+      ['time up', () => this.closeTimeUp(now)],
+      ['ring timeouts', () => this.stopExpiredRings(now)],
     ] as const) {
       await step().catch((error: Error) => this.logger.warn(`${name} failed: ${error.message}`));
     }
@@ -608,7 +638,7 @@ export class MeetingsService {
 
   async closeEmpty(now: Date): Promise<number> {
     const changed = await this.transition(
-      `status IN ('in_progress', 'time_exceeded') AND scheduled_end_at < $1::timestamptz
+      `status IN ('in_progress', 'time_exceeded')
        AND NOT EXISTS (SELECT 1 FROM meeting_call_logs l WHERE l.meeting_id = meetings.id AND l.left_at IS NULL)
        AND COALESCE((SELECT MAX(l.left_at) FROM meeting_call_logs l WHERE l.meeting_id = meetings.id), started_at, scheduled_at)
            <= $1::timestamptz - make_interval(mins => $2::int)`,
@@ -616,8 +646,101 @@ export class MeetingsService {
        ended_at = COALESCE((SELECT MAX(l.left_at) FROM meeting_call_logs l WHERE l.meeting_id = meetings.id), $1::timestamptz)`,
       [now, EMPTY_CLOSE_MINUTES],
     );
-    changed.forEach((meeting) => this.announceStatus(meeting, null));
+    for (const meeting of changed) {
+      this.announceStatus(meeting, null);
+      await this.stopRing(meeting.id, 'ended');
+    }
     return changed.length;
+  }
+
+  async closeTimeUp(now: Date): Promise<number> {
+    const changed = await this.transition(
+      `status IN ('in_progress', 'time_exceeded')
+       AND scheduled_end_at + make_interval(mins => $2::int) < $1::timestamptz`,
+      `status = 'completed', end_reason = 'time_up', ended_at = $1::timestamptz`,
+      [now, HARD_STOP_MINUTES],
+    );
+    for (const meeting of changed) {
+      await this.closeOpenLogs(this.dataSource.manager, meeting.id, now, undefined, 'meeting_ended');
+      this.announceStatus(meeting, null);
+      await this.stopRing(meeting.id, 'ended');
+      const kicked = await this.agora.endChannel(meeting.channel_name).catch(() => ({ rule_id: null }));
+      if (kicked.rule_id) await this.meetings.update(meeting.id, { agora_kick_rule_id: kicked.rule_id });
+    }
+    return changed.length;
+  }
+
+  async stopExpiredRings(now: Date): Promise<number> {
+    const rows: { id: number }[] = await this.dataSource.query(
+      `SELECT id FROM meetings
+       WHERE ring_call_id IS NOT NULL AND ring_started_at <= $1::timestamptz - make_interval(secs => $2::int)`,
+      [now, RING_TIMEOUT_SECONDS],
+    );
+    for (const row of rows) await this.stopRing(Number(row.id), 'timeout');
+    return rows.length;
+  }
+
+  private async ringOnJoin(meeting: Meeting, actor: AuthUser, party: MeetingParty): Promise<void> {
+    const other = otherParty(party);
+    const otherUserId = Number(other === 'teacher' ? meeting.teacher_user_id : meeting.parent_user_id);
+    const otherInCall = await this.logs.exists({
+      where: { meeting_id: meeting.id, user_id: otherUserId, party: other, left_at: IsNull() },
+    });
+    const outcome = joinOutcome(meeting, party, otherInCall);
+    if (outcome === 'answer') {
+      await this.stopRing(meeting.id, 'answered');
+      return;
+    }
+    if (outcome !== 'ring') return;
+    const callId = newCallId();
+    const [claimed] = (await this.dataSource.query(
+      `UPDATE meetings SET ring_call_id = $2, ring_to = $3, ring_by = $4, ring_started_at = now()
+       WHERE id = $1 AND ring_call_id IS NULL RETURNING id`,
+      [meeting.id, callId, other, actor.id],
+    )) as [{ id: number }[], number];
+    if (!claimed.length) return;
+    const call = await this.callDetails(meeting, callId, party);
+    this.realtime.toUsers(this.members(meeting), 'meeting.call', callPayload('ring', call));
+    await this.notifications.sendCallPush(otherUserId, callPayload('ring', call), RING_TIMEOUT_SECONDS);
+    setTimeout(() => {
+      this.later(`ring timeout ${meeting.id}`, () => this.stopRing(meeting.id, 'timeout', callId));
+    }, RING_TIMEOUT_SECONDS * 1000).unref();
+  }
+
+  private async stopRing(meetingId: number, reason: CallCancelReason, callId?: string): Promise<void> {
+    const [rows] = (await this.dataSource.query(
+      `UPDATE meetings m SET ring_call_id = NULL, ring_to = NULL, ring_by = NULL, ring_started_at = NULL
+       FROM (SELECT id, ring_call_id, ring_to, ring_by FROM meetings
+             WHERE id = $1 AND ring_call_id IS NOT NULL AND ($2::varchar IS NULL OR ring_call_id = $2::varchar)
+             FOR UPDATE) old
+       WHERE m.id = old.id
+       RETURNING old.ring_call_id, old.ring_to, old.ring_by`,
+      [meetingId, callId ?? null],
+    )) as [{ ring_call_id: string; ring_to: MeetingParty; ring_by: number }[], number];
+    const stopped = rows[0];
+    if (!stopped) return;
+    const meeting = await this.meetings.findOneByOrFail({ id: meetingId });
+    const call = await this.callDetails(meeting, stopped.ring_call_id, otherParty(stopped.ring_to));
+    const payload = callPayload('cancel', call, reason);
+    this.realtime.toUsers(this.members(meeting), 'meeting.call', payload);
+    const ringingUser = Number(stopped.ring_to === 'teacher' ? meeting.teacher_user_id : meeting.parent_user_id);
+    await this.notifications.sendCallPush(ringingUser, payload, RING_TIMEOUT_SECONDS);
+  }
+
+  private async callDetails(meeting: Meeting, callId: string, callerRole: MeetingParty) {
+    const [presented] = await this.present([meeting]);
+    return {
+      call_id: callId,
+      meeting_id: meeting.id,
+      channel_name: meeting.channel_name,
+      caller_name: (callerRole === 'teacher' ? presented.teacher : presented.parent).name,
+      caller_role: callerRole,
+      student_name: presented.student.name,
+    };
+  }
+
+  private later(label: string, work: () => Promise<void>): void {
+    void work().catch((error: Error) => this.logger.warn(`${label} failed: ${error.message}`));
   }
 
   private async transition(where: string, set: string, params: unknown[]): Promise<Meeting[]> {
@@ -905,7 +1028,8 @@ export class MeetingsService {
         },
         can_join: canJoin(row, now),
         join_opens_at: joinOpensAt(row),
-        join_closes_at: row.status === 'scheduled' ? noShowAt(row) : null,
+        join_closes_at:
+          row.status === 'scheduled' ? noShowAt(row) : ACTIVE_STATUSES.includes(row.status) ? hardStopAt(row) : null,
         started_at: row.started_at,
         ended_at: row.ended_at,
         call_minutes: actualMinutes(row, now),

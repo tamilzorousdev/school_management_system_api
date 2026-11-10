@@ -26,9 +26,12 @@ import {
   MonthlyAttendanceDto,
   RosterDto,
   SectionReportDto,
+  AttendanceYearDto,
+  SectionDayDto,
 } from './dto/attendance.dto';
 import { AttendanceRecord, AttendanceStatus } from './entities/attendance-record.entity';
 import { AttendanceSession } from './entities/attendance-session.entity';
+import { clampRange, monthsBetween } from './attendance-reports.logic';
 import { bulkPlan, mergeMarks } from './bulk-attendance.logic';
 
 interface SectionRow {
@@ -79,6 +82,31 @@ export function summarise(statuses: AttendanceStatus[]): AttendanceSummaryDto {
   };
 }
 
+interface DayRow {
+  student_id: number;
+  status: AttendanceStatus;
+  morning: AttendanceStatus | null;
+  afternoon: AttendanceStatus | null;
+}
+
+const classSectionName = (section: { class_name: string; name: string }) =>
+  [section.class_name, section.name].filter(Boolean).join(' - ');
+
+function monthTotal(month: string, workingDayCount: number, statuses: AttendanceStatus[]) {
+  const summary = summarise(statuses);
+  return {
+    month,
+    working_days: workingDayCount,
+    marked_days: summary.total,
+    present: summary.present,
+    late: summary.late,
+    half_day: summary.half_day,
+    absent: summary.absent,
+    leave: summary.leave,
+    percent: summary.percent,
+  };
+}
+
 const fullName = (row: { first_name: string; last_name: string | null }) =>
   [row.first_name, row.last_name].filter(Boolean).join(' ');
 
@@ -119,7 +147,7 @@ export class AttendanceService {
           })
         : Promise.resolve(null),
       this.holidayName(manager, schoolId, date),
-      this.leaveStudents(manager, schoolId, date),
+      this.leaveStudents(manager, schoolId, date, session),
       this.window(manager, schoolId, session),
     ]);
     const records = new Map((saved?.records ?? []).map((record) => [record.student_id, record]));
@@ -542,6 +570,130 @@ export class AttendanceService {
     };
   }
 
+  async sectionDay(schoolId: number, sectionId: number, date: string): Promise<SectionDayDto> {
+    const manager = this.dataSource.manager;
+    const section = await this.section(manager, schoolId, sectionId);
+    const [students, holiday, sessions] = await Promise.all([
+      this.students(manager, sectionId),
+      this.holidayName(manager, schoolId, date),
+      manager.query(
+        `SELECT DISTINCT period FROM attendance_sessions WHERE section_id = $1 AND date = $2 AND period = ANY($3)`,
+        [sectionId, date, [SESSION_PERIOD.morning, SESSION_PERIOD.afternoon]],
+      ) as Promise<{ period: number }[]>,
+    ]);
+    const records: DayRow[] = students.length
+      ? await manager.query(
+          `SELECT student_id, status, morning, afternoon FROM student_attendance_days
+           WHERE school_id = $1 AND date = $2 AND student_id = ANY($3)`,
+          [schoolId, date, students.map((student) => Number(student.student_id))],
+        )
+      : [];
+    const byStudent = new Map(records.map((record) => [Number(record.student_id), record]));
+    const rows = students.map((student) => {
+      const record = byStudent.get(Number(student.student_id));
+      return {
+        student_id: Number(student.student_id),
+        full_name: fullName(student),
+        roll_no: student.roll_no,
+        morning: record?.morning ?? null,
+        afternoon: record?.afternoon ?? null,
+        status: record?.status ?? null,
+      };
+    });
+    const periods = new Set(sessions.map((row) => Number(row.period)));
+    return {
+      date,
+      section_id: section.id,
+      section: classSectionName(section),
+      working_day: !WEEKLY_OFF.includes(weekday(date)) && !holiday,
+      holiday,
+      morning_marked: periods.has(SESSION_PERIOD.morning),
+      afternoon_marked: periods.has(SESSION_PERIOD.afternoon),
+      summary: summarise(rows.map((row) => row.status).filter((status): status is AttendanceStatus => status !== null)),
+      students: rows,
+    };
+  }
+
+  async yearSummary(schoolId: number, studentId: number): Promise<AttendanceYearDto> {
+    const manager = this.dataSource.manager;
+    const [year, student] = await Promise.all([
+      manager.findOneBy(AcademicYear, { school_id: schoolId, is_current: true }),
+      manager.query(`SELECT id FROM students WHERE id = $1 AND school_id = $2 AND deleted_at IS NULL`, [
+        studentId,
+        schoolId,
+      ]),
+    ]);
+    if (!student.length) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
+    const today = todayIn(this.app.timeZone);
+    const range = year ? clampRange(year.start_date, year.end_date, year.start_date, today) : null;
+    if (!year || !range) {
+      return {
+        student_id: studentId,
+        academic_year: year?.name ?? null,
+        from: null,
+        to: null,
+        year: monthTotal('year', 0, []),
+        months: [],
+      };
+    }
+    const [holidays, records] = await Promise.all([
+      holidaySet(manager, schoolId, range.from, range.to),
+      manager.query(
+        `SELECT to_char(date, 'YYYY-MM-DD') AS date, status FROM student_attendance_days
+         WHERE student_id = $1 AND school_id = $2 AND date BETWEEN $3 AND $4`,
+        [studentId, schoolId, range.from, range.to],
+      ) as Promise<{ date: string; status: AttendanceStatus }[]>,
+    ]);
+    const months = monthsBetween(range.from, range.to).map((month) => {
+      const part = clampRange(monthRange(month).from, monthRange(month).to, range.from, range.to)!;
+      return monthTotal(
+        month,
+        workingDays(part.from, part.to, holidays).length,
+        records.filter((record) => record.date.startsWith(month)).map((record) => record.status),
+      );
+    });
+    return {
+      student_id: studentId,
+      academic_year: year.name,
+      from: range.from,
+      to: range.to,
+      year: monthTotal(
+        year.name,
+        workingDays(range.from, range.to, holidays).length,
+        records.map((record) => record.status),
+      ),
+      months,
+    };
+  }
+
+  async assertClassTeacherOfSection(schoolId: number, sectionId: number, userId: number): Promise<void> {
+    const section = await this.section(this.dataSource.manager, schoolId, sectionId);
+    if (Number(section.class_teacher_user_id) !== userId) {
+      throw AppException.forbidden(
+        'Only the class teacher of this section can see its attendance reports',
+        'NOT_CLASS_TEACHER',
+      );
+    }
+  }
+
+  async assertClassTeacherOfStudent(schoolId: number, studentId: number, userId: number): Promise<void> {
+    const [row] = await this.dataSource.query(
+      `SELECT s.id, sec.class_teacher_user_id FROM students s
+       LEFT JOIN academic_years y ON y.school_id = s.school_id AND y.is_current AND y.deleted_at IS NULL
+       LEFT JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = y.id
+       LEFT JOIN sections sec ON sec.id = e.section_id
+       WHERE s.id = $1 AND s.school_id = $2 AND s.deleted_at IS NULL`,
+      [studentId, schoolId],
+    );
+    if (!row) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
+    if (Number(row.class_teacher_user_id) !== userId) {
+      throw AppException.forbidden(
+        'Only the class teacher of this student can see their attendance report',
+        'NOT_CLASS_TEACHER',
+      );
+    }
+  }
+
   async sectionTitle(schoolId: number, sectionId: number): Promise<string> {
     const section = await this.section(this.dataSource.manager, schoolId, sectionId);
     return `${section.class_name} - ${section.name}`;
@@ -659,11 +811,17 @@ export class AttendanceService {
     );
   }
 
-  private async leaveStudents(manager: EntityManager, schoolId: number, date: string): Promise<Set<number>> {
+  private async leaveStudents(
+    manager: EntityManager,
+    schoolId: number,
+    date: string,
+    session: AttendanceSessionName,
+  ): Promise<Set<number>> {
     const rows: { student_id: number }[] = await manager.query(
       `SELECT student_id FROM student_leave_requests
-       WHERE school_id = $1 AND status = 'approved' AND deleted_at IS NULL AND $2 BETWEEN from_date AND to_date`,
-      [schoolId, date],
+       WHERE school_id = $1 AND status = 'approved' AND deleted_at IS NULL AND $2 BETWEEN from_date AND to_date
+       AND (half_day IS NULL OR half_day = $3)`,
+      [schoolId, date, session],
     );
     return new Set(rows.map((row) => Number(row.student_id)));
   }

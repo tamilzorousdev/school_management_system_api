@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { AppException } from '@app/common';
 import { centralAuthConfig, CentralAuthConfig } from '../../config/configuration';
+import { maskMobile } from '../../shared/mobile';
 import { ROLES } from '../access/access.catalog';
 
 export const CENTRAL_ROLES = ['SUPER_ADMIN', 'TENANT', 'TECHNICIAN'] as const;
@@ -93,6 +94,25 @@ export function otpPayload(mobile: string, appHash?: string | null): { mobile: s
   return appHash ? { mobile, app_hash: appHash } : { mobile };
 }
 
+const SECRET_KEYS = /otp|code|token|secret|password|hash/i;
+
+function withoutSecrets(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutSecrets);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+      key,
+      SECRET_KEYS.test(key) ? '***' : withoutSecrets(item),
+    ]),
+  );
+}
+
+export function otpSendSummary(status: number, body: CentralEnvelope<unknown> | null): string {
+  const data = body?.data === undefined ? '' : ` data=${JSON.stringify(withoutSecrets(body.data))}`;
+  const text = `HTTP ${status}, "${centralMessage(body) || 'no message'}"${data}`;
+  return text.length > 400 ? `${text.slice(0, 400)}…` : text;
+}
+
 export function appHashRejected(status: number, body: CentralEnvelope<unknown> | null): boolean {
   return status === 400 && centralMessage(body).toLowerCase().includes('app_hash should not exist');
 }
@@ -125,7 +145,14 @@ export class CentralAuthClient {
       this.logger.warn(`${path} does not accept app_hash yet; sent without it`);
       ({ status, body } = await this.post(path, otpPayload(mobile)));
     }
-    if (status >= 200 && status < 300) return;
+    const tenant = this.config.tenantId || 'default';
+    if (status >= 200 && status < 300) {
+      this.logger.log(
+        `${path} accepted for ${maskMobile(mobile)} (tenant ${tenant}). The Auth Service sends the SMS through the Notification Service (Kafka); its reply: ${otpSendSummary(status, body)}`,
+      );
+      return;
+    }
+    this.logger.warn(`${path} refused for ${maskMobile(mobile)} (tenant ${tenant}): ${otpSendSummary(status, body)}`);
     const message = centralMessage(body);
     if (message.toLowerCase().includes('user not found')) throw new CentralUserMissing(mobile);
     throw mapCentralError(status, message);
@@ -169,6 +196,7 @@ export class CentralAuthClient {
         mobile: input.mobile,
         name: input.name,
         role: centralRole(input.roles),
+        ...(this.config.tenantId ? { tenantId: this.config.tenantId } : {}),
       });
       if (status >= 200 && status < 300) {
         this.logger.log(`Registered ${input.mobile} in the Auth Service as ${email}`);

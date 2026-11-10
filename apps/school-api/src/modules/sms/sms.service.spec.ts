@@ -135,7 +135,7 @@ describe('SmsService', () => {
       channel: 'sms',
       to: '9876543210',
       templateId: 'otp',
-      variables: { otp: '482913', expiry: '10 minutes', name: 'Priya', mobile: '9876543210' },
+      variables: { otp: '482913', expiry: '10 minutes', name: 'Priya', mobile: '9876543210', app_hash: '' },
     });
   });
 

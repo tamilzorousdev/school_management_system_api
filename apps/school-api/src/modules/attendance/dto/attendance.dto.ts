@@ -179,6 +179,18 @@ export class StudentLeaveInputDto {
   @IsDateOnly('2026-11-11')
   to_date: string;
 
+  @ApiPropertyOptional({
+    enum: ATTENDANCE_SESSIONS,
+    nullable: true,
+    example: 'morning',
+    description:
+      'Half-day leave: morning (1st period session) or afternoon (5th period session). from_date and to_date must be the same day. Leave it out for full days.',
+  })
+  @IsOptional()
+  @ValidateIf((_dto, value) => value !== null)
+  @IsIn(ATTENDANCE_SESSIONS, { message: 'half_day must be morning or afternoon' })
+  half_day?: AttendanceSessionName | null;
+
   @ApiProperty({ example: 'Fever, doctor advised rest' })
   @Transform(trim)
   @IsString()
@@ -487,6 +499,14 @@ export class StudentLeaveDto {
   @ApiProperty({ example: 2, description: 'School days covered' })
   days: number;
 
+  @ApiProperty({
+    enum: ATTENDANCE_SESSIONS,
+    nullable: true,
+    example: null,
+    description: 'morning or afternoon for a half-day leave (days is 0.5); null for full days',
+  })
+  half_day: AttendanceSessionName | null;
+
   @ApiProperty({ example: 'Fever' })
   reason: string;
 
@@ -626,4 +646,117 @@ export class ClassReportDto {
 
   @ApiProperty({ type: [ClassReportSectionDto] })
   sections: ClassReportSectionDto[];
+}
+
+export class DayQueryDto {
+  @IsDateOnly('2026-11-10')
+  date: string;
+}
+
+export class SectionDayRowDto {
+  @ApiProperty({ example: 12 })
+  student_id: number;
+
+  @ApiProperty({ example: 'Kavin Narayanan' })
+  full_name: string;
+
+  @ApiProperty({ example: 7, nullable: true, type: Number })
+  roll_no: number | null;
+
+  @ApiProperty({ enum: ATTENDANCE_STATUSES, nullable: true, example: 'present', description: '1st period' })
+  morning: AttendanceStatus | null;
+
+  @ApiProperty({ enum: ATTENDANCE_STATUSES, nullable: true, example: 'absent', description: '5th period' })
+  afternoon: AttendanceStatus | null;
+
+  @ApiProperty({
+    enum: ATTENDANCE_STATUSES,
+    nullable: true,
+    example: 'half_day',
+    description: 'Day status from both sessions; null when not marked',
+  })
+  status: AttendanceStatus | null;
+}
+
+export class SectionDayDto {
+  @ApiProperty({ example: '2026-11-10' })
+  date: string;
+
+  @ApiProperty({ example: 4 })
+  section_id: number;
+
+  @ApiProperty({ example: '6 - A' })
+  section: string;
+
+  @ApiProperty({ example: true, description: 'false on Sundays and holidays' })
+  working_day: boolean;
+
+  @ApiProperty({ example: null, nullable: true, type: String })
+  holiday: string | null;
+
+  @ApiProperty({ example: true })
+  morning_marked: boolean;
+
+  @ApiProperty({ example: false })
+  afternoon_marked: boolean;
+
+  @ApiProperty({ type: AttendanceSummaryDto, description: 'Counts of the day status; percent over marked students' })
+  summary: AttendanceSummaryDto;
+
+  @ApiProperty({ type: [SectionDayRowDto] })
+  students: SectionDayRowDto[];
+}
+
+export class AttendanceMonthTotalDto {
+  @ApiProperty({ example: '2026-11' })
+  month: string;
+
+  @ApiProperty({ example: 20, description: 'School days in the month so far (no Sundays or holidays)' })
+  working_days: number;
+
+  @ApiProperty({ example: 19, description: 'Days attendance was marked' })
+  marked_days: number;
+
+  @ApiProperty({ example: 17 })
+  present: number;
+
+  @ApiProperty({ example: 1 })
+  late: number;
+
+  @ApiProperty({ example: 1 })
+  half_day: number;
+
+  @ApiProperty({ example: 0 })
+  absent: number;
+
+  @ApiProperty({ example: 0 })
+  leave: number;
+
+  @ApiProperty({
+    example: 97.4,
+    nullable: true,
+    type: Number,
+    description: 'present + late + half of half_day, over marked days; null when nothing is marked yet',
+  })
+  percent: number | null;
+}
+
+export class AttendanceYearDto {
+  @ApiProperty({ example: 12 })
+  student_id: number;
+
+  @ApiProperty({ example: '2026-27', nullable: true, type: String })
+  academic_year: string | null;
+
+  @ApiProperty({ example: '2026-06-01', nullable: true, type: String })
+  from: string | null;
+
+  @ApiProperty({ example: '2026-11-10', nullable: true, type: String, description: 'Today, or the year end' })
+  to: string | null;
+
+  @ApiProperty({ type: AttendanceMonthTotalDto, description: 'Whole year so far' })
+  year: AttendanceMonthTotalDto;
+
+  @ApiProperty({ type: [AttendanceMonthTotalDto], description: 'Each month of the year so far, oldest first' })
+  months: AttendanceMonthTotalDto[];
 }

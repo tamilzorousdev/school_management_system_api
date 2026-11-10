@@ -6,6 +6,13 @@
       "channel": "push",
       "subject": "{{title}}",
       "body": "{{body}}"
+    },
+    {
+      "templateId": "school_call",
+      "channel": "push",
+      "subject": "",
+      "body": "",
+      "note": "Data-only call ring. The message has dataOnly: true, data, priority: high and ttl (seconds). Send it with no title or body: OneSignal data + content_available + priority 10 + ttl, to include_aliases.external_id = externalIds."
     }
   ]
 }

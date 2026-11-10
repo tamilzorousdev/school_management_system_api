@@ -196,6 +196,20 @@ export class MobileTeacherMeetingsController {
   ) {
     return this.meetings.respond(user, 'teacher', meetingId, 'declined', dto);
   }
+
+  @Post('meetings/:meetingId/reject-call')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Call declined')
+  @ApiOperation({
+    summary: 'Decline the ringing call. The parent gets a cancel with reason declined.',
+    description:
+      'Use it on the ring screen. When one side joins, the other side gets a data push with category call and event ring (call_id, meeting_id, channel_name, caller_name, caller_role, student_name, timeout_seconds). A cancel with the same call_id follows when the call is answered, declined, the caller leaves, the meeting ends or after timeout_seconds. Safe to call again: nothing happens if it already stopped ringing.',
+  })
+  @ApiEnvelope(MeetingDto, { message: 'Call declined' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  rejectCall(@CurrentUser() user: AuthUser, @Param('meetingId', ParseIntPipe) meetingId: number) {
+    return this.meetings.rejectCall(user, 'teacher', meetingId);
+  }
 }
 
 @ApiTags(PARENT_MODULE_TAGS.MODULE_6)
@@ -332,5 +346,19 @@ export class MobileParentMeetingsController {
     @Body() dto: RespondMeetingDto,
   ) {
     return this.meetings.respond(user, 'parent', meetingId, 'declined', dto);
+  }
+
+  @Post('meetings/:meetingId/reject-call')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Call declined')
+  @ApiOperation({
+    summary: 'Decline the ringing call. The teacher gets a cancel with reason declined.',
+    description:
+      'Use it on the ring screen. When one side joins, the other side gets a data push with category call and event ring (call_id, meeting_id, channel_name, caller_name, caller_role, student_name, timeout_seconds). A cancel with the same call_id follows when the call is answered, declined, the caller leaves, the meeting ends or after timeout_seconds. Safe to call again: nothing happens if it already stopped ringing.',
+  })
+  @ApiEnvelope(MeetingDto, { message: 'Call declined' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  rejectCall(@CurrentUser() user: AuthUser, @Param('meetingId', ParseIntPipe) meetingId: number) {
+    return this.meetings.rejectCall(user, 'parent', meetingId);
   }
 }

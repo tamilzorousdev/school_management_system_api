@@ -17,7 +17,7 @@ export const MEETING_RESPONSES = ['pending', 'accepted', 'declined'] as const;
 export type MeetingResponse = (typeof MEETING_RESPONSES)[number];
 export type MeetingParty = (typeof MEETING_PARTIES)[number];
 
-export const MEETING_END_REASONS = ['host_ended', 'empty'] as const;
+export const MEETING_END_REASONS = ['host_ended', 'empty', 'time_up'] as const;
 export type MeetingEndReason = (typeof MEETING_END_REASONS)[number];
 
 @Entity('meetings')
@@ -108,4 +108,16 @@ export class Meeting extends SchoolScopedEntity {
 
   @Column({ type: 'varchar', length: 20, nullable: true })
   agora_kick_rule_id: string | null;
+
+  @Column({ type: 'varchar', length: 24, nullable: true })
+  ring_call_id: string | null;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  ring_to: MeetingParty | null;
+
+  @Column({ type: 'int', nullable: true })
+  ring_by: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  ring_started_at: Date | null;
 }

@@ -34,6 +34,9 @@ import {
   SessionBoardQueryDto,
   StudentLeaveDto,
   StudentLeaveQueryDto,
+  AttendanceYearDto,
+  DayQueryDto,
+  SectionDayDto,
 } from './dto/attendance.dto';
 import { StudentLeaveService } from './student-leave.service';
 
@@ -122,6 +125,16 @@ export class AttendanceController {
     return this.attendance.markSome(schoolId, id, dto, actor);
   }
 
+  @Get('sections/:id/day')
+  @ApiOperation({
+    summary: 'Daily report of a section: each student with morning, afternoon and the day status, with counts',
+  })
+  @ApiEnvelope(SectionDayDto)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  day(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Query() query: DayQueryDto) {
+    return this.attendance.sectionDay(schoolId, id, query.date);
+  }
+
   @Get('sections/:id/report')
   @RequirePermissions(PERMISSIONS.ATTENDANCE_VIEW)
   @ApiOperation({
@@ -166,6 +179,14 @@ export class AttendanceController {
     @Query() query: MonthQueryDto,
   ) {
     return classReportFile(await this.attendance.classReport(schoolId, id, query.month));
+  }
+
+  @Get('students/:id/summary')
+  @ApiOperation({ summary: 'One student this academic year: the year % and each month with its %' })
+  @ApiEnvelope(AttendanceYearDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  yearSummary(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.attendance.yearSummary(schoolId, id);
   }
 
   @Get('students/:id')

@@ -298,7 +298,7 @@ If the school replaces a lost card, the old `qr_token` stops working. Fetch the 
 | `GET /mobile/parent/children/{id}/attendance/today` | Home badge: `{ "date": "2026-11-02", "status": "absent" }`; `status` is `null` until the class teacher marks |
 | `GET /mobile/parent/children/{id}/attendance?month=2026-11` | Calendar: `days[]` with `date` and `status` (present, absent, late, half_day, leave, holiday), plus `summary.percent` |
 | `GET /mobile/parent/children/{id}/leaves` | Leave requests, newest first, with `status` pending, approved, rejected or cancelled |
-| `POST /mobile/parent/children/{id}/leaves` | `{ "from_date": "2026-11-10", "to_date": "2026-11-11", "reason": "Fever", "file_id": null }`. Up to 7 days back, 30 days long |
+| `POST /mobile/parent/children/{id}/leaves` | `{ "from_date": "2026-11-10", "to_date": "2026-11-11", "reason": "Fever", "file_id": null }`. Up to 7 days back, 30 days long. **Half day:** add `"half_day": "morning"` or `"afternoon"` with the same from and to date; it counts 0.5 day, the child defaults to leave only in that session, and a morning and an afternoon half day on the same date are both allowed (`400` on `to_date` for two dates, `409 LEAVE_OVERLAP` against a full day). Every leave has `half_day` (null for full days) |
 | `POST /mobile/parent/children/{id}/leaves/{leaveId}/cancel` | Cancel while it is still pending |
 
 | `GET /mobile/parent/children/{id}/achievements` | Achievements the school shares, newest first |
@@ -414,6 +414,29 @@ Student attendance is taken in the **1st period (`session: "morning"`)** and the
 | `GET /admin/attendance/classes/{id}/report?month=` | **Class-wise**: every section of the class with students, days marked, average % and below 75% |
 | `GET /admin/attendance/classes/{id}/report/xlsx?month=` | Same as Excel |
 | `GET /admin/attendance/students/{id}?month=` | Student-wise month: each day with `morning`, `afternoon` and the day `status` |
+| `GET /admin/attendance/sections/{id}/day?date=` | **Daily** report of a section: each student with `morning`, `afternoon`, day `status`, plus `summary` counts and % |
+| `GET /admin/attendance/students/{id}/summary` | Student this academic year: `year` totals and `months[]`, each with `working_days`, `marked_days`, counts and `percent` |
+
+### Attendance reports (class teacher and parent)
+
+Class teacher (Staff app). Only the class teacher of the section or student; others get `403 NOT_CLASS_TEACHER`.
+
+| Call | Report |
+|---|---|
+| `GET /mobile/teacher/sections/{id}/attendance/day?date=2026-11-10` | Daily: every student with morning, afternoon, day status and the day counts |
+| `GET /mobile/teacher/sections/{id}/attendance/report?month=2026-11` | Monthly, class-wise: every student with present, late, half day, absent, leave and % |
+| `GET /mobile/teacher/students/{id}/attendance?month=2026-11` | Student-wise month: each day and the month % |
+| `GET /mobile/teacher/students/{id}/attendance/summary` | Student-wise year: year % and each month's % |
+
+Parent (own child only, else `404 CHILD_NOT_FOUND`).
+
+| Call | Report |
+|---|---|
+| `GET /mobile/parent/children/{id}/attendance/today` | Daily: today's morning, afternoon and day status |
+| `GET /mobile/parent/children/{id}/attendance?month=2026-11` | Monthly: each day and the month % |
+| `GET /mobile/parent/children/{id}/attendance/summary` | Year: year % and each month's % |
+
+`percent` = (present + late + half of half_day) / marked days × 100, one decimal; `null` when nothing is marked yet. Sundays and holidays are not working days.
 
 ### Admin web: daily attendance and bulk marking (AO, admin)
 
@@ -674,6 +697,17 @@ Every meeting has `from` (who booked), `to`, `teacher`, `parent`, `student`, `ho
 
 `GET /mobile/parent/meetings`, `GET /mobile/parent/children/{id}/teachers`, `POST /mobile/parent/children/{id}/meetings` `{ "teacher_user_id": 9, "title": "...", "scheduled_at": "...", "duration_minutes": 15 }`, `GET /mobile/parent/meetings/{id}`, `join` (role `participant`), `token`, `leave` and `cancel`. Parents cannot extend or end.
 
+### When a meeting ends
+
+| Case | What happens |
+|---|---|
+| Teacher presses End | `completed`, `end_reason: host_ended`, straight away |
+| Everyone has left (cut the call) | `completed`, `end_reason: empty`, **5 minutes** after the last person left, even before the end time (rejoining within those 5 minutes keeps it open) |
+| Time is up | **10 minutes after the end time** (extensions included) it closes as `completed`, `end_reason: time_up`, the Agora channel is ended for everyone and Join returns `409 MEETING_ENDED` |
+| Nobody joined | `missed` 30 minutes after the end time |
+
+`join_closes_at` on every meeting is the last moment Join works: show it as the link expiry. Extending (host, up to 120 minutes in total) moves the end time and so the expiry.
+
 ### Agora uid
 
 `POST …/meetings/{id}/join` returns `uid` = user id × 2 for the teacher side and user id × 2 + 1 for the parent side, so one person who is both teacher and parent can join from two phones without Agora kicking one off. Always use the `uid` from the join response; never build it from the user id.
@@ -693,6 +727,47 @@ Body (optional): `{ "note": "Busy with exam duty" }`. The side that booked gets 
 - The reply can be changed (decline → accept) until the meeting starts.
 - `403 NOT_MEETING_INVITEE` if the side that booked tries to reply; `409 MEETING_REPLY_CLOSED` once the meeting started, ended or was cancelled.
 - Every meeting in lists and details has `response`, `responded_at`, `response_note`; `to` is the invited person.
+
+### Incoming call ring and cancel
+
+When one side joins (`POST .../join` succeeds) and the other side is not in the call, the API rings the other side. The joiner is never rung.
+
+Ring and cancel arrive as a **data-only, high-priority push** (no title or body, every value a string) and as the socket event `meeting.call` with the same payload:
+
+```json
+{
+  "category": "call",
+  "event": "ring",
+  "call_id": "c_8f21a3b4c5d6",
+  "meeting_id": "11",
+  "channel_name": "tzs_1_62b42c63d586b740",
+  "caller_name": "Arun Prakash",
+  "caller_role": "teacher",
+  "student_name": "Harini Arun",
+  "timeout_seconds": "45"
+}
+```
+
+`caller_role` is the role of the person calling (pick the join endpoint for the **other** role on Accept). A `cancel` has the same `call_id` and fields plus `reason`:
+
+| reason | When |
+|---|---|
+| `answered` | The rung side joined |
+| `declined` | The rung side tapped Decline (`POST .../reject-call`) |
+| `caller_left` | The caller left before it was answered |
+| `ended` | The host ended the meeting, or it closed (empty or time up) |
+| `timeout` | Nobody answered in 45 seconds |
+
+| Endpoint | Who |
+|---|---|
+| `POST /mobile/teacher/meetings/{id}/reject-call` | Teacher declines a ringing call from the parent |
+| `POST /mobile/parent/meetings/{id}/reject-call` | Parent declines a ringing call from the teacher |
+
+- Accept = `POST .../join` as usual (it also sends `cancel` with `answered` to the caller's other devices).
+- `reject-call` is safe to repeat; if the ring already stopped nothing happens. No body.
+- One ring at a time per meeting. Rejoining while the other side is in the call does not ring.
+- Delivery: `CALL_PUSH_DRIVER` (`kafka` → Notification Service template `school_call` with `dataOnly: true`, `data`, `priority: high`, `ttl`; `onesignal` → OneSignal data-only with `content_available`, `priority 10`, `include_aliases.external_id`; `fcm` → FCM data message, Android priority high). Empty = same as `PUSH_DRIVER`.
+- iOS VoIP (PushKit through APNs) is not in this phase: it needs the Apple VoIP certificate.
 
 ### Notes, meeting chat and recap
 

@@ -20,6 +20,8 @@ import { todayIn } from '../../shared/dates';
 import { ROLES } from '../access/access.catalog';
 import { AttendanceService } from '../attendance/attendance.service';
 import {
+  AttendanceYearDto,
+  DayQueryDto,
   LeaveDecisionDto,
   MarkAttendanceDto,
   MarkSomeAttendanceDto,
@@ -27,6 +29,8 @@ import {
   MonthQueryDto,
   RosterDto,
   RosterQueryDto,
+  SectionDayDto,
+  SectionReportDto,
   StudentLeaveDto,
   StudentLeaveInputDto,
   StudentLeaveQueryDto,
@@ -114,6 +118,15 @@ export class MobileParentAttendanceController {
   @ApiEnvelope(MonthlyAttendanceDto)
   async month(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: MonthQueryDto) {
     return this.attendance.monthly(await this.access.childSchool(user.id, id), id, query.month);
+  }
+
+  @Get('attendance/summary')
+  @ApiOperation({
+    summary: 'This academic year: the year % and each month with its % (present, late, half day, absent, leave)',
+  })
+  @ApiEnvelope(AttendanceYearDto)
+  async yearSummary(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.attendance.yearSummary(await this.access.childSchool(user.id, id), id);
   }
 
   @Get('attendance/today')
@@ -265,6 +278,70 @@ export class MobileTeacherAttendanceController {
     const schoolId = this.access.teacherSchool(user);
     await this.assignments.assertTeachesSection(schoolId, user.id, id);
     return this.attendance.markSome(schoolId, id, dto, user, { teacher: true });
+  }
+
+  @Get('sections/:id/attendance/day')
+  @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
+  @ApiOperation({
+    summary: 'Daily report of my class: each student with morning, afternoon and the day status, with counts',
+    description: 'Class teacher only (403 NOT_CLASS_TEACHER). Any date, read-only.',
+  })
+  @ApiEnvelope(SectionDayDto)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  async sectionDay(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: DayQueryDto) {
+    const schoolId = this.access.teacherSchool(user);
+    await this.attendance.assertClassTeacherOfSection(schoolId, id, user.id);
+    return this.attendance.sectionDay(schoolId, id, query.date);
+  }
+
+  @Get('sections/:id/attendance/report')
+  @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
+  @ApiOperation({
+    summary: 'Monthly report of my class: every student with present, late, half day, absent, leave and %',
+    description: 'Class teacher only (403 NOT_CLASS_TEACHER). percent is over the days attendance was taken.',
+  })
+  @ApiEnvelope(SectionReportDto)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  async sectionReport(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: MonthQueryDto,
+  ) {
+    const schoolId = this.access.teacherSchool(user);
+    await this.attendance.assertClassTeacherOfSection(schoolId, id, user.id);
+    return this.attendance.sectionReport(schoolId, id, query.month);
+  }
+
+  @Get('students/:id/attendance')
+  @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
+  @ApiOperation({
+    summary: 'One student of my class for a month: each day with morning, afternoon, the day status and the %',
+    description: 'Class teacher only (403 NOT_CLASS_TEACHER).',
+  })
+  @ApiEnvelope(MonthlyAttendanceDto)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  async studentMonth(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: MonthQueryDto,
+  ) {
+    const schoolId = this.access.teacherSchool(user);
+    await this.attendance.assertClassTeacherOfStudent(schoolId, id, user.id);
+    return this.attendance.monthly(schoolId, id, query.month);
+  }
+
+  @Get('students/:id/attendance/summary')
+  @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
+  @ApiOperation({
+    summary: 'One student of my class this academic year: the year % and each month with its %',
+    description: 'Class teacher only (403 NOT_CLASS_TEACHER).',
+  })
+  @ApiEnvelope(AttendanceYearDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  async studentYear(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    const schoolId = this.access.teacherSchool(user);
+    await this.attendance.assertClassTeacherOfStudent(schoolId, id, user.id);
+    return this.attendance.yearSummary(schoolId, id);
   }
 
   @Get('timetable')

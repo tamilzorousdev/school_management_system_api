@@ -23,7 +23,12 @@ const centralAuth = (env: EnvironmentVariables) => env.AUTH_PROVIDER === 'centra
 const usesPing = (env: EnvironmentVariables) =>
   env.SMS_DRIVER === 'ping4sms' || (otpSms(env) && env.OTP_SMS_DRIVER === 'ping4sms');
 const usesKafka = (env: EnvironmentVariables) =>
-  env.SMS_DRIVER === 'kafka' || env.PUSH_DRIVER === 'kafka' || (otpSms(env) && env.OTP_SMS_DRIVER === 'kafka');
+  env.SMS_DRIVER === 'kafka' ||
+  env.PUSH_DRIVER === 'kafka' ||
+  env.CALL_PUSH_DRIVER === 'kafka' ||
+  (otpSms(env) && env.OTP_SMS_DRIVER === 'kafka');
+const usesOneSignal = (env: EnvironmentVariables) =>
+  env.PUSH_DRIVER === 'onesignal' || env.CALL_PUSH_DRIVER === 'onesignal';
 
 export class EnvironmentVariables {
   @IsIn(['development', 'production', 'test'])
@@ -188,6 +193,12 @@ export class EnvironmentVariables {
   @Matches(/^[a-z0-9-]+(\.[a-z0-9-]+)+$/, { message: 'AUTH_EMAIL_DOMAIN must be a domain like school.tamilzorous.com' })
   AUTH_EMAIL_DOMAIN: string;
 
+  @IsOptional()
+  @Matches(/^[A-Za-z0-9_-]{2,40}$/, {
+    message: 'CENTRAL_AUTH_TENANT_ID must be the tenant id onboarded on the Auth Service, like TZSMS',
+  })
+  CENTRAL_AUTH_TENANT_ID?: string;
+
   @Matches(/^\d{6}$/, { message: 'OTP_TEST_CODE must be 6 digits' })
   OTP_TEST_CODE: string = '123456';
 
@@ -289,17 +300,21 @@ export class EnvironmentVariables {
   @IsIn(['off', 'fcm', 'onesignal', 'kafka'], { message: 'PUSH_DRIVER must be off, fcm, onesignal or kafka' })
   PUSH_DRIVER: string = 'off';
 
-  @ValidateIf((env: EnvironmentVariables) => env.PUSH_DRIVER === 'fcm')
+  @ValidateIf((env: EnvironmentVariables) => Boolean(env.CALL_PUSH_DRIVER))
+  @IsIn(['off', 'fcm', 'onesignal', 'kafka'], { message: 'CALL_PUSH_DRIVER must be off, fcm, onesignal or kafka' })
+  CALL_PUSH_DRIVER?: string;
+
+  @ValidateIf((env: EnvironmentVariables) => env.PUSH_DRIVER === 'fcm' || env.CALL_PUSH_DRIVER === 'fcm')
   @IsString()
   @IsNotEmpty()
   FIREBASE_CREDENTIALS_FILE: string;
 
-  @ValidateIf((env: EnvironmentVariables) => env.PUSH_DRIVER === 'onesignal')
+  @ValidateIf(usesOneSignal)
   @IsOptional()
   @IsString()
   ONESIGNAL_APP_ID?: string;
 
-  @ValidateIf((env: EnvironmentVariables) => env.PUSH_DRIVER === 'onesignal')
+  @ValidateIf(usesOneSignal)
   @IsOptional()
   @IsString()
   ONESIGNAL_REST_API_KEY?: string;

@@ -4,6 +4,7 @@ import {
   authEmail,
   CentralAuthClient,
   centralMessage,
+  otpSendSummary,
   centralRole,
   mapCentralError,
   otpPayload,
@@ -118,5 +119,23 @@ describe('OTP with app hash', () => {
     await expect(client.resendOtp('9876543210')).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'OTP_RESEND_TOO_SOON' }) as unknown,
     });
+  });
+});
+
+describe('OTP send log', () => {
+  it('shows the Auth Service reply without the OTP or tokens', () => {
+    const text = otpSendSummary(200, {
+      success: true,
+      message: 'OTP sent successfully',
+      data: { channel: 'sms', queued: true, otp: '482913', meta: { accessToken: 'abc' } },
+    });
+    expect(text).toBe(
+      'HTTP 200, "OTP sent successfully" data={"channel":"sms","queued":true,"otp":"***","meta":{"accessToken":"***"}}',
+    );
+    expect(text).not.toContain('482913');
+  });
+
+  it('works when the reply has no body', () => {
+    expect(otpSendSummary(200, null)).toBe('HTTP 200, "no message"');
   });
 });

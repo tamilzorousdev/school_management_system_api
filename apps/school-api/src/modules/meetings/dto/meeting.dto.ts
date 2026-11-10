@@ -308,7 +308,8 @@ export class MeetingDto {
     example: '2026-11-11T17:15:00.000+05:30',
     nullable: true,
     type: Date,
-    description: 'Only for a meeting nobody has joined: after this it becomes missed. null once it has started.',
+    description:
+      'Last moment Join works: for a meeting nobody joined, end + 30 min (then missed); for a live one, end + 10 min (then it closes and the call is ended for everyone). Show it as the expiry.',
   })
   join_closes_at: Date | null;
 
@@ -330,11 +331,12 @@ export class MeetingDto {
   ended_by: RefDto | null;
 
   @ApiProperty({
-    enum: ['host_ended', 'empty'],
+    enum: ['host_ended', 'empty', 'time_up'],
     nullable: true,
-    description: 'host_ended, or empty when everyone had left for 15 minutes after the end time',
+    description:
+      'host_ended (the teacher ended it), empty (everyone had left for 5 minutes) or time_up (closed 10 minutes after the end time, extensions included)',
   })
-  end_reason: 'host_ended' | 'empty' | null;
+  end_reason: 'host_ended' | 'empty' | 'time_up' | null;
 
   @ApiProperty({ type: RefDto, nullable: true })
   cancelled_by: RefDto | null;

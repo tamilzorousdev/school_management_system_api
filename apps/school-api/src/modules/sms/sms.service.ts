@@ -51,6 +51,7 @@ export class SmsService {
           expiry: `${input.expiryMinutes} minutes`,
           name: input.name ?? '',
           mobile: input.mobile,
+          app_hash: input.appSignature ?? '',
           ...(input.appSignature ? { app_signature: input.appSignature } : {}),
         },
       });

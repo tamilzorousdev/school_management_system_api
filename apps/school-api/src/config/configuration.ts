@@ -40,6 +40,7 @@ export const centralAuthConfig = registerAs('centralAuth', () => ({
   url: (process.env.CENTRAL_AUTH_URL ?? '').replace(/\/+$/, ''),
   timeoutMs: Number(process.env.CENTRAL_AUTH_TIMEOUT_MS ?? 8000),
   emailDomain: process.env.AUTH_EMAIL_DOMAIN ?? '',
+  tenantId: process.env.CENTRAL_AUTH_TENANT_ID ?? '',
 }));
 
 export type CentralAuthConfig = ConfigType<typeof centralAuthConfig>;
@@ -76,8 +77,11 @@ export const kafkaNotifyConfig = registerAs('kafkaNotify', () => ({
   logEnabled: process.env.NOTIFY_KAFKA_LOG === 'true',
 }));
 
+export type PushDriver = 'off' | 'fcm' | 'onesignal' | 'kafka';
+
 export const pushConfig = registerAs('push', () => ({
-  driver: (process.env.PUSH_DRIVER ?? 'off') as 'off' | 'fcm' | 'onesignal' | 'kafka',
+  driver: (process.env.PUSH_DRIVER ?? 'off') as PushDriver,
+  callDriver: (process.env.CALL_PUSH_DRIVER || process.env.PUSH_DRIVER || 'off') as PushDriver,
   credentialsFile: process.env.FIREBASE_CREDENTIALS_FILE ?? '',
   oneSignalAppId: process.env.ONESIGNAL_APP_ID ?? '',
   oneSignalApiKey: process.env.ONESIGNAL_REST_API_KEY ?? '',

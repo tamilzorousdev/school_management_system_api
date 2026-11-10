@@ -18,6 +18,8 @@ import {
   overlaps,
   scheduleError,
   statusAfterJoin,
+  hardStopAt,
+  isPastHardStop,
 } from './meetings.logic';
 
 const at = (time: string) => new Date(`2026-11-11T${time}:00+05:30`);
@@ -53,9 +55,13 @@ describe('meeting lifecycle (10:00 to 10:30, reminder at 10:25)', () => {
     expect(isOverTime(meeting('in_progress'), at('10:29'))).toBe(false);
   });
 
-  it('after 10:30 a running meeting stays joinable until the host ends it', () => {
-    expect(canJoin(meeting('time_exceeded'), at('11:45'))).toBe(true);
-    expect(canJoin(meeting('in_progress'), at('13:00'))).toBe(true);
+  it('after 10:30 a running meeting stays joinable for 10 more minutes, then the link expires', () => {
+    expect(canJoin(meeting('time_exceeded'), at('10:40'))).toBe(true);
+    expect(canJoin(meeting('time_exceeded'), at('10:41'))).toBe(false);
+    expect(joinBlockReason(meeting('in_progress'), at('13:00'))?.code).toBe('MEETING_ENDED');
+    expect(hardStopAt(meeting('in_progress'))).toEqual(at('10:40'));
+    expect(isPastHardStop(meeting('time_exceeded'), at('10:41'))).toBe(true);
+    expect(isPastHardStop(meeting('time_exceeded'), at('10:40'))).toBe(false);
   });
 
   it('someone joining for the first time after the end goes straight to time_exceeded', () => {
@@ -74,11 +80,12 @@ describe('meeting lifecycle (10:00 to 10:30, reminder at 10:25)', () => {
     expect(joinBlockReason(meeting('cancelled'), at('10:10'))?.code).toBe('MEETING_CANCELLED');
   });
 
-  it('an empty meeting closes 15 minutes after the last person left, only after the end time', () => {
-    expect(closesWhenEmpty(meeting('time_exceeded'), 0, at('10:40'), at('10:55'))).toBe(true);
-    expect(closesWhenEmpty(meeting('time_exceeded'), 0, at('10:40'), at('10:54'))).toBe(false);
+  it('an empty meeting closes 5 minutes after the last person left, even before the end time', () => {
+    expect(closesWhenEmpty(meeting('time_exceeded'), 0, at('10:40'), at('10:45'))).toBe(true);
+    expect(closesWhenEmpty(meeting('time_exceeded'), 0, at('10:40'), at('10:44'))).toBe(false);
     expect(closesWhenEmpty(meeting('time_exceeded'), 1, at('10:40'), at('11:30'))).toBe(false);
-    expect(closesWhenEmpty(meeting('in_progress'), 0, at('10:05'), at('10:25'))).toBe(false);
+    expect(closesWhenEmpty(meeting('in_progress'), 0, at('10:05'), at('10:10'))).toBe(true);
+    expect(closesWhenEmpty(meeting('in_progress'), 0, at('10:05'), at('10:09'))).toBe(false);
   });
 });
 

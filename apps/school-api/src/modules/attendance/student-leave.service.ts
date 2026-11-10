@@ -46,11 +46,19 @@ export class StudentLeaveService {
         { field: 'to_date', message: `One request can cover up to ${MAX_LEAVE_DAYS} days` },
       ]);
     }
+    const halfDay = dto.half_day ?? null;
+    if (halfDay && dto.from_date !== dto.to_date) {
+      throw AppException.validation([
+        { field: 'to_date', message: 'A half-day leave is for one day: use the same first and last day' },
+      ]);
+    }
     if (dto.file_id) await this.files.assertAttachable(dto.file_id, schoolId);
     const overlap = await this.dataSource.query(
       `SELECT 1 FROM student_leave_requests WHERE student_id = $1 AND deleted_at IS NULL
-       AND status IN ('pending', 'approved') AND from_date <= $3 AND to_date >= $2 LIMIT 1`,
-      [studentId, dto.from_date, dto.to_date],
+       AND status IN ('pending', 'approved') AND from_date <= $3 AND to_date >= $2
+       AND NOT (half_day IS NOT NULL AND $4::varchar IS NOT NULL AND half_day <> $4::varchar)
+       LIMIT 1`,
+      [studentId, dto.from_date, dto.to_date, halfDay],
     );
     if (overlap.length) {
       throw AppException.conflict('There is already a leave request for some of these days', 'LEAVE_OVERLAP');
@@ -61,6 +69,7 @@ export class StudentLeaveService {
         student_id: studentId,
         from_date: dto.from_date,
         to_date: dto.to_date,
+        half_day: halfDay,
         reason: dto.reason,
         file_id: dto.file_id ?? null,
         status: 'pending',
@@ -92,7 +101,7 @@ export class StudentLeaveService {
           student: row.student,
           class: row.class_name,
           from: leave.from_date,
-          to: leave.to_date,
+          to: leave.half_day ? `${leave.to_date} (${leave.half_day} only)` : leave.to_date,
           reason: leave.reason,
           student_id: String(leave.student_id),
           leave_id: String(leave.id),
@@ -202,7 +211,7 @@ export class StudentLeaveService {
         data: {
           student: rows[0]?.name ?? '',
           from: leave.from_date,
-          to: leave.to_date,
+          to: leave.half_day ? `${leave.to_date} (${leave.half_day} only)` : leave.to_date,
           status: leave.status,
           student_id: String(leave.student_id),
           leave_id: String(leave.id),
@@ -248,7 +257,8 @@ export class StudentLeaveService {
           : null,
         from_date: row.from_date,
         to_date: row.to_date,
-        days: workingDays(row.from_date, row.to_date, holidays).length,
+        days: row.half_day ? 0.5 : workingDays(row.from_date, row.to_date, holidays).length,
+        half_day: row.half_day,
         reason: row.reason,
         file_id: row.file_id,
         status: row.status,

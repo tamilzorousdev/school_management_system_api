@@ -5,7 +5,8 @@ export const JOIN_EARLY_MINUTES = 10;
 export const NO_SHOW_GRACE_MINUTES = 30;
 export const START_REMINDER_MINUTES = 10;
 export const END_REMINDER_MINUTES = 5;
-export const EMPTY_CLOSE_MINUTES = 15;
+export const EMPTY_CLOSE_MINUTES = 5;
+export const HARD_STOP_MINUTES = 10;
 export const MAX_DAYS_AHEAD = 60;
 export const PAST_TOLERANCE_MINUTES = 1;
 export const MAX_EXTENSION_MINUTES = 120;
@@ -34,12 +35,22 @@ export function noShowAt(meeting: Pick<MeetingTiming, 'scheduled_end_at'>): Date
   return addMinutes(meeting.scheduled_end_at, NO_SHOW_GRACE_MINUTES);
 }
 
+export function hardStopAt(meeting: Pick<MeetingTiming, 'scheduled_end_at'>): Date {
+  return addMinutes(meeting.scheduled_end_at, HARD_STOP_MINUTES);
+}
+
+export function isPastHardStop(meeting: MeetingTiming, now: Date): boolean {
+  return ACTIVE_STATUSES.includes(meeting.status) && now > hardStopAt(meeting);
+}
+
 export function joinBlockReason(meeting: MeetingTiming, now: Date): { message: string; code: string } | null {
   if (meeting.status === 'cancelled') return { message: 'This meeting was cancelled', code: 'MEETING_CANCELLED' };
   if (meeting.status === 'completed' || meeting.status === 'missed') {
     return { message: 'This meeting has ended', code: 'MEETING_ENDED' };
   }
-  if (ACTIVE_STATUSES.includes(meeting.status)) return null;
+  if (ACTIVE_STATUSES.includes(meeting.status)) {
+    return now > hardStopAt(meeting) ? { message: 'This meeting has ended', code: 'MEETING_ENDED' } : null;
+  }
   if (now < joinOpensAt(meeting)) {
     return {
       message: `The meeting opens ${JOIN_EARLY_MINUTES} minutes before it starts`,
@@ -85,7 +96,6 @@ export function closesWhenEmpty(
   return (
     ACTIVE_STATUSES.includes(meeting.status) &&
     openParticipants === 0 &&
-    now > meeting.scheduled_end_at &&
     now >= addMinutes(lastActivity, EMPTY_CLOSE_MINUTES)
   );
 }

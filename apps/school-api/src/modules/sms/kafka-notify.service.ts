@@ -35,6 +35,10 @@ export interface KafkaPushMessage {
   variables: Record<string, string>;
   externalIds: string[];
   playerIds?: string[];
+  dataOnly?: true;
+  data?: Record<string, string>;
+  priority?: 'high';
+  ttl?: number;
 }
 
 export interface KafkaPushInput {
@@ -42,10 +46,12 @@ export interface KafkaPushInput {
   variables: Record<string, string>;
   externalIds: string[];
   playerIds: string[];
+  dataOnly?: { data: Record<string, string>; ttlSeconds: number };
 }
 
 export const KAFKA_OTP_TEMPLATE = 'otp';
 export const KAFKA_PUSH_TEMPLATE = 'push';
+export const KAFKA_CALL_TEMPLATE = 'call';
 
 @Injectable()
 export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
@@ -65,6 +71,7 @@ export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
     return (
       this.sms.driver === 'kafka' ||
       this.push.driver === 'kafka' ||
+      this.push.callDriver === 'kafka' ||
       (this.otp.mode === 'sms' && this.sms.otpDriver === 'kafka')
     );
   }
@@ -119,6 +126,14 @@ export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
       variables: input.variables,
       externalIds: input.externalIds,
       ...(input.playerIds.length ? { playerIds: input.playerIds } : {}),
+      ...(input.dataOnly
+        ? {
+            dataOnly: true as const,
+            data: input.dataOnly.data,
+            priority: 'high' as const,
+            ttl: input.dataOnly.ttlSeconds,
+          }
+        : {}),
     };
   }
 

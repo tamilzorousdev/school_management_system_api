@@ -1,5 +1,6 @@
 import { SchoolScopedEntity } from '@app/common';
 import { Column, Entity, Index } from 'typeorm';
+import type { AttendanceSessionName } from '../attendance-sessions';
 
 export const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
 export type LeaveStatus = (typeof LEAVE_STATUSES)[number];
@@ -15,6 +16,9 @@ export class StudentLeave extends SchoolScopedEntity {
 
   @Column({ type: 'date' })
   to_date: string;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  half_day: AttendanceSessionName | null;
 
   @Column({ type: 'varchar', length: 500 })
   reason: string;

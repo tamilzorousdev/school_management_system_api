@@ -107,6 +107,7 @@ Send through `NotificationsService.dispatch({ template, audience, data })`:
 - `audience`: `{ user_ids }` or `{ roles, school_id }`.
 - Templates (English + Tamil) are in `notifications/notification-templates.catalog.ts`; add new ones there and run the seed.
 - Flow: in-app row → push (`PUSH_DRIVER`: `kafka` = through the central Notification Service, which sends with OneSignal using its own key; we only publish `{ type: 'push', templateId: 'school_push', variables: { title, body, … }, externalIds: [user id] }`, and the app calls `OneSignal.login(<user id>)`; `onesignal`/`fcm` send directly) → SMS when the template says `always`, or `fallback` and push did not reach a phone. Every attempt is a row in `notifications` (the outbox).
+- Incoming meeting calls: on `join` the other side gets a data-only `category: call` push (`event: ring`, then `cancel` with the same `call_id` on answer, `reject-call`, caller left, end or 45 s timeout), plus the `meeting.call` socket event. `CALL_PUSH_DRIVER` picks the route (empty = `PUSH_DRIVER`); code in `meetings/meeting-ring.ts`.
 - Jobs run on the in-process queue (`QUEUE_DRIVER=memory`) with retries; queued jobs are lost on restart.
 
 ## SMS and Kafka

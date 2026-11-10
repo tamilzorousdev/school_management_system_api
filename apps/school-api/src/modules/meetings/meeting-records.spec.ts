@@ -29,7 +29,8 @@ describe('meeting record rules', () => {
   it('opens the meeting chat with the join window and closes it when the meeting ends', () => {
     expect(chatBlockReason(timing('scheduled'), at('17:00'))?.code).toBe('MEETING_NOT_OPEN');
     expect(chatBlockReason(timing('scheduled'), at('17:21'))).toBeNull();
-    expect(chatBlockReason(timing('time_exceeded'), at('18:30'))).toBeNull();
+    expect(chatBlockReason(timing('time_exceeded'), at('17:55'))).toBeNull();
+    expect(chatBlockReason(timing('time_exceeded'), at('17:56'))?.code).toBe('MEETING_CHAT_CLOSED');
     expect(chatBlockReason(timing('completed'), at('18:30'))?.code).toBe('MEETING_CHAT_CLOSED');
     expect(chatBlockReason(timing('cancelled'), at('17:31'))?.code).toBe('MEETING_CANCELLED');
   });
@@ -85,8 +86,8 @@ function build(status: MeetingStatus = 'in_progress') {
     parent_user_id: 9,
     title: 'Maths progress',
     status,
-    scheduled_at: at('17:30'),
-    scheduled_end_at: at('17:45'),
+    scheduled_at: new Date(Date.now() - 5 * 60_000),
+    scheduled_end_at: new Date(Date.now() + 10 * 60_000),
     ended_at: status === 'completed' ? at('17:50') : null,
   } as Meeting;
   const stored: MeetingNote[] = [];
