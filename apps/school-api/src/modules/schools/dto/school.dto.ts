@@ -128,6 +128,19 @@ export class SchoolProfileDto {
   diary_review_mode?: DiaryReviewMode;
 
   @ApiPropertyOptional({
+    example: 15,
+    minimum: 0,
+    maximum: 30,
+    description:
+      'Extra minutes teachers get to take attendance after the 1st period (morning) and the 5th period (afternoon) end. After that the session shows as missed.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(30)
+  attendance_grace_minutes?: number;
+
+  @ApiPropertyOptional({
     example: '08:00',
     description: 'Chat office hours start (Monday to Saturday, not on holidays)',
   })
@@ -268,6 +281,9 @@ export class SchoolDto {
 
   @ApiProperty({ enum: DIARY_REVIEW_MODES, example: 'remarks' })
   diary_review_mode: DiaryReviewMode;
+
+  @ApiProperty({ example: 15, description: 'Extra minutes after the 1st and 5th period to take attendance' })
+  attendance_grace_minutes: number;
 
   @ApiProperty({ example: '08:00' })
   chat_office_start: string;

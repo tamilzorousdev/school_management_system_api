@@ -8,10 +8,11 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AcademicYear } from '../setup/entities/academic-year.entity';
 import {
   afternoonDefault,
+  ATTENDANCE_SESSIONS,
   AttendanceSessionName,
   resolveSession,
   SESSION_PERIOD,
-  SessionWindow,
+  SessionState,
   sessionState,
   windowMessage,
 } from './attendance-sessions';
@@ -28,10 +29,16 @@ import {
   SectionReportDto,
   AttendanceYearDto,
   SectionDayDto,
+  BoardFilter,
+  CurrentMarkDto,
+  CurrentMarkSomeDto,
+  MissedReportDto,
+  MissedTeacherDto,
 } from './dto/attendance.dto';
 import { AttendanceRecord, AttendanceStatus } from './entities/attendance-record.entity';
 import { AttendanceSession } from './entities/attendance-session.entity';
 import { clampRange, monthsBetween } from './attendance-reports.logic';
+import { currentSession, DEFAULT_GRACE_MINUTES, GraceWindow, graceWindow, windowClosed } from './attendance-window';
 import { bulkPlan, mergeMarks } from './bulk-attendance.logic';
 
 interface SectionRow {
@@ -178,6 +185,8 @@ export class AttendanceService {
       open: !options.teacher || sessionState(window, date, today, this.nowTime()) === 'open',
       opens_at: window.opens_at,
       closes_at: window.closes_at,
+      period_ends_at: window.period_ends_at,
+      grace_minutes: window.grace_minutes,
       working_day: !holiday && !WEEKLY_OFF.includes(weekday(date)),
       holiday,
       marked: Boolean(saved),
@@ -352,15 +361,24 @@ export class AttendanceService {
     return { date: dto.date, marked, students, skipped: plan.skipped };
   }
 
-  async board(schoolId: number, date: string, session: AttendanceSessionName = 'morning'): Promise<AttendanceBoardDto> {
+  async board(
+    schoolId: number,
+    date: string,
+    session: AttendanceSessionName = 'morning',
+    filter?: BoardFilter,
+  ): Promise<AttendanceBoardDto> {
     const manager = this.dataSource.manager;
     const year = await manager.findOneBy(AcademicYear, { school_id: schoolId, is_current: true });
     const holiday = await this.holidayName(manager, schoolId, date);
+    const window = await this.window(manager, schoolId, session);
+    const workingDay = !holiday && !WEEKLY_OFF.includes(weekday(date));
+    const closed = workingDay && windowClosed(window, date, todayIn(this.app.timeZone), this.nowTime());
     const rows: {
       section_id: number;
       class_name: string;
       section_name: string;
       class_teacher: string | null;
+      class_teacher_id: number | null;
       total: string;
       statuses: AttendanceStatus[] | null;
       taken_by: string | null;
@@ -370,6 +388,7 @@ export class AttendanceService {
     }[] = year
       ? await manager.query(
           `SELECT sec.id AS section_id, c.name AS class_name, sec.name AS section_name, t.name AS class_teacher,
+                  sec.class_teacher_user_id AS class_teacher_id,
                   (SELECT COUNT(*) FROM student_enrollments e JOIN students s ON s.id = e.student_id
                     WHERE e.section_id = sec.id AND s.deleted_at IS NULL AND s.status = 'active') AS total,
                   (SELECT array_agg(r.status) FROM attendance_records r WHERE r.session_id = a.id) AS statuses,
@@ -392,9 +411,11 @@ export class AttendanceService {
         section_id: Number(row.section_id),
         name: `${row.class_name} - ${row.section_name}`,
         class_teacher: row.class_teacher,
+        class_teacher_id: row.class_teacher_id === null ? null : Number(row.class_teacher_id),
         ...summarise(statuses),
         total: statuses.length || Number(row.total),
         marked: Boolean(row.taken_at),
+        missed: closed && !row.taken_at,
         morning_marked: row.morning_marked,
         afternoon_marked: row.afternoon_marked,
         taken_by: row.taken_by,
@@ -411,17 +432,30 @@ export class AttendanceService {
         [schoolId],
       ),
     ]);
+    const shown = withStudents.filter((section) =>
+      filter === 'missed'
+        ? section.missed
+        : filter === 'not_marked'
+          ? !section.marked
+          : filter === 'marked'
+            ? section.marked
+            : true,
+    );
     return {
       date,
       session,
-      working_day: !holiday && !WEEKLY_OFF.includes(weekday(date)),
+      working_day: workingDay,
       holiday,
       summary: summarise(allStatuses),
       sections_total: withStudents.length,
       sections_not_marked: withStudents.filter((section) => !section.marked).length,
+      sections_missed: withStudents.filter((section) => section.missed).length,
+      opens_at: window.opens_at,
+      closes_at: window.closes_at,
+      grace_minutes: window.grace_minutes,
       below_75: below,
       leave_pending: Number(pending[0]?.count ?? 0),
-      sections: withStudents,
+      sections: shown,
     };
   }
 
@@ -769,16 +803,200 @@ export class AttendanceService {
     }
   }
 
-  private async window(
-    manager: EntityManager,
-    schoolId: number,
-    session: AttendanceSessionName,
-  ): Promise<SessionWindow> {
+  async window(manager: EntityManager, schoolId: number, session: AttendanceSessionName): Promise<GraceWindow> {
     const [row] = await manager.query(
-      `SELECT start_time, end_time FROM bell_periods WHERE school_id = $1 AND period_no = $2 ORDER BY start_time LIMIT 1`,
+      `SELECT b.start_time, b.end_time, s.attendance_grace_minutes AS grace
+       FROM schools s
+       LEFT JOIN LATERAL (
+         SELECT start_time, end_time FROM bell_periods
+         WHERE school_id = s.id AND period_no = $2 ORDER BY start_time LIMIT 1
+       ) b ON true
+       WHERE s.id = $1`,
       [schoolId, SESSION_PERIOD[session]],
     );
-    return { opens_at: row?.start_time ?? null, closes_at: row?.end_time ?? null };
+    return graceWindow(
+      row?.start_time ?? null,
+      row?.end_time ?? null,
+      row?.grace === undefined || row?.grace === null ? DEFAULT_GRACE_MINUTES : Number(row.grace),
+    );
+  }
+
+  async current(
+    schoolId: number,
+  ): Promise<{ date: string; session: AttendanceSessionName; state: SessionState; window: GraceWindow }> {
+    const manager = this.dataSource.manager;
+    const [morning, afternoon] = await Promise.all([
+      this.window(manager, schoolId, 'morning'),
+      this.window(manager, schoolId, 'afternoon'),
+    ]);
+    const picked = currentSession({ morning, afternoon }, this.nowTime());
+    return {
+      date: todayIn(this.app.timeZone),
+      ...picked,
+      window: picked.session === 'morning' ? morning : afternoon,
+    };
+  }
+
+  async rosterCurrent(schoolId: number, sectionId: number): Promise<RosterDto> {
+    const now = await this.current(schoolId);
+    return this.roster(schoolId, sectionId, now.date, now.session, { teacher: true });
+  }
+
+  async markCurrent(schoolId: number, sectionId: number, dto: CurrentMarkDto, actor: AuthUser): Promise<RosterDto> {
+    const now = await this.openSessionNow(schoolId);
+    return this.mark(
+      schoolId,
+      sectionId,
+      { date: now.date, session: now.session, subject_id: dto.subject_id ?? null, items: dto.items },
+      actor,
+      { teacher: true },
+    );
+  }
+
+  async markSomeCurrent(
+    schoolId: number,
+    sectionId: number,
+    dto: CurrentMarkSomeDto,
+    actor: AuthUser,
+  ): Promise<RosterDto> {
+    const now = await this.openSessionNow(schoolId);
+    return this.markSome(schoolId, sectionId, { date: now.date, session: now.session, items: dto.items }, actor, {
+      teacher: true,
+    });
+  }
+
+  async isProxyFor(
+    schoolId: number,
+    userId: number,
+    sectionId: number,
+    date: string,
+    session: AttendanceSessionName,
+  ): Promise<boolean> {
+    const [row] = await this.dataSource.query(
+      `SELECT 1 FROM substitutions
+       WHERE school_id = $1 AND section_id = $2 AND date = $3 AND period_no = $4 AND substitute_user_id = $5
+       LIMIT 1`,
+      [schoolId, sectionId, date, SESSION_PERIOD[session], userId],
+    );
+    return Boolean(row);
+  }
+
+  async isSchoolDay(schoolId: number, date: string): Promise<boolean> {
+    if (WEEKLY_OFF.includes(weekday(date))) return false;
+    return !(await this.holidayName(this.dataSource.manager, schoolId, date));
+  }
+
+  async unmarkedSections(
+    schoolId: number,
+    date: string,
+    session: AttendanceSessionName,
+  ): Promise<{ section_id: number; name: string; class_teacher_user_id: number | null }[]> {
+    const rows: { id: number; class_name: string; name: string; class_teacher_user_id: number | null }[] =
+      await this.dataSource.query(
+        `SELECT sec.id, c.name AS class_name, sec.name, sec.class_teacher_user_id
+         FROM sections sec
+         JOIN classes c ON c.id = sec.class_id
+         JOIN academic_years y ON y.id = sec.academic_year_id AND y.is_current AND y.deleted_at IS NULL
+         WHERE sec.school_id = $1 AND sec.deleted_at IS NULL
+           AND EXISTS (SELECT 1 FROM student_enrollments e JOIN students s ON s.id = e.student_id
+                       WHERE e.section_id = sec.id AND s.deleted_at IS NULL AND s.status = 'active')
+           AND NOT EXISTS (SELECT 1 FROM attendance_sessions a
+                           WHERE a.section_id = sec.id AND a.date = $2 AND a.period = $3)
+         ORDER BY c.grade_level, sec.name`,
+        [schoolId, date, SESSION_PERIOD[session]],
+      );
+    return rows.map((row) => ({
+      section_id: Number(row.id),
+      name: classSectionName(row),
+      class_teacher_user_id: row.class_teacher_user_id === null ? null : Number(row.class_teacher_user_id),
+    }));
+  }
+
+  async missedReport(schoolId: number, month: string): Promise<MissedReportDto> {
+    const manager = this.dataSource.manager;
+    const today = todayIn(this.app.timeZone);
+    const now = this.nowTime();
+    const range = monthRange(month);
+    const to = range.to < today ? range.to : today;
+    const [morning, afternoon] = await Promise.all([
+      this.window(manager, schoolId, 'morning'),
+      this.window(manager, schoolId, 'afternoon'),
+    ]);
+    const windows = { morning, afternoon };
+    if (range.from > to) {
+      return { month, grace_minutes: morning.grace_minutes, total_missed: 0, teachers: [] };
+    }
+    const [holidays, sections, saved] = await Promise.all([
+      holidaySet(manager, schoolId, range.from, to),
+      manager.query(
+        `SELECT sec.id, c.name AS class_name, sec.name, sec.class_teacher_user_id, t.name AS teacher
+         FROM sections sec
+         JOIN classes c ON c.id = sec.class_id
+         JOIN academic_years y ON y.id = sec.academic_year_id AND y.is_current AND y.deleted_at IS NULL
+         LEFT JOIN users t ON t.id = sec.class_teacher_user_id
+         WHERE sec.school_id = $1 AND sec.deleted_at IS NULL
+           AND EXISTS (SELECT 1 FROM student_enrollments e JOIN students s ON s.id = e.student_id
+                       WHERE e.section_id = sec.id AND s.deleted_at IS NULL AND s.status = 'active')
+         ORDER BY c.grade_level, sec.name`,
+        [schoolId],
+      ) as Promise<
+        { id: number; class_name: string; name: string; class_teacher_user_id: number | null; teacher: string | null }[]
+      >,
+      manager.query(
+        `SELECT section_id, to_char(date, 'YYYY-MM-DD') AS date, period,
+                to_char(created_at AT TIME ZONE $4, 'YYYY-MM-DD HH24:MI') AS saved_at
+         FROM attendance_sessions
+         WHERE school_id = $1 AND date BETWEEN $2 AND $3 AND period = ANY($5)`,
+        [schoolId, range.from, to, this.app.timeZone, [SESSION_PERIOD.morning, SESSION_PERIOD.afternoon]],
+      ) as Promise<{ section_id: number; date: string; period: number; saved_at: string }[]>,
+    ]);
+    const savedAt = new Map(saved.map((row) => [`${row.section_id}:${row.date}:${row.period}`, row.saved_at]));
+    const byTeacher = new Map<string, MissedTeacherDto>();
+    for (const date of workingDays(range.from, to, holidays)) {
+      for (const session of ATTENDANCE_SESSIONS) {
+        const window = windows[session];
+        if (!windowClosed(window, date, today, now)) continue;
+        for (const section of sections) {
+          const at = savedAt.get(`${section.id}:${date}:${SESSION_PERIOD[session]}`);
+          if (at && (!window.closes_at || at <= `${date} ${window.closes_at}`)) continue;
+          const teacherId = section.class_teacher_user_id === null ? null : Number(section.class_teacher_user_id);
+          const key = String(teacherId ?? 'none');
+          const entry = byTeacher.get(key) ?? {
+            teacher_id: teacherId,
+            teacher: section.teacher ?? 'No class teacher',
+            missed: 0,
+            sessions: [],
+          };
+          entry.missed += 1;
+          entry.sessions.push({
+            date,
+            session,
+            section_id: Number(section.id),
+            section: classSectionName(section),
+            still_not_marked: !at,
+          });
+          byTeacher.set(key, entry);
+        }
+      }
+    }
+    const teachers = [...byTeacher.values()].sort((a, b) => b.missed - a.missed || a.teacher.localeCompare(b.teacher));
+    return {
+      month,
+      grace_minutes: morning.grace_minutes,
+      total_missed: teachers.reduce((sum, item) => sum + item.missed, 0),
+      teachers,
+    };
+  }
+
+  private async openSessionNow(schoolId: number) {
+    const now = await this.current(schoolId);
+    if (now.state !== 'open') {
+      throw AppException.badRequest(
+        windowMessage(now.session, now.window, now.state),
+        now.state === 'not_open' ? 'SESSION_NOT_OPEN' : 'SESSION_CLOSED',
+      );
+    }
+    return now;
   }
 
   private nowTime(): string {

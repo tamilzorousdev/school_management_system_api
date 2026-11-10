@@ -79,11 +79,19 @@ export function sessionState(window: SessionWindow, date: string, today: string,
   return 'open';
 }
 
-export function windowMessage(session: AttendanceSessionName, window: SessionWindow, state: SessionState): string {
+export function windowMessage(
+  session: AttendanceSessionName,
+  window: SessionWindow & { period_ends_at?: string | null; grace_minutes?: number },
+  state: SessionState,
+): string {
   const name = session === 'morning' ? 'Morning' : 'Afternoon';
   const period = session === 'morning' ? '1st' : '5th';
+  const grace =
+    window.grace_minutes && window.period_ends_at
+      ? `, period ends ${window.period_ends_at} plus ${window.grace_minutes} min`
+      : '';
   const times =
-    window.opens_at && window.closes_at ? ` (${period} period, ${window.opens_at} to ${window.closes_at})` : '';
+    window.opens_at && window.closes_at ? ` (${period} period, ${window.opens_at} to ${window.closes_at}${grace})` : '';
   return state === 'not_open'
     ? `${name} attendance opens at ${window.opens_at ?? 'the start of the period'}${times}`
     : `${name} attendance can be taken only during the ${period} period${times}. Ask the office (AO) to mark it now.`;

@@ -168,6 +168,7 @@ export class SchoolsService {
       geofence_radius_m: school.geofence_radius_m,
       staff_reporting_time: school.staff_reporting_time,
       diary_review_mode: school.diary_review_mode,
+      attendance_grace_minutes: school.attendance_grace_minutes,
       chat_office_start: school.chat_office_start,
       chat_office_end: school.chat_office_end,
       timezone: school.timezone,

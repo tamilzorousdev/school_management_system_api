@@ -40,6 +40,8 @@ export const TEMPLATES = {
   STUDENT_LEAVE_REQUEST: 'STUDENT_LEAVE_REQUEST',
   MEETING_ACCEPTED: 'MEETING_ACCEPTED',
   MEETING_DECLINED: 'MEETING_DECLINED',
+  ATTENDANCE_REMINDER: 'ATTENDANCE_REMINDER',
+  ATTENDANCE_MISSED: 'ATTENDANCE_MISSED',
 } as const;
 
 interface TemplateText {
@@ -209,6 +211,44 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{by}} சந்திப்பை மறுத்தார்',
         body: '{{student}} பற்றிய {{title}}, {{time}}.{{note}} அந்த நேரத்தில் இணையலாம் அல்லது ரத்து செய்து வேறு நேரம் பதிவு செய்யலாம்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.ATTENDANCE_REMINDER,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Take {{session}} attendance for {{section}}',
+        body: 'The {{period}} period is over. You can still mark it until {{closes_at}}; after that it shows as missed.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{section}} {{session}} வருகைப் பதிவு எடுக்கவும்',
+        body: '{{period}} பாடவேளை முடிந்தது. {{closes_at}} வரை பதிவு செய்யலாம்; அதன் பிறகு தவறியதாகக் காட்டப்படும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.ATTENDANCE_MISSED,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{count}} missed {{session}} attendance',
+        body: '{{sections}}. The time and the {{grace}} minute grace are over. Mark it from the attendance board.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{count}} {{session}} வருகைப் பதிவு தவறியது',
+        body: '{{sections}}. நேரமும் {{grace}} நிமிட கூடுதல் நேரமும் முடிந்தது. வருகைப் பலகையில் பதிவு செய்யவும்.',
         sms_body: null,
       },
     },

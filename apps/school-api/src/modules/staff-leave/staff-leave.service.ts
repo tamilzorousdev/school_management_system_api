@@ -197,7 +197,11 @@ export class StaffLeaveService {
       .createQueryBuilder('l')
       .innerJoin('users', 'u', 'u.id = l.user_id')
       .where('l.school_id = :schoolId', { schoolId });
-    if (query.status) qb.andWhere('l.status = :status', { status: query.status });
+    if (query.status === 'waiting') {
+      qb.andWhere('l.status IN (:...waiting)', { waiting: ['pending_hod', 'pending_principal'] });
+    } else if (query.status) {
+      qb.andWhere('l.status = :status', { status: query.status });
+    }
     if (query.user_id) qb.andWhere('l.user_id = :userId', { userId: query.user_id });
     const page = await listQuery(qb, query.sort ? query : { ...query, sort: 'from_date', order: 'desc' }, {
       searchable: ['u.name', 'l.reason'],

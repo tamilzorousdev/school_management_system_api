@@ -67,6 +67,9 @@ export class School extends TrackedEntity {
   @Column({ type: 'varchar', length: 10, default: 'remarks' })
   diary_review_mode: DiaryReviewMode;
 
+  @Column({ type: 'smallint', default: 15 })
+  attendance_grace_minutes: number;
+
   @Column({ type: 'varchar', length: 5, default: '08:00' })
   chat_office_start: string;
 

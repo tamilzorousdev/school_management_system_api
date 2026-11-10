@@ -37,6 +37,7 @@ import {
   AttendanceYearDto,
   DayQueryDto,
   SectionDayDto,
+  MissedReportDto,
 } from './dto/attendance.dto';
 import { StudentLeaveService } from './student-leave.service';
 
@@ -57,7 +58,7 @@ export class AttendanceController {
   })
   @ApiEnvelope(AttendanceBoardDto)
   board(@SchoolId() schoolId: number, @Query() query: SessionBoardQueryDto) {
-    return this.attendance.board(schoolId, query.date, query.session);
+    return this.attendance.board(schoolId, query.date, query.session, query.status);
   }
 
   @Get('sections/:id')
@@ -125,7 +126,21 @@ export class AttendanceController {
     return this.attendance.markSome(schoolId, id, dto, actor);
   }
 
+  @Get('missed')
+  @RequirePermissions(PERMISSIONS.ATTENDANCE_VIEW)
+  @ApiOperation({
+    summary: 'Missed attendance for a month: per class teacher, every session not marked before the time plus grace',
+    description:
+      'A session counts as missed when it was not saved before the end of the 1st or 5th period plus attendance_grace_minutes. still_not_marked is false when the office marked it later. Sundays and holidays are skipped.',
+  })
+  @ApiEnvelope(MissedReportDto)
+  @ApiErrors(HttpStatus.BAD_REQUEST)
+  missed(@SchoolId() schoolId: number, @Query() query: MonthQueryDto) {
+    return this.attendance.missedReport(schoolId, query.month);
+  }
+
   @Get('sections/:id/day')
+  @RequirePermissions(PERMISSIONS.ATTENDANCE_VIEW)
   @ApiOperation({
     summary: 'Daily report of a section: each student with morning, afternoon and the day status, with counts',
   })
@@ -182,6 +197,7 @@ export class AttendanceController {
   }
 
   @Get('students/:id/summary')
+  @RequirePermissions(PERMISSIONS.ATTENDANCE_VIEW)
   @ApiOperation({ summary: 'One student this academic year: the year % and each month with its %' })
   @ApiEnvelope(AttendanceYearDto)
   @ApiErrors(HttpStatus.NOT_FOUND)

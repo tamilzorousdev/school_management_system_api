@@ -417,6 +417,34 @@ Student attendance is taken in the **1st period (`session: "morning"`)** and the
 | `GET /admin/attendance/sections/{id}/day?date=` | **Daily** report of a section: each student with `morning`, `afternoon`, day `status`, plus `summary` counts and % |
 | `GET /admin/attendance/students/{id}/summary` | Student this academic year: `year` totals and `months[]`, each with `working_days`, `marked_days`, counts and `percent` |
 
+### Attendance time window, grace and missed
+
+Teachers mark the **morning** session in the 1st period and the **afternoon** session in the 5th period, plus a grace time after each period (school setting `attendance_grace_minutes`, default 15, 0–30, `PATCH /admin/school`). Example: 1st period 09:00–09:45 with 15 min grace → teachers can mark 09:00–10:00.
+
+**Teacher, without date or session** (the API uses its own clock in India time; the phone time is never used):
+
+| Call | What it does |
+|---|---|
+| `GET /mobile/teacher/sections/{section_id}/attendance/current` | Roster of the session open now. Outside the windows `open` is false (read-only) |
+| `PUT /mobile/teacher/sections/{section_id}/attendance/current` | `{ "items": [{ "student_id", "status", "remarks" }] }` with every student |
+| `PATCH /mobile/teacher/sections/{section_id}/attendance/current` | `{ "items": [...] }` with only the students to change |
+
+- Roster fields: `date`, `session`, `open`, `opens_at`, `period_ends_at`, `closes_at` (period end + grace), `grace_minutes`.
+- `400 SESSION_NOT_OPEN` before the period, `400 SESSION_CLOSED` after the grace. Sending `date` or `session` to `/current` gives `400 VALIDATION_FAILED`.
+- The old calls with `date` and `session` still work and follow the same window with grace.
+- A **proxy teacher** assigned to the 1st or 5th period of that section that day can also mark.
+
+**Missed** = not marked when the period plus grace is over (Sundays and holidays never count).
+
+| Call | What it gives |
+|---|---|
+| `GET /admin/attendance/board?date=&session=&status=missed` | Each section has `missed` and `class_teacher_id`; the board has `sections_missed`, `opens_at`, `closes_at`, `grace_minutes`. `status` = `marked`, `not_marked` or `missed` filters the list |
+| `GET /admin/attendance/missed?month=2026-11` | Per class teacher: `missed` count and `sessions[]` (`date`, `session`, `section`, `still_not_marked`), most missed first |
+
+Alerts (every minute, once per section and session):
+- `ATTENDANCE_REMINDER` to the class teacher and the proxy when the period ends and it is still not marked ("You can still mark it until 10:00").
+- `ATTENDANCE_MISSED` to AO and Admin once the grace is over, listing the sections.
+
 ### Attendance reports (class teacher and parent)
 
 Class teacher (Staff app). Only the class teacher of the section or student; others get `403 NOT_CLASS_TEACHER`.

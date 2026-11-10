@@ -92,11 +92,16 @@ export class StaffLeaveDecisionDto {
   note?: string | null;
 }
 
+export const STAFF_LEAVE_FILTERS = [...STAFF_LEAVE_STATUSES, 'waiting'] as const;
+
 export class StaffLeaveQueryDto extends ListQueryDto {
-  @ApiPropertyOptional({ enum: STAFF_LEAVE_STATUSES })
+  @ApiPropertyOptional({
+    enum: STAFF_LEAVE_FILTERS,
+    description: 'waiting = pending_hod or pending_principal',
+  })
   @IsOptional()
-  @IsIn(STAFF_LEAVE_STATUSES)
-  status?: StaffLeaveStatus;
+  @IsIn(STAFF_LEAVE_FILTERS)
+  status?: StaffLeaveStatus | 'waiting';
 
   @ApiPropertyOptional({ example: 9 })
   @IsOptional()

@@ -155,7 +155,19 @@ export class BoardQueryDto {
   date: string;
 }
 
+export const BOARD_FILTERS = ['marked', 'not_marked', 'missed'] as const;
+export type BoardFilter = (typeof BOARD_FILTERS)[number];
+
 export class SessionBoardQueryDto extends BoardQueryDto {
+  @ApiPropertyOptional({
+    enum: BOARD_FILTERS,
+    description:
+      'missed: not marked and the time plus grace is over. not_marked: not marked yet (missed or still open). marked: saved.',
+  })
+  @IsOptional()
+  @IsIn(BOARD_FILTERS)
+  status?: BoardFilter;
+
   @ApiPropertyOptional({
     enum: ATTENDANCE_SESSIONS,
     default: 'morning',
@@ -304,12 +316,18 @@ export class RosterDto {
   opens_at: string | null;
 
   @ApiProperty({
-    example: '09:35',
+    example: '09:50',
     nullable: true,
     type: String,
-    description: 'End of the period (session closes for teachers)',
+    description: 'Teachers can mark until this time: end of the period plus grace_minutes',
   })
   closes_at: string | null;
+
+  @ApiProperty({ example: '09:35', nullable: true, type: String, description: 'End of the 1st or 5th period' })
+  period_ends_at: string | null;
+
+  @ApiProperty({ example: 15, description: 'Extra minutes after the period (school setting)' })
+  grace_minutes: number;
 
   @ApiProperty({ description: 'False on Sundays and holidays' })
   working_day: boolean;
@@ -343,8 +361,17 @@ export class BoardSectionDto extends AttendanceSummaryDto {
   @ApiProperty({ nullable: true, type: String })
   class_teacher: string | null;
 
+  @ApiProperty({ nullable: true, type: Number, example: 31 })
+  class_teacher_id: number | null;
+
   @ApiProperty({ description: 'This session is saved' })
   marked: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'Not marked and the session time plus grace is over: show the red Missed badge with the class teacher',
+  })
+  missed: boolean;
 
   @ApiProperty({ example: true })
   morning_marked: boolean;
@@ -380,6 +407,18 @@ export class AttendanceBoardDto {
 
   @ApiProperty({ example: 3 })
   sections_not_marked: number;
+
+  @ApiProperty({ example: 2, description: 'Sections that missed this session (time plus grace is over)' })
+  sections_missed: number;
+
+  @ApiProperty({ example: '09:00', nullable: true, type: String })
+  opens_at: string | null;
+
+  @ApiProperty({ example: '10:00', nullable: true, type: String, description: 'End of the period plus grace' })
+  closes_at: string | null;
+
+  @ApiProperty({ example: 15 })
+  grace_minutes: number;
 
   @ApiProperty({ example: 4, description: 'Students below 75% this month' })
   below_75: number;
@@ -759,4 +798,93 @@ export class AttendanceYearDto {
 
   @ApiProperty({ type: [AttendanceMonthTotalDto], description: 'Each month of the year so far, oldest first' })
   months: AttendanceMonthTotalDto[];
+}
+
+export class CurrentMarkDto {
+  @ApiPropertyOptional({ example: null, nullable: true, type: Number })
+  @IsOptional()
+  @ValidateIf((_dto, value) => value !== null)
+  @IsInt()
+  subject_id?: number | null;
+
+  @ApiProperty({
+    type: [MarkItemDto],
+    example: [
+      { student_id: 12, status: 'P', remarks: null },
+      { student_id: 14, status: 'A', remarks: null },
+      { student_id: 15, status: 'L', remarks: 'Came at 9:20' },
+    ],
+    description: 'Every student of the section, once. P = present, A = absent, L = late.',
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => MarkItemDto)
+  items: MarkItemDto[];
+}
+
+export class CurrentMarkSomeDto {
+  @ApiProperty({
+    type: [MarkItemDto],
+    example: [
+      { student_id: 14, status: 'A', remarks: null },
+      { student_id: 15, status: 'L', remarks: 'Came at 9:20' },
+    ],
+    description: 'Only the students to change. Everyone else keeps the saved status or the default.',
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Send at least one student' })
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => MarkItemDto)
+  items: MarkItemDto[];
+}
+
+export class MissedSessionDto {
+  @ApiProperty({ example: '2026-11-10' })
+  date: string;
+
+  @ApiProperty({ enum: ATTENDANCE_SESSIONS, example: 'morning' })
+  session: AttendanceSessionName;
+
+  @ApiProperty({ example: 4 })
+  section_id: number;
+
+  @ApiProperty({ example: '6 - A' })
+  section: string;
+
+  @ApiProperty({
+    example: true,
+    description: 'true: still not marked. false: marked later by the office or after the time',
+  })
+  still_not_marked: boolean;
+}
+
+export class MissedTeacherDto {
+  @ApiProperty({ example: 31, nullable: true, type: Number })
+  teacher_id: number | null;
+
+  @ApiProperty({ example: 'Arun Prakash', description: 'Class teacher, or "No class teacher"' })
+  teacher: string;
+
+  @ApiProperty({ example: 3 })
+  missed: number;
+
+  @ApiProperty({ type: [MissedSessionDto] })
+  sessions: MissedSessionDto[];
+}
+
+export class MissedReportDto {
+  @ApiProperty({ example: '2026-11' })
+  month: string;
+
+  @ApiProperty({ example: 15 })
+  grace_minutes: number;
+
+  @ApiProperty({ example: 5, description: 'Sessions not marked by the class side before the time plus grace ended' })
+  total_missed: number;
+
+  @ApiProperty({ type: [MissedTeacherDto], description: 'Most missed first' })
+  teachers: MissedTeacherDto[];
 }

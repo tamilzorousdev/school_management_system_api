@@ -19,8 +19,11 @@ import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { ROLES } from '../access/access.catalog';
 import { AttendanceService } from '../attendance/attendance.service';
+import { AttendanceSessionName } from '../attendance/attendance-sessions';
 import {
   AttendanceYearDto,
+  CurrentMarkDto,
+  CurrentMarkSomeDto,
   DayQueryDto,
   LeaveDecisionDto,
   MarkAttendanceDto,
@@ -240,8 +243,9 @@ export class MobileTeacherAttendanceController {
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   async roster(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: RosterQueryDto) {
     const schoolId = this.access.teacherSchool(user);
-    await this.assignments.assertTeachesSection(schoolId, user.id, id);
-    return this.attendance.roster(schoolId, id, query.date, this.attendance.sessionFor(query), { teacher: true });
+    const session = this.attendance.sessionFor(query);
+    await this.assertCanMark(schoolId, user.id, id, query.date, session);
+    return this.attendance.roster(schoolId, id, query.date, session, { teacher: true });
   }
 
   @Put('sections/:id/attendance')
@@ -256,7 +260,7 @@ export class MobileTeacherAttendanceController {
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   async mark(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: MarkAttendanceDto) {
     const schoolId = this.access.teacherSchool(user);
-    await this.assignments.assertTeachesSection(schoolId, user.id, id);
+    await this.assertCanMark(schoolId, user.id, id, dto.date, this.attendance.sessionFor(dto));
     return this.attendance.mark(schoolId, id, dto, user, { teacher: true });
   }
 
@@ -276,8 +280,73 @@ export class MobileTeacherAttendanceController {
     @Body() dto: MarkSomeAttendanceDto,
   ) {
     const schoolId = this.access.teacherSchool(user);
-    await this.assignments.assertTeachesSection(schoolId, user.id, id);
+    await this.assertCanMark(schoolId, user.id, id, dto.date, dto.session ?? 'morning');
     return this.attendance.markSome(schoolId, id, dto, user, { teacher: true });
+  }
+
+  @Get('sections/:id/attendance/current')
+  @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
+  @ApiOperation({
+    summary: 'Roster for the session open right now. The API picks today and morning or afternoon from its own clock.',
+    description:
+      'No date or session to send. During the 1st period plus grace it is the morning list, during the 5th period plus grace the afternoon list. Outside those times open is false: show the list read-only with opens_at and closes_at (closes_at already includes grace_minutes). The proxy teacher of the 1st or 5th period can also use it.',
+  })
+  @ApiEnvelope(RosterDto)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  async currentRoster(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    const schoolId = this.access.teacherSchool(user);
+    const now = await this.attendance.current(schoolId);
+    await this.assertCanMark(schoolId, user.id, id, now.date, now.session);
+    return this.attendance.rosterCurrent(schoolId, id);
+  }
+
+  @Put('sections/:id/attendance/current')
+  @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
+  @ResponseMessage('Attendance saved')
+  @ApiOperation({
+    summary: 'Save the open session for every student. The API sets today and morning or afternoon.',
+    description:
+      'Body: { items: [{ student_id, status, remarks }] } with every student once; status P, A, L or the full word. The phone time is never used. 400 SESSION_NOT_OPEN before the 1st or 5th period starts, 400 SESSION_CLOSED after the period plus grace (the office marks it then).',
+  })
+  @ApiEnvelope(RosterDto, { message: 'Attendance saved' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  async markCurrent(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: CurrentMarkDto) {
+    const schoolId = this.access.teacherSchool(user);
+    const now = await this.attendance.current(schoolId);
+    await this.assertCanMark(schoolId, user.id, id, now.date, now.session);
+    return this.attendance.markCurrent(schoolId, id, dto, user);
+  }
+
+  @Patch('sections/:id/attendance/current')
+  @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
+  @ResponseMessage('Attendance saved')
+  @ApiOperation({
+    summary: 'Mark only some students in the open session. The API sets today and morning or afternoon.',
+    description:
+      'Body: { items: [{ student_id, status, remarks }] } with only the students to change; everyone else keeps the saved status or the default. Same time rules as PUT .../current.',
+  })
+  @ApiEnvelope(RosterDto, { message: 'Attendance saved' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  async markSomeCurrent(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CurrentMarkSomeDto,
+  ) {
+    const schoolId = this.access.teacherSchool(user);
+    const now = await this.attendance.current(schoolId);
+    await this.assertCanMark(schoolId, user.id, id, now.date, now.session);
+    return this.attendance.markSomeCurrent(schoolId, id, dto, user);
+  }
+
+  private async assertCanMark(
+    schoolId: number,
+    userId: number,
+    sectionId: number,
+    date: string,
+    session: AttendanceSessionName,
+  ): Promise<void> {
+    if (await this.attendance.isProxyFor(schoolId, userId, sectionId, date, session)) return;
+    await this.assignments.assertTeachesSection(schoolId, userId, sectionId);
   }
 
   @Get('sections/:id/attendance/day')
