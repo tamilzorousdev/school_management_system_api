@@ -16,7 +16,14 @@ import {
 import { ListQueryDto, PaginationDto } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
-import { MEETING_PARTIES, MEETING_STATUSES, MeetingParty, MeetingStatus } from '../entities/meeting.entity';
+import {
+  MEETING_PARTIES,
+  MEETING_RESPONSES,
+  MEETING_STATUSES,
+  MeetingParty,
+  MeetingResponse,
+  MeetingStatus,
+} from '../entities/meeting.entity';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 const trimToNull = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() || null : value);
@@ -82,6 +89,22 @@ export class ParentMeetingInputDto extends MeetingInputBase {
   @Min(1)
   @IsInt({ message: 'Choose the teacher' })
   teacher_user_id: number;
+}
+
+export class RespondMeetingDto {
+  @ApiPropertyOptional({
+    example: 'Can we do it after 4 pm?',
+    nullable: true,
+    type: String,
+    maxLength: 255,
+    description: 'Optional note, for example why you decline',
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_dto, value) => value !== null)
+  @IsString()
+  @MaxLength(255)
+  note?: string | null;
 }
 
 export class CancelMeetingDto {
@@ -214,6 +237,20 @@ export class MeetingDto {
 
   @ApiProperty({ enum: MEETING_STATUSES, example: 'scheduled' })
   status: MeetingStatus;
+
+  @ApiProperty({
+    enum: MEETING_RESPONSES,
+    example: 'accepted',
+    description:
+      'Reply of the invited side (to): pending, accepted or declined. Like a Teams invite: joining works whatever the reply.',
+  })
+  response: MeetingResponse;
+
+  @ApiProperty({ nullable: true, type: Date, example: '2026-11-12T10:15:00.000+05:30' })
+  responded_at: Date | null;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Can we do it after 4 pm?' })
+  response_note: string | null;
 
   @ApiProperty({ example: '2026-11-11T16:30:00.000+05:30' })
   scheduled_at: Date;
@@ -350,7 +387,11 @@ export class MeetingJoinDto {
   @ApiProperty({ example: 'tzs_1_5f2c9a1b7d3e', description: 'Agora channel to join' })
   channel_name: string;
 
-  @ApiProperty({ example: 9, description: 'Agora uid: the signed-in user id' })
+  @ApiProperty({
+    example: 18,
+    description:
+      'Agora uid for this person on this side: user id × 2 for the teacher, user id × 2 + 1 for the parent, so it is unique in the channel even when one person is both',
+  })
   uid: number;
 
   @ApiProperty({ example: '007eJxTYJ...', description: 'Agora RTC token (publisher)' })

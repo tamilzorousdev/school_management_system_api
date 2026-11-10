@@ -639,6 +639,8 @@ export class SubstitutesService {
           date: displayDate(date),
           absent: absentName,
           school: school?.name ?? '',
+          on_date: date,
+          section_id: String(target.section.id),
         },
       })
       .catch((error: Error) => this.logger.warn(`Combined class alert for slot ${slot.id} not sent: ${error.message}`));
@@ -658,6 +660,7 @@ export class SubstitutesService {
           time: period ? `${period.start_time}-${period.end_time}` : '',
           subject: slot.subject_name,
           date: displayDate(date),
+          on_date: date,
           absent: absentName,
           room: slot.room ? ` Room ${slot.room}.` : '',
           school: school?.name ?? '',

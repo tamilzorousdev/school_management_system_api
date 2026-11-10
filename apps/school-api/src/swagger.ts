@@ -166,6 +166,12 @@ One Flutter app for Parent, Staff (teacher) and Driver. One sign-in per person; 
 4. **Switch role** later from the profile menu ("Switch to Parent / Staff"): no new OTP and no new token. The same \`access_token\` calls \`/mobile/parent/*\`, \`/mobile/teacher/*\` or \`/mobile/driver/*\`; each endpoint checks the role. Remember the last choice on the phone and call \`GET /me\` on app start to rebuild the chooser.
 5. **Keep signed in** with \`POST /auth/refresh\` (store the new refresh token every time); **sign out** with \`POST /auth/logout\`.
 
+### Student attendance: two sessions a day (teacher and parent)
+
+- Attendance is taken **twice a day**: \`session: "morning"\` in the **1st period** and \`session: "afternoon"\` in the **5th period**. No other period is accepted (**400 PERIOD_NOT_ALLOWED**).
+- **Teacher** (Module 2): \`GET /mobile/teacher/sections/{id}/attendance?date=&session=\` gives the list; \`open\` is true **only today during that period** (\`opens_at\` to \`closes_at\`), otherwise show it read-only. Save with \`PUT\` and \`{ date, session, items }\`; before the period **400 SESSION_NOT_OPEN**, after it **400 SESSION_CLOSED** (the office marks it then). The afternoon list starts from the morning marks (absent stays absent).
+- **Parent** (Module 2): \`GET /mobile/parent/children/{id}/attendance/today\` gives \`status\` (the day), \`morning\` and \`afternoon\`; the month calendar has the same three per day. Absent in one session = \`half_day\`. The absent alert comes once a day; a child present in the morning and absent in the afternoon gets an afternoon alert.
+
 ### Live bus (parent and driver)
 
 - **Parent**: \`GET /mobile/parent/children/{id}/bus\` gives status, headline, ETA to the child's stop and the bus position. **Driver**: \`GET /mobile/driver/trips/today\`, start with \`POST /mobile/driver/trips\`, phone GPS fallback \`POST /mobile/driver/trips/{id}/positions\`.

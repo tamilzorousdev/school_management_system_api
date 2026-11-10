@@ -3,7 +3,10 @@ import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
+  IsBoolean,
+  IsInt,
   IsIn,
   IsISO8601,
   IsNumber,
@@ -17,6 +20,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { IsDateOnly } from '../../../shared/dates';
+import { BoardQueryDto } from '../../attendance/dto/attendance.dto';
 import {
   PUNCH_SOURCES,
   PunchSource,
@@ -230,4 +234,124 @@ export class StaffMonthDto {
 
   @ApiProperty({ type: [StaffDayDto] })
   days: StaffDayDto[];
+}
+
+const trimToNull = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() || null : value);
+
+export class StaffBoardQueryDto extends BoardQueryDto {
+  @ApiPropertyOptional({ example: 1, default: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ example: 20, default: 20, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @ApiPropertyOptional({ example: 'priya', description: 'Name, designation or department' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
+  @ApiPropertyOptional({
+    enum: BOARD_STATUSES,
+    description: 'Only staff with this status (not_checked_in also lists absent, like the card)',
+  })
+  @IsOptional()
+  @IsIn(BOARD_STATUSES)
+  status?: BoardStatus;
+}
+
+export class StaffBoardPageDto extends StaffBoardDto {
+  @ApiProperty({ example: 1 })
+  page: number;
+
+  @ApiProperty({ example: 20 })
+  limit: number;
+
+  @ApiProperty({ example: 30, description: 'Staff after search and status filter' })
+  filtered_total: number;
+
+  @ApiProperty({ example: 2 })
+  total_pages: number;
+
+  @ApiProperty({ example: true })
+  has_next: boolean;
+}
+
+export class BulkStaffMarkDto {
+  @IsDateOnly('2026-11-10')
+  date: string;
+
+  @ApiPropertyOptional({
+    type: [Number],
+    example: [9, 12, 15],
+    description: 'Staff user ids. Leave out and set all_not_checked_in to mark everyone not checked in yet.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Choose at least one staff member' })
+  @ArrayMaxSize(500)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  user_ids?: number[];
+
+  @ApiPropertyOptional({ example: false, description: 'Mark every staff member who has not checked in (not on leave)' })
+  @IsOptional()
+  @IsBoolean()
+  all_not_checked_in?: boolean;
+
+  @ApiProperty({ enum: STAFF_ATTENDANCE_STATUSES, example: 'present' })
+  @IsIn(STAFF_ATTENDANCE_STATUSES)
+  status: StaffAttendanceStatus;
+
+  @ApiPropertyOptional({ example: '2026-11-10T08:40:00+05:30', nullable: true, type: String })
+  @IsOptional()
+  @ValidateIf((_dto, value) => value !== null)
+  @IsISO8601()
+  check_in_at?: string | null;
+
+  @ApiPropertyOptional({ example: '2026-11-10T16:30:00+05:30', nullable: true, type: String })
+  @IsOptional()
+  @ValidateIf((_dto, value) => value !== null)
+  @IsISO8601()
+  check_out_at?: string | null;
+
+  @ApiPropertyOptional({ example: 'Biometric machine was down', nullable: true, type: String, description: 'Optional' })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_dto, value) => value !== null)
+  @IsString()
+  @MaxLength(255)
+  remarks?: string | null;
+}
+
+export class BulkSkipDto {
+  @ApiProperty({ example: 15 })
+  id: number;
+
+  @ApiProperty({ example: 'Divya Bharathi' })
+  name: string;
+
+  @ApiProperty({ example: 'On approved leave' })
+  reason: string;
+}
+
+export class BulkStaffResultDto {
+  @ApiProperty({ example: '2026-11-10' })
+  date: string;
+
+  @ApiProperty({ example: 27 })
+  marked: number;
+
+  @ApiProperty({ type: [BulkSkipDto] })
+  skipped: BulkSkipDto[];
 }

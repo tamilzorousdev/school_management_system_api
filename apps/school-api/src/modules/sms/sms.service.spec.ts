@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { KafkaNotifyConfig, OtpConfig, SmsConfig } from '../../config/configuration';
+import { KafkaNotifyConfig, OtpConfig, PushConfig, SmsConfig } from '../../config/configuration';
 import { KafkaNotifyService } from './kafka-notify.service';
 import { SmsService } from './sms.service';
 
@@ -26,16 +26,17 @@ const smsBase: SmsConfig = {
 };
 
 const otp = { mode: 'sms' } as OtpConfig;
+const pushOff = { driver: 'off' } as PushConfig;
 
 function setup(sms: Partial<SmsConfig> = {}) {
   const config = { ...smsBase, ...sms };
-  const kafka = new KafkaNotifyService(kafkaConfig, config, otp);
+  const kafka = new KafkaNotifyService(kafkaConfig, config, otp, pushOff);
   const send = jest.spyOn(kafka, 'send').mockImplementation(async (input) => kafka.message(input));
   return { service: new SmsService(config, kafka), kafka, send };
 }
 
 describe('KafkaNotifyService', () => {
-  const kafka = new KafkaNotifyService(kafkaConfig, smsBase, otp);
+  const kafka = new KafkaNotifyService(kafkaConfig, smsBase, otp, pushOff);
 
   it('builds the same payload as the SoftSilk notification service', () => {
     expect(
@@ -65,12 +66,12 @@ describe('KafkaNotifyService', () => {
   });
 
   it('is enabled only when SMS or OTP uses Kafka', () => {
-    expect(new KafkaNotifyService(kafkaConfig, { ...smsBase, driver: 'log', otpDriver: 'ping4sms' }, otp).enabled).toBe(
-      false,
-    );
-    expect(new KafkaNotifyService(kafkaConfig, { ...smsBase, driver: 'log', otpDriver: 'kafka' }, otp).enabled).toBe(
-      true,
-    );
+    expect(
+      new KafkaNotifyService(kafkaConfig, { ...smsBase, driver: 'log', otpDriver: 'ping4sms' }, otp, pushOff).enabled,
+    ).toBe(false);
+    expect(
+      new KafkaNotifyService(kafkaConfig, { ...smsBase, driver: 'log', otpDriver: 'kafka' }, otp, pushOff).enabled,
+    ).toBe(true);
   });
 });
 
@@ -148,5 +149,39 @@ describe('SmsService', () => {
     });
     expect(result.status).toBe('skipped');
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe('Kafka push', () => {
+  const pushKafka = { driver: 'kafka' } as PushConfig;
+  const kafka = new KafkaNotifyService(
+    kafkaConfig,
+    { ...smsBase, driver: 'log', otpDriver: 'ping4sms' },
+    otp,
+    pushKafka,
+  );
+
+  it('turns Kafka on when push goes through the notification service', () => {
+    expect(kafka.enabled).toBe(true);
+  });
+
+  it('targets our user id and the registered devices', () => {
+    expect(
+      kafka.pushMessage({
+        templateId: 'school_chat_message',
+        variables: { sender: 'Priya', thread_id: '7' },
+        externalIds: ['12'],
+        playerIds: [],
+      }),
+    ).toEqual({
+      type: 'push',
+      tenantId: kafkaConfig.tenantId,
+      templateId: 'school_chat_message',
+      variables: { sender: 'Priya', thread_id: '7' },
+      externalIds: ['12'],
+    });
+    expect(
+      kafka.pushMessage({ templateId: 't', variables: {}, externalIds: ['12'], playerIds: ['sub-1'] }).playerIds,
+    ).toEqual(['sub-1']);
   });
 });

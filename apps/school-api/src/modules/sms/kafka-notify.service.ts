@@ -5,6 +5,8 @@ import {
   KafkaNotifyConfig,
   otpConfig,
   OtpConfig,
+  pushConfig,
+  PushConfig,
   smsConfig,
   SmsConfig,
 } from '../../config/configuration';
@@ -26,7 +28,24 @@ export interface KafkaSendInput {
   variables: Record<string, string>;
 }
 
+export interface KafkaPushMessage {
+  type: 'push';
+  tenantId: string;
+  templateId: string;
+  variables: Record<string, string>;
+  externalIds: string[];
+  playerIds?: string[];
+}
+
+export interface KafkaPushInput {
+  templateId: string;
+  variables: Record<string, string>;
+  externalIds: string[];
+  playerIds: string[];
+}
+
 export const KAFKA_OTP_TEMPLATE = 'otp';
+export const KAFKA_PUSH_TEMPLATE = 'push';
 
 @Injectable()
 export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
@@ -39,10 +58,15 @@ export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
     @Inject(kafkaNotifyConfig.KEY) private readonly config: KafkaNotifyConfig,
     @Inject(smsConfig.KEY) private readonly sms: SmsConfig,
     @Inject(otpConfig.KEY) private readonly otp: OtpConfig,
+    @Inject(pushConfig.KEY) private readonly push: PushConfig,
   ) {}
 
   get enabled(): boolean {
-    return this.sms.driver === 'kafka' || (this.otp.mode === 'sms' && this.sms.otpDriver === 'kafka');
+    return (
+      this.sms.driver === 'kafka' ||
+      this.push.driver === 'kafka' ||
+      (this.otp.mode === 'sms' && this.sms.otpDriver === 'kafka')
+    );
   }
 
   get topic(): string {
@@ -84,6 +108,28 @@ export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
       messages: [{ key: message.to, value: JSON.stringify(message) }],
     });
     this.logger.log(`${message.type} ${message.templateId} published for ${message.to}`);
+    return message;
+  }
+
+  pushMessage(input: KafkaPushInput): KafkaPushMessage {
+    return {
+      type: 'push',
+      tenantId: this.config.tenantId,
+      templateId: input.templateId,
+      variables: input.variables,
+      externalIds: input.externalIds,
+      ...(input.playerIds.length ? { playerIds: input.playerIds } : {}),
+    };
+  }
+
+  async sendPush(input: KafkaPushInput): Promise<KafkaPushMessage> {
+    const message = this.pushMessage(input);
+    if (!(await this.connect())) throw new Error('Kafka notification service is not reachable');
+    await this.producer!.send({
+      topic: this.config.topic,
+      messages: [{ key: input.externalIds[0] ?? input.templateId, value: JSON.stringify(message) }],
+    });
+    this.logger.log(`push ${message.templateId} published for users ${message.externalIds.join(', ')}`);
     return message;
   }
 

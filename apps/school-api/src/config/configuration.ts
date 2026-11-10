@@ -77,7 +77,7 @@ export const kafkaNotifyConfig = registerAs('kafkaNotify', () => ({
 }));
 
 export const pushConfig = registerAs('push', () => ({
-  driver: (process.env.PUSH_DRIVER ?? 'off') as 'off' | 'fcm' | 'onesignal',
+  driver: (process.env.PUSH_DRIVER ?? 'off') as 'off' | 'fcm' | 'onesignal' | 'kafka',
   credentialsFile: process.env.FIREBASE_CREDENTIALS_FILE ?? '',
   oneSignalAppId: process.env.ONESIGNAL_APP_ID ?? '',
   oneSignalApiKey: process.env.ONESIGNAL_REST_API_KEY ?? '',

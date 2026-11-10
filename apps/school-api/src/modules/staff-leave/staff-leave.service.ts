@@ -260,6 +260,7 @@ export class StaffLeaveService {
           to: saved.to_date,
           days: Number(saved.days),
           status: STATUS_WORD[status],
+          leave_id: String(saved.id),
           note: dto.note ? ` Note: ${dto.note}` : '',
         },
       })
@@ -302,6 +303,7 @@ export class StaffLeaveService {
           from: leave.from_date,
           to: leave.to_date,
           days: Number(leave.days),
+          leave_id: String(leave.id),
         },
       })
       .catch((error: Error) => this.logger.warn(`Approval request for ${leave.id} not sent: ${error.message}`));

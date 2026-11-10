@@ -1,17 +1,25 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength, ValidateIf } from 'class-validator';
 import { CLIENT_APPS, ClientApp } from '../../access/entities/role.entity';
 import { Platform, PLATFORMS } from '../entities/user-device.entity';
 
 export class RegisterDeviceDto {
-  @ApiProperty({
-    example: 'fcm-token-from-firebase-messaging',
-    description: 'Firebase Cloud Messaging registration token',
+  @ApiPropertyOptional({
+    example: '7c1e9f0a-2b3d-4e5f-8a9b-0c1d2e3f4a5b',
+    description: 'Push id of this phone: the OneSignal subscription id (or the FCM token with PUSH_DRIVER=fcm)',
   })
+  @ValidateIf((dto: { fcm_token?: string }) => !dto.fcm_token)
   @IsString()
   @IsNotEmpty()
   @MaxLength(512)
-  fcm_token: string;
+  push_token?: string;
+
+  @ApiPropertyOptional({ deprecated: true, description: 'Old name of push_token, still accepted' })
+  @ValidateIf((dto: { push_token?: string }) => !dto.push_token)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(512)
+  fcm_token?: string;
 
   @ApiProperty({ enum: PLATFORMS, example: 'android' })
   @IsIn(PLATFORMS)
@@ -40,9 +48,23 @@ export class RegisterDeviceDto {
 }
 
 export class RemoveDeviceDto {
-  @ApiProperty({ example: 'fcm-token-from-firebase-messaging' })
+  @ApiPropertyOptional({
+    example: '7c1e9f0a-2b3d-4e5f-8a9b-0c1d2e3f4a5b',
+    description: 'Push id of this phone: the OneSignal subscription id (or the FCM token with PUSH_DRIVER=fcm)',
+  })
+  @ValidateIf((dto: { fcm_token?: string }) => !dto.fcm_token)
   @IsString()
   @IsNotEmpty()
   @MaxLength(512)
-  fcm_token: string;
+  push_token?: string;
+
+  @ApiPropertyOptional({ deprecated: true, description: 'Old name of push_token, still accepted' })
+  @ValidateIf((dto: { push_token?: string }) => !dto.push_token)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(512)
+  fcm_token?: string;
 }
+
+export const deviceToken = (dto: { push_token?: string; fcm_token?: string }): string =>
+  dto.push_token ?? dto.fcm_token ?? '';

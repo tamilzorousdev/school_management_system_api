@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { RegisterDeviceDto } from './dto/device-input.dto';
+import { deviceToken, RegisterDeviceDto } from './dto/device-input.dto';
 import { UserDevice } from './entities/user-device.entity';
 
 @Injectable()
@@ -9,11 +9,12 @@ export class UserDevicesService {
   constructor(@InjectRepository(UserDevice) private readonly devices: Repository<UserDevice>) {}
 
   async register(userId: number, sessionId: number | null, dto: RegisterDeviceDto): Promise<UserDevice> {
-    const existing = await this.devices.findOneBy({ fcm_token: dto.fcm_token });
+    const token = deviceToken(dto);
+    const existing = await this.devices.findOneBy({ fcm_token: token });
     const device = this.devices.merge(existing ?? this.devices.create(), {
       user_id: userId,
       session_id: sessionId,
-      fcm_token: dto.fcm_token,
+      fcm_token: token,
       platform: dto.platform,
       app: dto.app ?? null,
       device_name: dto.device_name ?? null,

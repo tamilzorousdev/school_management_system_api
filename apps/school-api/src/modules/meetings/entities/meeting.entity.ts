@@ -12,6 +12,9 @@ export const MEETING_STATUSES = [
 export type MeetingStatus = (typeof MEETING_STATUSES)[number];
 
 export const MEETING_PARTIES = ['teacher', 'parent'] as const;
+
+export const MEETING_RESPONSES = ['pending', 'accepted', 'declined'] as const;
+export type MeetingResponse = (typeof MEETING_RESPONSES)[number];
 export type MeetingParty = (typeof MEETING_PARTIES)[number];
 
 export const MEETING_END_REASONS = ['host_ended', 'empty'] as const;
@@ -65,6 +68,15 @@ export class Meeting extends SchoolScopedEntity {
 
   @Column({ type: 'varchar', length: 15, default: 'scheduled' })
   status: MeetingStatus;
+
+  @Column({ type: 'varchar', length: 10, default: 'pending' })
+  response: MeetingResponse;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  responded_at: Date | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  response_note: string | null;
 
   @Index({ unique: true })
   @Column({ type: 'varchar', length: 64 })

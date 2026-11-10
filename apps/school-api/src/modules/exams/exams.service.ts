@@ -757,6 +757,8 @@ export class ExamsService {
               percent: String(row.percent),
               grade: row.grade ?? '',
               rank: `${row.class_rank}/${complete.length}`,
+              student_id: String(row.student_id),
+              exam_id: String(exam.id),
             },
           })
           .catch((error: Error) => this.logger.warn(`Result alert for student ${row.student_id}: ${error.message}`));

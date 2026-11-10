@@ -3,12 +3,15 @@ import { readFileSync } from 'fs';
 import { App, cert, initializeApp, ServiceAccount } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
 import { pushConfig, PushConfig } from '../../config/configuration';
+import { KAFKA_PUSH_TEMPLATE, KafkaNotifyService } from '../sms/kafka-notify.service';
 
 export interface PushMessage {
   tokens: string[];
   title: string;
   body: string;
   data: Record<string, string>;
+  userId?: number;
+  variables?: Record<string, string>;
 }
 
 export interface PushResult {
@@ -30,10 +33,13 @@ export class PushService {
   private readonly logger = new Logger('Push');
   private app?: App;
 
-  constructor(@Inject(pushConfig.KEY) private readonly config: PushConfig) {}
+  constructor(
+    @Inject(pushConfig.KEY) private readonly config: PushConfig,
+    private readonly kafka: KafkaNotifyService,
+  ) {}
 
   get enabled(): boolean {
-    return this.config.driver === 'fcm' || this.config.driver === 'onesignal';
+    return this.config.driver !== 'off';
   }
 
   async send(message: PushMessage): Promise<PushResult> {
@@ -46,6 +52,7 @@ export class PushService {
         error: 'Push is turned off (PUSH_DRIVER=off)',
       };
     }
+    if (this.config.driver === 'kafka') return this.sendKafka(message);
     if (!message.tokens.length) {
       return {
         status: 'skipped',
@@ -60,6 +67,25 @@ export class PushService {
       return this.sendOneSignal(message);
     }
     return this.sendFcm(message);
+  }
+
+  private async sendKafka(message: PushMessage): Promise<PushResult> {
+    if (!message.userId) {
+      return {
+        status: 'skipped',
+        provider: 'kafka',
+        successCount: 0,
+        invalidTokens: [],
+        error: 'No user for this push',
+      };
+    }
+    await this.kafka.sendPush({
+      templateId: this.kafka.templateId(KAFKA_PUSH_TEMPLATE),
+      variables: { ...(message.variables ?? {}), ...message.data, title: message.title, body: message.body },
+      externalIds: [String(message.userId)],
+      playerIds: message.tokens,
+    });
+    return { status: 'sent', provider: 'kafka', successCount: 1, invalidTokens: [] };
   }
 
   private async sendFcm(message: PushMessage): Promise<PushResult> {
@@ -106,7 +132,6 @@ export class PushService {
     const payload = {
       app_id: this.config.oneSignalAppId,
       include_subscription_ids: message.tokens,
-      include_player_ids: message.tokens,
       headings: { en: message.title },
       contents: { en: message.body },
       data: message.data,

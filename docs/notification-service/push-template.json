@@ -1,0 +1,11 @@
+{
+  "tenant": { "tenantId": "TZSMS" },
+  "templates": [
+    {
+      "templateId": "school_push",
+      "channel": "push",
+      "subject": "{{title}}",
+      "body": "{{body}}"
+    }
+  ]
+}

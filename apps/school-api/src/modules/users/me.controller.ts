@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, ResponseMessage } from '@app/common';
-import { RegisterDeviceDto, RemoveDeviceDto } from './dto/device-input.dto';
+import { deviceToken, RegisterDeviceDto, RemoveDeviceDto } from './dto/device-input.dto';
 import { UpdateMeDto } from './dto/user-input.dto';
 import { UserProfileDto } from './dto/user-response.dto';
 import { UserDevicesService } from './user-devices.service';
@@ -52,7 +52,7 @@ export class MeController {
   @ApiOperation({ summary: 'Stop push notifications to this device' })
   @ApiEnvelope(undefined, { message: 'Device removed' })
   async removeDevice(@CurrentUser() user: AuthUser, @Query() dto: RemoveDeviceDto) {
-    await this.devices.remove(user.id, dto.fcm_token);
+    await this.devices.remove(user.id, deviceToken(dto));
     return null;
   }
 }

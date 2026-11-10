@@ -18,7 +18,9 @@ const build = (rows: { student: unknown[]; parent: unknown[] }) => {
     Promise.resolve(sql.includes('student_guardians') ? rows.parent : rows.student),
   );
   const access = { childCard: jest.fn().mockResolvedValue({ id: 7, full_name: 'Kavin' }) };
-  const attendance = { todayStatus: jest.fn().mockResolvedValue('present') };
+  const attendance = {
+    todaySessions: jest.fn().mockResolvedValue({ status: 'present', morning: 'present', afternoon: null }),
+  };
   const notifications = { mine: jest.fn().mockResolvedValue({ items: [{ id: 1 }], total: 1 }) };
   const diary = { feed: jest.fn().mockResolvedValue({ items: [{ id: 3 }], total: 1 }) };
   const meetings = { listForParty: jest.fn().mockResolvedValue({ items: [{ id: 4 }], total: 1 }) };

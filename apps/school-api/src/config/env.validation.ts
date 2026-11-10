@@ -23,7 +23,7 @@ const centralAuth = (env: EnvironmentVariables) => env.AUTH_PROVIDER === 'centra
 const usesPing = (env: EnvironmentVariables) =>
   env.SMS_DRIVER === 'ping4sms' || (otpSms(env) && env.OTP_SMS_DRIVER === 'ping4sms');
 const usesKafka = (env: EnvironmentVariables) =>
-  env.SMS_DRIVER === 'kafka' || (otpSms(env) && env.OTP_SMS_DRIVER === 'kafka');
+  env.SMS_DRIVER === 'kafka' || env.PUSH_DRIVER === 'kafka' || (otpSms(env) && env.OTP_SMS_DRIVER === 'kafka');
 
 export class EnvironmentVariables {
   @IsIn(['development', 'production', 'test'])
@@ -286,7 +286,7 @@ export class EnvironmentVariables {
   @IsUrl({ require_tld: false, require_protocol: true })
   PING_API_URL?: string;
 
-  @IsIn(['off', 'fcm', 'onesignal'])
+  @IsIn(['off', 'fcm', 'onesignal', 'kafka'], { message: 'PUSH_DRIVER must be off, fcm, onesignal or kafka' })
   PUSH_DRIVER: string = 'off';
 
   @ValidateIf((env: EnvironmentVariables) => env.PUSH_DRIVER === 'fcm')

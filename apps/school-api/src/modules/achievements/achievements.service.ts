@@ -324,6 +324,8 @@ export class AchievementsService {
           title: row.title,
           level: LEVEL_LABELS[row.level] ?? row.level,
           position: outcome ? ` (${outcome})` : '',
+          student_id: String(row.student_id),
+          achievement_id: String(row.id),
         },
       })
       .catch((error: Error) => this.logger.warn(`Achievement ${row.id} alert not sent: ${error.message}`));

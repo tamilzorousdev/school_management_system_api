@@ -88,9 +88,11 @@ export class BannerService {
            JOIN classes c ON c.id = sec.class_id
            JOIN academic_years y ON y.id = sec.academic_year_id AND y.is_current
            WHERE sec.school_id = $1 AND sec.class_teacher_user_id = $2 AND sec.deleted_at IS NULL
-           AND NOT EXISTS (SELECT 1 FROM attendance_sessions a WHERE a.section_id = sec.id AND a.date = $3 AND a.period = 0)
+           AND (NOT EXISTS (SELECT 1 FROM attendance_sessions a WHERE a.section_id = sec.id AND a.date = $3 AND a.period = 1)
+                OR (COALESCE((SELECT min(b.start_time) FROM bell_periods b WHERE b.school_id = $1 AND b.period_no = 5), '23:59') <= $4
+                    AND NOT EXISTS (SELECT 1 FROM attendance_sessions a WHERE a.section_id = sec.id AND a.date = $3 AND a.period = 5)))
            ORDER BY c.name, sec.name`,
-        [schoolId, user.id, date],
+        [schoolId, user.id, date, clock(this.app.timeZone)],
       ),
       query<{ count: string }>(
         `SELECT COUNT(*) AS count FROM student_leave_requests r

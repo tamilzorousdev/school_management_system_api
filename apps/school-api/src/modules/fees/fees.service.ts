@@ -768,6 +768,7 @@ export class FeesService {
             due_date: shortDate(item.due_date),
             installment: item.installment ?? '',
             days: String(item.days ?? 0),
+            student_id: String(item.student_id),
           },
         })
         .then(() => (sent += 1))

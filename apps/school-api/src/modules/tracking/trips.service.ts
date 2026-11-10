@@ -467,8 +467,8 @@ export class TripsService {
         `SELECT student_id FROM student_leave_requests
            WHERE student_id = ANY($1) AND status = 'approved' AND deleted_at IS NULL AND from_date <= $2 AND to_date >= $2
          UNION
-         SELECT student_id FROM attendance_records
-           WHERE student_id = ANY($1) AND date = $2 AND period = 0 AND status IN ('absent', 'leave')`,
+         SELECT student_id FROM student_attendance_days
+           WHERE student_id = ANY($1) AND date = $2 AND status IN ('absent', 'leave')`,
         [ids, trip.trip_date],
       ) as Promise<{ student_id: number }[]>,
     ]);

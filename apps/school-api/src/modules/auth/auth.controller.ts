@@ -59,7 +59,7 @@ export class AuthController {
   @ApiOperation({
     summary: 'Step 2: verify the OTP and receive tokens with the user profile',
     description:
-      'The code is checked by the Auth Service (AUTH_PROVIDER=central) and the school session is issued here. Errors: OTP_INVALID / OTP_EXPIRED (401), OTP_ATTEMPTS_EXCEEDED (429), AUTH_SERVICE_UNAVAILABLE (503). Send client.fcm_token to register push in the same call.',
+      'The code is checked by the Auth Service (AUTH_PROVIDER=central) and the school session is issued here. Errors: OTP_INVALID / OTP_EXPIRED (401), OTP_ATTEMPTS_EXCEEDED (429), AUTH_SERVICE_UNAVAILABLE (503). Send client.push_token (the OneSignal subscription id; fcm_token still works) to register push in the same call.',
   })
   @ApiEnvelope(LoginResponseDto, { message: 'Signed in' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED, HttpStatus.TOO_MANY_REQUESTS)

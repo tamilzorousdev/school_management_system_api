@@ -28,9 +28,12 @@ import {
   MobileMeetingQueryDto,
   ParentMeetingInputDto,
   TeacherMeetingInputDto,
+  RespondMeetingDto,
 } from './dto/meeting.dto';
 import { MeetingCallLog } from './entities/meeting-call-log.entity';
-import { Meeting, MeetingParty, MeetingStatus } from './entities/meeting.entity';
+import { Meeting, MeetingParty, MeetingResponse, MeetingStatus } from './entities/meeting.entity';
+import { replyError } from './meeting-reply';
+import { agoraUid, participantOf } from './meeting-uid';
 import {
   ACTIVE_STATUSES,
   actualMinutes,
@@ -178,7 +181,7 @@ export class MeetingsService {
     const meeting = await this.findForParty(actor, party, id);
     const now = new Date();
     this.assertJoinable(meeting, now);
-    const grant = this.agora.issue(meeting.channel_name, actor.id, now);
+    const grant = this.agora.issue(meeting.channel_name, agoraUid(actor.id, party), now);
     const before = meeting.status;
     const saved = await this.dataSource.transaction(async (manager) => {
       meeting.status = statusAfterJoin(meeting.status, meeting.scheduled_end_at, now);
@@ -204,14 +207,19 @@ export class MeetingsService {
       party,
       action: 'joined',
     });
-    return this.grantResponse(saved, actor, grant);
+    return this.grantResponse(saved, actor, party, grant);
   }
 
   async renewToken(actor: AuthUser, party: MeetingParty, id: number): Promise<MeetingJoinDto> {
     const meeting = await this.findForParty(actor, party, id);
     const now = new Date();
     this.assertJoinable(meeting, now);
-    return this.grantResponse(meeting, actor, this.agora.issue(meeting.channel_name, actor.id, now));
+    return this.grantResponse(
+      meeting,
+      actor,
+      party,
+      this.agora.issue(meeting.channel_name, agoraUid(actor.id, party), now),
+    );
   }
 
   async leave(actor: AuthUser, party: MeetingParty, id: number): Promise<MeetingDto> {
@@ -272,6 +280,34 @@ export class MeetingsService {
     return (await this.present([saved]))[0];
   }
 
+  async respond(
+    actor: AuthUser,
+    party: MeetingParty,
+    id: number,
+    answer: Exclude<MeetingResponse, 'pending'>,
+    dto: RespondMeetingDto,
+  ): Promise<MeetingDto> {
+    const meeting = await this.findForParty(actor, party, id);
+    replyError(meeting, party);
+    Object.assign(meeting, { response: answer, responded_at: new Date(), response_note: dto.note ?? null });
+    const saved = await this.meetings.save(meeting);
+    const [presented] = await this.present([saved]);
+    this.announceStatus(saved, actor.id);
+    await this.notify(
+      answer === 'accepted' ? TEMPLATES.MEETING_ACCEPTED : TEMPLATES.MEETING_DECLINED,
+      presented.from.id,
+      {
+        by: actor.name,
+        student: presented.student.name,
+        time: formatMeetingTime(saved.scheduled_at, this.app.timeZone),
+        title: saved.title,
+        note: dto.note ? ` Note: ${dto.note}` : '',
+      },
+      saved,
+    );
+    return presented;
+  }
+
   async cancel(actor: AuthUser, party: MeetingParty, id: number, dto: CancelMeetingDto): Promise<MeetingDto> {
     const meeting = await this.findForParty(actor, party, id);
     if (meeting.status !== 'scheduled') {
@@ -285,13 +321,18 @@ export class MeetingsService {
     const [presented] = await this.present([saved]);
     const other = party === 'teacher' ? presented.parent : presented.teacher;
     this.announceStatus(saved, actor.id);
-    await this.notify(TEMPLATES.MEETING_CANCELLED, other.id, {
-      by: actor.name,
-      student: presented.student.name,
-      time: formatMeetingTime(saved.scheduled_at, this.app.timeZone),
-      title: saved.title,
-      reason: dto.reason ? ` Reason: ${dto.reason}` : '',
-    });
+    await this.notify(
+      TEMPLATES.MEETING_CANCELLED,
+      other.id,
+      {
+        by: actor.name,
+        student: presented.student.name,
+        time: formatMeetingTime(saved.scheduled_at, this.app.timeZone),
+        title: saved.title,
+        reason: dto.reason ? ` Reason: ${dto.reason}` : '',
+      },
+      saved,
+    );
     return presented;
   }
 
@@ -411,16 +452,16 @@ export class MeetingsService {
     if (!payload.channelName || !payload.uid) return;
     const meeting = await this.meetings.findOneBy({ channel_name: payload.channelName });
     if (!meeting) return;
-    const party: MeetingParty | null =
-      payload.uid === meeting.teacher_user_id ? 'teacher' : payload.uid === meeting.parent_user_id ? 'parent' : null;
-    if (!party) {
+    const participant = participantOf(meeting, payload.uid);
+    if (!participant) {
       this.logger.warn(`Agora: uid ${payload.uid} is not a participant of meeting ${meeting.id}`);
       return;
     }
+    const { user_id: userId, party } = participant;
     const at = payload.ts ? new Date(payload.ts * 1000) : new Date();
     const seq = payload.clientSeq !== undefined ? String(payload.clientSeq) : null;
     const open = await this.logs.findOne({
-      where: { meeting_id: meeting.id, user_id: payload.uid, left_at: IsNull() },
+      where: { meeting_id: meeting.id, user_id: userId, left_at: IsNull() },
       order: { joined_at: 'DESC' },
     });
     if (joining) {
@@ -429,14 +470,14 @@ export class MeetingsService {
         return;
       }
       const duplicate = seq
-        ? await this.logs.findOneBy({ meeting_id: meeting.id, user_id: payload.uid, client_seq: seq })
+        ? await this.logs.findOneBy({ meeting_id: meeting.id, user_id: userId, client_seq: seq })
         : null;
       if (duplicate) return;
       await this.logs.save(
         this.logs.create({
           school_id: meeting.school_id,
           meeting_id: meeting.id,
-          user_id: payload.uid,
+          user_id: userId,
           party,
           platform: AGORA_PLATFORMS[Number(payload.platform)] ?? 'other',
           source: 'agora',
@@ -455,7 +496,7 @@ export class MeetingsService {
     });
     this.realtime.toUsers(this.members(meeting), 'meeting.participant', {
       meeting_id: meeting.id,
-      user_id: payload.uid,
+      user_id: userId,
       party,
       action: 'left',
     });
@@ -488,16 +529,18 @@ export class MeetingsService {
     for (const meeting of due) {
       const [presented] = await this.present([meeting]);
       const time = formatMeetingTime(meeting.scheduled_at, this.app.timeZone);
-      await this.notify(TEMPLATES.MEETING_REMINDER, presented.parent.id, {
-        host: presented.teacher.name,
-        student: presented.student.name,
-        time,
-      });
-      await this.notify(TEMPLATES.MEETING_REMINDER, presented.teacher.id, {
-        host: presented.parent.name,
-        student: presented.student.name,
-        time,
-      });
+      await this.notify(
+        TEMPLATES.MEETING_REMINDER,
+        presented.parent.id,
+        { host: presented.teacher.name, student: presented.student.name, time },
+        meeting,
+      );
+      await this.notify(
+        TEMPLATES.MEETING_REMINDER,
+        presented.teacher.id,
+        { host: presented.parent.name, student: presented.student.name, time },
+        meeting,
+      );
       this.realtime.toUsers(this.members(meeting), 'meeting.reminder', {
         meeting_id: meeting.id,
         kind: 'start',
@@ -521,12 +564,17 @@ export class MeetingsService {
         [presented.parent.id, presented.teacher.name],
         [presented.teacher.id, presented.parent.name],
       ] as const) {
-        await this.notify(TEMPLATES.MEETING_ENDING, userId, {
-          host: other,
-          student: presented.student.name,
-          minutes: String(END_REMINDER_MINUTES),
-          time,
-        });
+        await this.notify(
+          TEMPLATES.MEETING_ENDING,
+          userId,
+          {
+            host: other,
+            student: presented.student.name,
+            minutes: String(END_REMINDER_MINUTES),
+            time,
+          },
+          meeting,
+        );
       }
       this.realtime.toUsers(this.members(meeting), 'meeting.reminder', {
         meeting_id: meeting.id,
@@ -636,12 +684,17 @@ export class MeetingsService {
       }),
     );
     const [presented] = await this.present([saved]);
-    await this.notify(TEMPLATES.MEETING_SCHEDULED, presented.to.id, {
-      by: presented.from.name,
-      student: presented.student.name,
-      time: formatMeetingTime(saved.scheduled_at, this.app.timeZone),
-      title: saved.title,
-    });
+    await this.notify(
+      TEMPLATES.MEETING_SCHEDULED,
+      presented.to.id,
+      {
+        by: presented.from.name,
+        student: presented.student.name,
+        time: formatMeetingTime(saved.scheduled_at, this.app.timeZone),
+        title: saved.title,
+      },
+      saved,
+    );
     this.realtime.toUsers([presented.to.id], 'meeting.status', this.statusPayload(saved, input.actor.id));
     return presented;
   }
@@ -673,16 +726,17 @@ export class MeetingsService {
   private grantResponse(
     meeting: Meeting,
     actor: AuthUser,
+    party: MeetingParty,
     grant: { app_id: string; token: string; expires_at: Date },
   ): Promise<MeetingJoinDto> {
     return this.present([meeting]).then(([presented]) => ({
       provider: 'agora' as const,
       app_id: grant.app_id,
       channel_name: meeting.channel_name,
-      uid: actor.id,
+      uid: agoraUid(actor.id, party),
       token: grant.token,
       expires_at: grant.expires_at,
-      role: actor.id === meeting.teacher_user_id ? ('host' as const) : ('participant' as const),
+      role: party === 'teacher' ? ('host' as const) : ('participant' as const),
       meeting: presented,
     }));
   }
@@ -695,6 +749,7 @@ export class MeetingsService {
     return {
       meeting_id: meeting.id,
       status: meeting.status,
+      response: meeting.response,
       ends_at: meeting.scheduled_end_at,
       extended_minutes: meeting.extended_minutes,
       ended_at: meeting.ended_at,
@@ -726,9 +781,18 @@ export class MeetingsService {
     );
   }
 
-  private async notify(template: string, userId: number, data: Record<string, string>): Promise<void> {
+  private async notify(
+    template: string,
+    userId: number,
+    data: Record<string, string>,
+    meeting: Pick<Meeting, 'id' | 'student_id'>,
+  ): Promise<void> {
     await this.notifications
-      .dispatch({ template, audience: { user_ids: [userId] }, data })
+      .dispatch({
+        template,
+        audience: { user_ids: [userId] },
+        data: { ...data, meeting_id: String(meeting.id), student_id: String(meeting.student_id) },
+      })
       .catch((error: Error) => this.logger.warn(`${template} for user ${userId} not sent: ${error.message}`));
   }
 
@@ -816,6 +880,9 @@ export class MeetingsService {
         title: row.title,
         agenda: row.agenda,
         status: row.status,
+        response: row.response,
+        responded_at: row.responded_at,
+        response_note: row.response_note,
         scheduled_at: row.scheduled_at,
         ends_at: row.scheduled_end_at,
         duration_minutes: row.duration_minutes,

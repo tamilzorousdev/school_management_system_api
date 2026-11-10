@@ -13,6 +13,7 @@ import {
   MeetingTeacherOptionDto,
   MobileMeetingQueryDto,
   ParentMeetingInputDto,
+  RespondMeetingDto,
   TeacherMeetingInputDto,
 } from '../meetings/dto/meeting.dto';
 import { MeetingsService } from '../meetings/meetings.service';
@@ -159,6 +160,42 @@ export class MobileTeacherMeetingsController {
   ) {
     return this.meetings.cancel(user, 'teacher', meetingId, dto);
   }
+
+  @Post('meetings/:meetingId/accept')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Meeting accepted')
+  @ApiOperation({
+    summary: 'Accept a meeting the parent booked. The parent is told.',
+    description:
+      'Only the invited side can reply (403 NOT_MEETING_INVITEE for the side that booked), and only before it starts (409 MEETING_REPLY_CLOSED). You can change a decline to accept. Joining does not need a reply, like a Teams invite.',
+  })
+  @ApiEnvelope(MeetingDto, { message: 'Meeting accepted' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  accept(
+    @CurrentUser() user: AuthUser,
+    @Param('meetingId', ParseIntPipe) meetingId: number,
+    @Body() dto: RespondMeetingDto,
+  ) {
+    return this.meetings.respond(user, 'teacher', meetingId, 'accepted', dto);
+  }
+
+  @Post('meetings/:meetingId/decline')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Meeting declined')
+  @ApiOperation({
+    summary: 'Decline a meeting the parent booked, with an optional note. The parent is told.',
+    description:
+      'The meeting is not cancelled: both can still join at that time, and the parent can cancel or book another time. Same rules as accept.',
+  })
+  @ApiEnvelope(MeetingDto, { message: 'Meeting declined' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  decline(
+    @CurrentUser() user: AuthUser,
+    @Param('meetingId', ParseIntPipe) meetingId: number,
+    @Body() dto: RespondMeetingDto,
+  ) {
+    return this.meetings.respond(user, 'teacher', meetingId, 'declined', dto);
+  }
 }
 
 @ApiTags(PARENT_MODULE_TAGS.MODULE_6)
@@ -259,5 +296,41 @@ export class MobileParentMeetingsController {
     @Body() dto: CancelMeetingDto,
   ) {
     return this.meetings.cancel(user, 'parent', meetingId, dto);
+  }
+
+  @Post('meetings/:meetingId/accept')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Meeting accepted')
+  @ApiOperation({
+    summary: 'Accept a meeting the teacher booked. The teacher is told.',
+    description:
+      'Only the invited side can reply (403 NOT_MEETING_INVITEE for the side that booked), and only before it starts (409 MEETING_REPLY_CLOSED). You can change a decline to accept. Joining does not need a reply, like a Teams invite.',
+  })
+  @ApiEnvelope(MeetingDto, { message: 'Meeting accepted' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  accept(
+    @CurrentUser() user: AuthUser,
+    @Param('meetingId', ParseIntPipe) meetingId: number,
+    @Body() dto: RespondMeetingDto,
+  ) {
+    return this.meetings.respond(user, 'parent', meetingId, 'accepted', dto);
+  }
+
+  @Post('meetings/:meetingId/decline')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Meeting declined')
+  @ApiOperation({
+    summary: 'Decline a meeting the teacher booked, with an optional note. The teacher is told.',
+    description:
+      'The meeting is not cancelled: both can still join at that time, and the teacher can cancel or book another time. Same rules as accept.',
+  })
+  @ApiEnvelope(MeetingDto, { message: 'Meeting declined' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  decline(
+    @CurrentUser() user: AuthUser,
+    @Param('meetingId', ParseIntPipe) meetingId: number,
+    @Body() dto: RespondMeetingDto,
+  ) {
+    return this.meetings.respond(user, 'parent', meetingId, 'declined', dto);
   }
 }

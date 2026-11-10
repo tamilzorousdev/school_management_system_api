@@ -252,11 +252,14 @@ export class NotificationsService implements OnModuleInit {
     const row = await this.notifications.findOneByOrFail({ id: job.notification_id });
     const devices = await this.devices.tokensFor(row.user_id);
     const tokens = devices.map((device) => device.fcm_token);
+    const user = await this.users.findOneBy({ id: row.user_id });
     const result = await this.push.send({
       tokens,
       title: row.title,
       body: row.body,
       data: { ...row.data, notification_id: String(row.id), category: row.category, template: row.template_code ?? '' },
+      userId: row.user_id,
+      variables: toStringData({ ...row.data, name: user?.name ?? '' }),
     });
     await this.devices.removeTokens(result.invalidTokens);
     await this.notifications.update(row.id, {

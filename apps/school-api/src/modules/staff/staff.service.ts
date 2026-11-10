@@ -10,6 +10,7 @@ import { AccessService } from '../access/access.service';
 import { Role } from '../access/entities/role.entity';
 import { UserSession } from '../auth/entities/user-session.entity';
 import { FilesService } from '../files/files.service';
+import { bankAccountsFrom } from './bank-input';
 import { NotificationsService } from '../notifications/notifications.service';
 import { School } from '../schools/entities/school.entity';
 import { SequencesService } from '../schools/sequences.service';
@@ -558,23 +559,7 @@ export class StaffService {
     payload: SaveStaffBanksDto | BankDetailsInputDto[] | BankDetailsInputDto,
   ): Promise<StaffDetailDto> {
     await this.find(schoolId, id);
-    let accounts: BankDetailsInputDto[] = [];
-    if (Array.isArray(payload)) {
-      accounts = payload;
-    } else if (
-      payload &&
-      typeof payload === 'object' &&
-      'accounts' in payload &&
-      Array.isArray((payload as SaveStaffBanksDto).accounts)
-    ) {
-      accounts = (payload as SaveStaffBanksDto).accounts;
-    } else if (payload && typeof payload === 'object') {
-      accounts = [payload as BankDetailsInputDto];
-    }
-    accounts = accounts.filter((a) => a && (a.account_holder || a.bank_name || a.account_no));
-    if (!accounts.length) {
-      throw AppException.badRequest('At least one bank account is required');
-    }
+    const accounts = bankAccountsFrom(payload);
     let primaryIndex = accounts.findIndex((a) => a.is_primary);
     if (primaryIndex < 0) primaryIndex = 0;
 

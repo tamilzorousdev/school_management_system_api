@@ -27,12 +27,15 @@ import { securityConfig, SecurityConfig } from '../../config/configuration';
 import { safeEqual } from '../../shared/crypto';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS } from '../access/access.catalog';
-import { BoardQueryDto, MonthQueryDto } from '../attendance/dto/attendance.dto';
+import { MonthQueryDto } from '../attendance/dto/attendance.dto';
 import {
   BiometricPunchesDto,
+  BulkStaffMarkDto,
+  BulkStaffResultDto,
   ManualMarkDto,
   PunchResultDto,
-  StaffBoardDto,
+  StaffBoardPageDto,
+  StaffBoardQueryDto,
   StaffDayDto,
   StaffMonthDto,
 } from './dto/staff-attendance.dto';
@@ -49,11 +52,28 @@ export class StaffAttendanceController {
   @Get('board')
   @RequirePermissions(PERMISSIONS.ATTENDANCE_VIEW)
   @ApiOperation({
-    summary: 'Every staff member for one date: checked in, late, on leave or not yet in, with times and distance',
+    summary: 'Staff for one date, a page at a time: checked in, late, on leave or not yet in, with times and distance',
+    description:
+      'The counts (total, present, late, on_leave, not_checked_in) are for the whole school; staff is one page after search and status. Default 20 per page, up to 100.',
   })
-  @ApiEnvelope(StaffBoardDto)
-  board(@SchoolId() schoolId: number, @Query() query: BoardQueryDto) {
-    return this.attendance.board(schoolId, query.date);
+  @ApiEnvelope(StaffBoardPageDto)
+  @ApiErrors(HttpStatus.BAD_REQUEST)
+  board(@SchoolId() schoolId: number, @Query() query: StaffBoardQueryDto) {
+    return this.attendance.boardPage(schoolId, query);
+  }
+
+  @Put('bulk')
+  @RequirePermissions(PERMISSIONS.ATTENDANCE_MANAGE)
+  @ResponseMessage('Attendance marked')
+  @ApiOperation({
+    summary: 'Mark many staff at once (reason optional, saved as manual)',
+    description:
+      'Send user_ids, or all_not_checked_in: true for everyone without a check-in. Staff on approved leave are skipped unless the status is absent. Optional check-in and check-out times apply to everyone. 400 NOTHING_TO_MARK when nobody is left.',
+  })
+  @ApiEnvelope(BulkStaffResultDto, { message: 'Attendance marked' })
+  @ApiErrors(HttpStatus.BAD_REQUEST)
+  bulk(@SchoolId() schoolId: number, @Body() dto: BulkStaffMarkDto, @CurrentUser() actor: AuthUser) {
+    return this.attendance.bulkMark(schoolId, dto, actor);
   }
 
   @Get(':userId/month')

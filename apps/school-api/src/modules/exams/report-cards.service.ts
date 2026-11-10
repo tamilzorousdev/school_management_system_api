@@ -420,8 +420,8 @@ export class ReportCardsService {
 
   private async attendance(studentId: number, from: string, to: string) {
     const rows: { status: string; days: string }[] = await this.dataSource.query(
-      `SELECT status, COUNT(DISTINCT date) AS days FROM attendance_records
-       WHERE student_id = $1 AND period = 0 AND date BETWEEN $2 AND $3
+      `SELECT status, COUNT(*) AS days FROM student_attendance_days
+       WHERE student_id = $1 AND date BETWEEN $2 AND $3
        GROUP BY status`,
       [studentId, from, to],
     );

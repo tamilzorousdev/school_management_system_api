@@ -6,6 +6,7 @@ import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { addDays, holidaySet, workingDays } from '../../shared/school-days';
 import { FilesService } from '../files/files.service';
+import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LeaveDecisionDto, StudentLeaveDto, StudentLeaveInputDto, StudentLeaveQueryDto } from './dto/attendance.dto';
 import { StudentLeave } from './entities/student-leave.entity';
@@ -66,7 +67,40 @@ export class StudentLeaveService {
         created_by: actor.id,
       }),
     );
+    await this.notifyClassTeacher(saved);
     return (await this.present(schoolId, [saved]))[0];
+  }
+
+  private async notifyClassTeacher(leave: StudentLeave): Promise<void> {
+    const [row] = await this.dataSource.query(
+      `SELECT sec.class_teacher_user_id AS teacher_id, c.name || ' - ' || sec.name AS class_name,
+              trim(s.first_name || ' ' || COALESCE(s.last_name, '')) AS student
+       FROM student_enrollments e
+       JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current
+       JOIN sections sec ON sec.id = e.section_id
+       JOIN classes c ON c.id = sec.class_id
+       JOIN students s ON s.id = e.student_id
+       WHERE e.student_id = $1 LIMIT 1`,
+      [leave.student_id],
+    );
+    if (!row?.teacher_id) return;
+    await this.notifications
+      .dispatch({
+        template: TEMPLATES.STUDENT_LEAVE_REQUEST,
+        audience: { user_ids: [Number(row.teacher_id)] },
+        data: {
+          student: row.student,
+          class: row.class_name,
+          from: leave.from_date,
+          to: leave.to_date,
+          reason: leave.reason,
+          student_id: String(leave.student_id),
+          leave_id: String(leave.id),
+        },
+      })
+      .catch((error: Error) =>
+        this.logger.warn(`Leave request ${leave.id} not sent to the class teacher: ${error.message}`),
+      );
   }
 
   async list(
@@ -165,7 +199,14 @@ export class StudentLeaveService {
       .dispatch({
         template: 'LEAVE_STATUS',
         audience: { user_ids: users },
-        data: { student: rows[0]?.name ?? '', from: leave.from_date, to: leave.to_date, status: leave.status },
+        data: {
+          student: rows[0]?.name ?? '',
+          from: leave.from_date,
+          to: leave.to_date,
+          status: leave.status,
+          student_id: String(leave.student_id),
+          leave_id: String(leave.id),
+        },
       })
       .catch((error: Error) => this.logger.warn(`Leave status for ${leave.id} not sent: ${error.message}`));
   }

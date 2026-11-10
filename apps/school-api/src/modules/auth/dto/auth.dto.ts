@@ -69,9 +69,15 @@ export class ClientInfoDto {
   app_version?: string;
 
   @ApiPropertyOptional({
-    example: 'fcm-token-from-firebase-messaging',
-    description: 'Pass it here to register push in the same call',
+    example: '7c1e9f0a-2b3d-4e5f-8a9b-0c1d2e3f4a5b',
+    description: 'Push id of this phone (OneSignal subscription id); registers push in the same call',
   })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  push_token?: string;
+
+  @ApiPropertyOptional({ deprecated: true, description: 'Old name of push_token, still accepted' })
   @IsOptional()
   @IsString()
   @MaxLength(512)

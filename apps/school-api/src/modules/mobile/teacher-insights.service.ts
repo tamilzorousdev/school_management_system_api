@@ -47,11 +47,11 @@ export class TeacherInsightsService {
         [userId, ids],
       ),
       query<{ section_id: number; present: string; absent: string }>(
-        `SELECT a.section_id,
-                COUNT(*) FILTER (WHERE r.status IN ('present', 'late', 'half_day')) AS present,
-                COUNT(*) FILTER (WHERE r.status = 'absent') AS absent
-         FROM attendance_sessions a JOIN attendance_records r ON r.session_id = a.id
-         WHERE a.section_id = ANY($1) AND a.date = $2 AND a.period = 0 GROUP BY a.section_id`,
+        `SELECT e.section_id,
+                COUNT(*) FILTER (WHERE d.status IN ('present', 'late', 'half_day')) AS present,
+                COUNT(*) FILTER (WHERE d.status = 'absent') AS absent
+         FROM student_attendance_days d JOIN student_enrollments e ON e.student_id = d.student_id
+         WHERE e.section_id = ANY($1) AND d.date = $2 GROUP BY e.section_id`,
         [ids, todayIn(this.app.timeZone)],
       ),
       query<{ section_id: number; count: string }>(

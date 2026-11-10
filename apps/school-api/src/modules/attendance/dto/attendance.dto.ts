@@ -3,7 +3,9 @@ import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -19,6 +21,7 @@ import {
 import { ListQueryDto } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
+import { ATTENDANCE_SESSIONS, AttendanceSessionName } from '../attendance-sessions';
 import { ATTENDANCE_STATUSES, AttendanceStatus } from '../entities/attendance-record.entity';
 import { LEAVE_STATUSES, LeaveStatus } from '../entities/student-leave.entity';
 
@@ -29,7 +32,20 @@ export class RosterQueryDto {
   @IsDateOnly('2026-11-05')
   date: string;
 
-  @ApiPropertyOptional({ example: 0, default: 0, description: '0 is the daily (morning) attendance; 1-12 are periods' })
+  @ApiPropertyOptional({
+    enum: ATTENDANCE_SESSIONS,
+    default: 'morning',
+    description: 'morning = 1st period, afternoon = 5th period. Wins over period.',
+  })
+  @IsOptional()
+  @IsIn(ATTENDANCE_SESSIONS)
+  session?: AttendanceSessionName;
+
+  @ApiPropertyOptional({
+    example: 1,
+    deprecated: true,
+    description: 'Old way: 0 or 1 = morning, 5 = afternoon. Any other period gives 400 PERIOD_NOT_ALLOWED.',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -38,13 +54,21 @@ export class RosterQueryDto {
   period?: number;
 }
 
+const STATUS_LETTERS: Record<string, AttendanceStatus> = { P: 'present', A: 'absent', L: 'late' };
+
 export class MarkItemDto {
   @ApiProperty({ example: 12 })
   @IsInt()
   student_id: number;
 
-  @ApiProperty({ enum: ATTENDANCE_STATUSES, example: 'present' })
-  @IsIn(ATTENDANCE_STATUSES)
+  @ApiProperty({
+    enum: ATTENDANCE_STATUSES,
+    example: 'late',
+    description:
+      'present, absent, late, half_day or leave. The P / A / L buttons can send the letter: P = present, A = absent, L = late.',
+  })
+  @Transform(({ value }) => (typeof value === 'string' ? (STATUS_LETTERS[value.toUpperCase()] ?? value) : value))
+  @IsIn(ATTENDANCE_STATUSES, { message: 'status must be present, absent, late, half_day or leave (or P, A, L)' })
   status: AttendanceStatus;
 
   @ApiPropertyOptional({ example: 'Came at 9:20', nullable: true, type: String })
@@ -60,7 +84,20 @@ export class MarkAttendanceDto {
   @IsDateOnly('2026-11-05')
   date: string;
 
-  @ApiPropertyOptional({ example: 0, default: 0 })
+  @ApiPropertyOptional({
+    enum: ATTENDANCE_SESSIONS,
+    default: 'morning',
+    description: 'morning = 1st period, afternoon = 5th period. Wins over period.',
+  })
+  @IsOptional()
+  @IsIn(ATTENDANCE_SESSIONS)
+  session?: AttendanceSessionName;
+
+  @ApiPropertyOptional({
+    example: 1,
+    deprecated: true,
+    description: 'Old way: 0 or 1 = morning, 5 = afternoon. Use session.',
+  })
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -82,9 +119,51 @@ export class MarkAttendanceDto {
   items: MarkItemDto[];
 }
 
+export class MarkSomeAttendanceDto {
+  @IsDateOnly('2026-11-10')
+  date: string;
+
+  @ApiPropertyOptional({
+    enum: ATTENDANCE_SESSIONS,
+    default: 'morning',
+    description: 'morning = 1st period, afternoon = 5th period',
+  })
+  @IsOptional()
+  @IsIn(ATTENDANCE_SESSIONS)
+  session?: AttendanceSessionName;
+
+  @ApiProperty({
+    type: [MarkItemDto],
+    example: [
+      { student_id: 12, status: 'absent', remarks: null },
+      { student_id: 14, status: 'late', remarks: 'Came at 9:20' },
+      { student_id: 15, status: 'present', remarks: null },
+    ],
+    description:
+      'Only the students to change, each with its own status. Everyone else keeps the saved status, or the default (present, leave for approved leave; the afternoon starts from the morning) when the session is not saved yet.',
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Send at least one student' })
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => MarkItemDto)
+  items: MarkItemDto[];
+}
+
 export class BoardQueryDto {
   @IsDateOnly('2026-11-05')
   date: string;
+}
+
+export class SessionBoardQueryDto extends BoardQueryDto {
+  @ApiPropertyOptional({
+    enum: ATTENDANCE_SESSIONS,
+    default: 'morning',
+    description: 'morning = 1st period, afternoon = 5th period. Wins over period.',
+  })
+  @IsOptional()
+  @IsIn(ATTENDANCE_SESSIONS)
+  session?: AttendanceSessionName;
 }
 
 export class MonthQueryDto {
@@ -196,8 +275,29 @@ export class RosterDto {
   @ApiProperty({ example: '2026-11-05' })
   date: string;
 
-  @ApiProperty({ example: 0 })
+  @ApiProperty({ enum: ATTENDANCE_SESSIONS, example: 'morning' })
+  session: AttendanceSessionName;
+
+  @ApiProperty({ example: 1, description: '1 for morning, 5 for afternoon' })
   period: number;
+
+  @ApiProperty({
+    example: true,
+    description:
+      'For a teacher: true only today during the 1st period (morning) or 5th period (afternoon). The office can always save.',
+  })
+  open: boolean;
+
+  @ApiProperty({ example: '08:50', nullable: true, type: String, description: 'Start of the period (session opens)' })
+  opens_at: string | null;
+
+  @ApiProperty({
+    example: '09:35',
+    nullable: true,
+    type: String,
+    description: 'End of the period (session closes for teachers)',
+  })
+  closes_at: string | null;
 
   @ApiProperty({ description: 'False on Sundays and holidays' })
   working_day: boolean;
@@ -231,8 +331,14 @@ export class BoardSectionDto extends AttendanceSummaryDto {
   @ApiProperty({ nullable: true, type: String })
   class_teacher: string | null;
 
-  @ApiProperty()
+  @ApiProperty({ description: 'This session is saved' })
   marked: boolean;
+
+  @ApiProperty({ example: true })
+  morning_marked: boolean;
+
+  @ApiProperty({ example: false })
+  afternoon_marked: boolean;
 
   @ApiProperty({ nullable: true, type: String })
   taken_by: string | null;
@@ -244,6 +350,9 @@ export class BoardSectionDto extends AttendanceSummaryDto {
 export class AttendanceBoardDto {
   @ApiProperty({ example: '2026-11-05' })
   date: string;
+
+  @ApiProperty({ enum: ATTENDANCE_SESSIONS, example: 'morning', description: 'Counts and marked are for this session' })
+  session: AttendanceSessionName;
 
   @ApiProperty()
   working_day: boolean;
@@ -274,8 +383,17 @@ export class AttendanceDayDto {
   @ApiProperty({ example: '2026-11-05' })
   date: string;
 
-  @ApiProperty({ enum: [...ATTENDANCE_STATUSES, 'not_marked', 'holiday', 'weekly_off'] })
+  @ApiProperty({
+    enum: [...ATTENDANCE_STATUSES, 'not_marked', 'holiday', 'weekly_off'],
+    description: 'The day from both sessions: absent in one session = half_day',
+  })
   status: AttendanceStatus | 'not_marked' | 'holiday' | 'weekly_off';
+
+  @ApiProperty({ enum: ATTENDANCE_STATUSES, nullable: true, example: 'present' })
+  morning: AttendanceStatus | null;
+
+  @ApiProperty({ enum: ATTENDANCE_STATUSES, nullable: true, example: 'absent' })
+  afternoon: AttendanceStatus | null;
 }
 
 export class MonthlyAttendanceDto {
@@ -392,4 +510,120 @@ export class StudentLeaveDto {
 
   @ApiProperty()
   created_at: Date;
+}
+
+export class BulkSectionMarkDto {
+  @IsDateOnly('2026-11-10')
+  date: string;
+
+  @ApiPropertyOptional({
+    type: [Number],
+    example: [3, 4, 7],
+    description: 'Sections to mark. Leave out to mark every section not marked yet for the date.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Choose at least one section' })
+  @ArrayMaxSize(300)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  section_ids?: number[];
+
+  @ApiPropertyOptional({
+    enum: ATTENDANCE_SESSIONS,
+    default: 'morning',
+    description: 'morning = 1st period, afternoon = 5th period. Wins over period.',
+  })
+  @IsOptional()
+  @IsIn(ATTENDANCE_SESSIONS)
+  session?: AttendanceSessionName;
+
+  @ApiProperty({ enum: ATTENDANCE_STATUSES, example: 'present', description: 'Status for every student' })
+  @IsIn(ATTENDANCE_STATUSES)
+  status: AttendanceStatus;
+
+  @ApiPropertyOptional({ example: 'Marked by the office', nullable: true, type: String, description: 'Optional' })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_dto, value) => value !== null)
+  @IsString()
+  @MaxLength(255)
+  remarks?: string | null;
+
+  @ApiPropertyOptional({
+    example: false,
+    default: false,
+    description: 'Also replace sections already marked for the date (their marks are overwritten)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  overwrite?: boolean;
+}
+
+export class BulkSectionSkipDto {
+  @ApiProperty({ example: 4 })
+  id: number;
+
+  @ApiProperty({ example: '6 - B' })
+  name: string;
+
+  @ApiProperty({ example: 'Already marked' })
+  reason: string;
+}
+
+export class BulkSectionResultDto {
+  @ApiProperty({ example: '2026-11-10' })
+  date: string;
+
+  @ApiProperty({ example: 12, description: 'Sections saved' })
+  marked: number;
+
+  @ApiProperty({ example: 384, description: 'Students saved across those sections' })
+  students: number;
+
+  @ApiProperty({ type: [BulkSectionSkipDto] })
+  skipped: BulkSectionSkipDto[];
+}
+
+export class ClassReportSectionDto {
+  @ApiProperty({ example: 12 })
+  section_id: number;
+
+  @ApiProperty({ example: '6 - A' })
+  name: string;
+
+  @ApiProperty({ example: 32 })
+  students: number;
+
+  @ApiProperty({ example: 18, description: 'School days with at least one session saved' })
+  marked_days: number;
+
+  @ApiProperty({ example: 92.4, nullable: true, type: Number })
+  percent: number | null;
+
+  @ApiProperty({ example: 3 })
+  below_75: number;
+}
+
+export class ClassReportDto {
+  @ApiProperty({ example: '2026-11' })
+  month: string;
+
+  @ApiProperty({ type: RefDto })
+  class: RefDto;
+
+  @ApiProperty({ example: 20 })
+  working_days: number;
+
+  @ApiProperty({ example: 64 })
+  students: number;
+
+  @ApiProperty({ example: 91.8, nullable: true, type: Number })
+  percent: number | null;
+
+  @ApiProperty({ example: 5 })
+  below_75: number;
+
+  @ApiProperty({ type: [ClassReportSectionDto] })
+  sections: ClassReportSectionDto[];
 }

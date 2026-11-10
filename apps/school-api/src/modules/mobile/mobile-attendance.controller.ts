@@ -7,6 +7,7 @@ import {
   Inject,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -21,6 +22,7 @@ import { AttendanceService } from '../attendance/attendance.service';
 import {
   LeaveDecisionDto,
   MarkAttendanceDto,
+  MarkSomeAttendanceDto,
   MonthlyAttendanceDto,
   MonthQueryDto,
   RosterDto,
@@ -104,18 +106,22 @@ export class MobileParentAttendanceController {
   }
 
   @Get('attendance')
-  @ApiOperation({ summary: 'Attendance calendar for a month: status of each day and the attendance %' })
+  @ApiOperation({
+    summary: 'Attendance calendar for a month: each day with morning, afternoon and the day status, and the %',
+    description:
+      'Attendance is taken in the 1st period (morning) and the 5th period (afternoon). Absent in one session = half_day.',
+  })
   @ApiEnvelope(MonthlyAttendanceDto)
   async month(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: MonthQueryDto) {
     return this.attendance.monthly(await this.access.childSchool(user.id, id), id, query.month);
   }
 
   @Get('attendance/today')
-  @ApiOperation({ summary: 'Today’s attendance for the home screen badge' })
+  @ApiOperation({ summary: 'Today’s attendance for the home screen badge: the day, morning and afternoon' })
   @ApiEnvelope(TodayAttendanceDto)
   async today(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number): Promise<TodayAttendanceDto> {
     const schoolId = await this.access.childSchool(user.id, id);
-    return { date: todayIn(this.app.timeZone), status: await this.attendance.todayStatus(id, schoolId) };
+    return { date: todayIn(this.app.timeZone), ...(await this.attendance.todaySessions(id, schoolId)) };
   }
 
   @Get('leaves')
@@ -212,25 +218,53 @@ export class MobileTeacherAttendanceController {
 
   @Get('sections/:id/attendance')
   @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
-  @ApiOperation({ summary: 'Attendance roster of my section for a date (period 0 is the morning attendance)' })
+  @ApiOperation({
+    summary: 'Attendance roster of my section for a date and session (morning = 1st period, afternoon = 5th period)',
+    description:
+      'session=morning (default) or afternoon. open is true only today during that period (opens_at to closes_at); otherwise show the list read-only. The afternoon list starts from the morning marks. Any other period gives 400 PERIOD_NOT_ALLOWED.',
+  })
   @ApiEnvelope(RosterDto)
-  @ApiErrors(HttpStatus.NOT_FOUND)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   async roster(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: RosterQueryDto) {
     const schoolId = this.access.teacherSchool(user);
     await this.assignments.assertTeachesSection(schoolId, user.id, id);
-    return this.attendance.roster(schoolId, id, query.date, query.period ?? 0);
+    return this.attendance.roster(schoolId, id, query.date, this.attendance.sessionFor(query), { teacher: true });
   }
 
   @Put('sections/:id/attendance')
   @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
   @ResponseMessage('Attendance saved')
-  @ApiOperation({ summary: 'Save attendance of my section. Parents of absent students get an alert.' })
+  @ApiOperation({
+    summary: 'Save the morning (1st period) or afternoon (5th period) attendance of my section',
+    description:
+      'Body: { date, session: "morning" | "afternoon", items: [{ student_id, status, remarks }] } with every student once. Teachers can save a session only today during its period (1st period for morning, 5th for afternoon): 400 SESSION_NOT_OPEN before, 400 SESSION_CLOSED after (the office marks it then), 400 PERIOD_NOT_ALLOWED for other periods. Parents of absent students get an alert once per day (a child present in the morning and absent in the afternoon is alerted for the afternoon).',
+  })
   @ApiEnvelope(RosterDto, { message: 'Attendance saved' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   async mark(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: MarkAttendanceDto) {
     const schoolId = this.access.teacherSchool(user);
     await this.assignments.assertTeachesSection(schoolId, user.id, id);
-    return this.attendance.mark(schoolId, id, dto, user);
+    return this.attendance.mark(schoolId, id, dto, user, { teacher: true });
+  }
+
+  @Patch('sections/:id/attendance')
+  @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
+  @ResponseMessage('Attendance saved')
+  @ApiOperation({
+    summary: 'Mark only some students in one call: each with its own status (present, absent, late, half_day, leave)',
+    description:
+      'Body: { date, session, items: [{ student_id, status, remarks }] } with only the students to change. Everyone else keeps the saved status, or the default when the session is not saved yet (present; leave for approved leave; the afternoon starts from the morning). Same rules as PUT: only during the 1st or 5th period (SESSION_NOT_OPEN / SESSION_CLOSED), parents of newly absent students get the alert. 400 STUDENT_NOT_IN_SECTION, DUPLICATE_STUDENT.',
+  })
+  @ApiEnvelope(RosterDto, { message: 'Attendance saved' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  async markSome(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: MarkSomeAttendanceDto,
+  ) {
+    const schoolId = this.access.teacherSchool(user);
+    await this.assignments.assertTeachesSection(schoolId, user.id, id);
+    return this.attendance.markSome(schoolId, id, dto, user, { teacher: true });
   }
 
   @Get('timetable')

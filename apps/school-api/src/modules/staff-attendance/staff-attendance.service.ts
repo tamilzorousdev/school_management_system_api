@@ -18,7 +18,15 @@ import {
   StaffDayDto,
   StaffMonthDto,
 } from './dto/staff-attendance.dto';
+import {
+  BulkSkipDto,
+  BulkStaffMarkDto,
+  BulkStaffResultDto,
+  StaffBoardPageDto,
+  StaffBoardQueryDto,
+} from './dto/staff-attendance.dto';
 import { StaffAttendance } from './entities/staff-attendance.entity';
+import { filterBoard, pageOf } from './staff-board.logic';
 
 export const LATE_GRACE_MINUTES = 10;
 const MAX_ACCURACY_ALLOWANCE_M = 50;
@@ -206,12 +214,65 @@ export class StaffAttendanceService {
     };
   }
 
+  async boardPage(schoolId: number, query: StaffBoardQueryDto): Promise<StaffBoardPageDto> {
+    const board = await this.board(schoolId, query.date);
+    const filtered = filterBoard(board.staff, { search: query.search, status: query.status });
+    const { items, ...paging } = pageOf(filtered, query.page, query.limit);
+    return { ...board, staff: items, filtered_total: filtered.length, ...paging };
+  }
+
+  async bulkMark(schoolId: number, dto: BulkStaffMarkDto, actor: AuthUser): Promise<BulkStaffResultDto> {
+    if (!dto.user_ids?.length && !dto.all_not_checked_in) {
+      throw AppException.validation([
+        { field: 'user_ids', message: 'Choose at least one staff member, or mark everyone not checked in' },
+      ]);
+    }
+    this.assertNotFuture(dto.date);
+    const board = await this.board(schoolId, dto.date);
+    const byUser = new Map(board.staff.map((row) => [row.user_id, row]));
+    const targets = dto.user_ids?.length
+      ? dto.user_ids
+      : board.staff.filter((row) => row.status === 'not_checked_in').map((row) => row.user_id);
+    if (!targets.length) {
+      throw AppException.badRequest('Everyone has already checked in or is on leave', 'NOTHING_TO_MARK');
+    }
+    const skipped: BulkSkipDto[] = [];
+    let marked = 0;
+    for (const userId of targets) {
+      const row = byUser.get(userId);
+      if (!row) {
+        skipped.push({ id: userId, name: `Staff ${userId}`, reason: 'Not on the staff list for this date' });
+        continue;
+      }
+      if (row.status === 'on_leave' && dto.status !== 'absent') {
+        skipped.push({ id: userId, name: row.name, reason: 'On approved leave' });
+        continue;
+      }
+      await this.saveManual(schoolId, userId, { ...dto, remarks: dto.remarks ?? null }, actor);
+      marked += 1;
+    }
+    return { date: dto.date, marked, skipped };
+  }
+
   async manualMark(schoolId: number, userId: number, dto: ManualMarkDto, actor: AuthUser): Promise<StaffDayDto> {
     const staff = await this.dataSource.getRepository(Staff).findOneBy({ user_id: userId, school_id: schoolId });
     if (!staff) throw AppException.notFound('Staff member not found', 'STAFF_NOT_FOUND');
-    if (dto.date > todayIn(this.app.timeZone)) {
+    this.assertNotFuture(dto.date);
+    return present(await this.saveManual(schoolId, userId, dto, actor));
+  }
+
+  private assertNotFuture(date: string): void {
+    if (date > todayIn(this.app.timeZone)) {
       throw AppException.badRequest('Attendance cannot be marked for a future date', 'FUTURE_DATE');
     }
+  }
+
+  private async saveManual(
+    schoolId: number,
+    userId: number,
+    dto: Pick<ManualMarkDto, 'date' | 'status' | 'check_in_at' | 'check_out_at'> & { remarks: string | null },
+    actor: AuthUser,
+  ): Promise<StaffAttendance> {
     const existing = await this.attendance.findOneBy({ user_id: userId, date: dto.date });
     const saved = await this.attendance.save(
       this.attendance.merge(existing ?? this.attendance.create(), {
@@ -236,7 +297,7 @@ export class StaffAttendanceService {
         marked_by: actor.id,
       }),
     );
-    return present(saved);
+    return saved;
   }
 
   async ingestPunches(dto: BiometricPunchesDto): Promise<PunchResultDto> {

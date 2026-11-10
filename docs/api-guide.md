@@ -359,8 +359,9 @@ Sign in as 9000000004 (Priya, class teacher of 6-A) to try it.
 | `POST /mobile/teacher/check-in` | `{ "lat": 13.0879, "lng": 80.2102, "accuracy_m": 12 }`. Refused with `OUTSIDE_SCHOOL` outside the school radius. Late is after the school reporting time plus 10 minutes |
 | `POST /mobile/teacher/check-out` | Same body |
 | `GET /mobile/teacher/my-attendance?month=2026-11` | My month |
-| `GET /mobile/teacher/sections/{id}/attendance?date=2026-11-02&period=0` | Roster with saved or default statuses. Period 0 is the morning attendance; students on approved leave default to `leave` |
-| `PUT /mobile/teacher/sections/{id}/attendance` | `{ "date": "2026-11-02", "period": 0, "items": [{ "student_id": 12, "status": "absent", "remarks": null }] }`. Send every student once. Saving today's period 0 alerts parents of absent students |
+| `GET /mobile/teacher/sections/{id}/attendance?date=2026-11-02&session=morning` | Roster for the **morning (1st period)** or **afternoon (5th period)** session. `open` is true only today between `opens_at` and `closes_at`; students on approved leave default to `leave`; the afternoon starts from the morning marks |
+| `PUT /mobile/teacher/sections/{id}/attendance` | `{ "date": "2026-11-02", "session": "afternoon", "items": [{ "student_id": 12, "status": "absent", "remarks": null }] }`. Send every student once. `400 SESSION_NOT_OPEN` before the period, `400 SESSION_CLOSED` after it, `400 PERIOD_NOT_ALLOWED` for other periods. Absent alerts go once a day per student |
+| `PATCH /mobile/teacher/sections/{id}/attendance` | **Mark only some students in one call**, each with its own status: `{ "date": "2026-11-10", "session": "morning", "items": [{ "student_id": 12, "status": "A" }, { "student_id": 14, "status": "L", "remarks": "Came 9:20" }] }`. Everyone else keeps the saved status (or the default). Status can be the word or the button letter: **P = present, A = absent, L = late** (L is never leave). Same period window and absent alerts as PUT. Admin twin: `PATCH /admin/attendance/sections/{id}` |
 | `GET /mobile/teacher/timetable` | My week: `periods` (bell schedule) and `slots` with `day_of_week` 1 Monday … 6 Saturday |
 | `GET /mobile/teacher/leave-balances` | Per leave type: allowed, used, pending, balance |
 | `GET /mobile/teacher/leaves` | My requests |
@@ -392,6 +393,38 @@ Sign in as 9000000004 (Priya, class teacher of 6-A) to try it.
 | `GET /mobile/teacher/substitutions` | Classes I cover for absent teachers, today and the next 7 days: date, period and time, section, subject, room, who is away, note |
 
 Staff leave status moves `pending_hod` → `pending_principal` → `approved` (or `rejected` at any step). With no HOD in the department it starts at `pending_principal`.
+
+### Two attendance sessions a day
+
+Student attendance is taken in the **1st period (`session: "morning"`)** and the **5th period (`session: "afternoon"`)**; they are stored as periods 1 and 5. The old `period` field still works (0 or 1 = morning, 5 = afternoon); any other period gives `400 PERIOD_NOT_ALLOWED`.
+
+- **The day** comes from both sessions: both present = `present` (`late` if either was late), absent in one = `half_day`, absent in both = `absent`, leave in both = `leave`. Reports, percentages, the parent calendar, today's badge, the report card and bus no-shows all use the day.
+- **Teachers** can save a session only **today during its period**: morning in the 1st period, afternoon in the 5th (bell times from the timetable). Before it: `400 SESSION_NOT_OPEN`; after it or on an earlier day: `400 SESSION_CLOSED`. The office (AO, admin) can save any session at any time, so a missed session is marked by the AO.
+- **Absent alert**: once per student per day. Absent in the morning → alert; present in the morning and absent in the afternoon → alert "(afternoon)".
+- Parent `GET /mobile/parent/children/{id}/attendance/today` and each day of the month calendar now also return `morning` and `afternoon`.
+
+### Attendance reports (admin web)
+
+| Call | What it gives |
+|---|---|
+| `GET /admin/attendance/board?date=&session=morning` | Every section for the session, with `morning_marked` and `afternoon_marked` |
+| `GET /admin/attendance/sections/{id}?date=&session=` | Section roster for the session |
+| `GET /admin/attendance/sections/{id}/report?month=` | Section, student-wise %, monthly |
+| `GET /admin/attendance/sections/{id}/report/xlsx?month=` | Same as Excel |
+| `GET /admin/attendance/classes/{id}/report?month=` | **Class-wise**: every section of the class with students, days marked, average % and below 75% |
+| `GET /admin/attendance/classes/{id}/report/xlsx?month=` | Same as Excel |
+| `GET /admin/attendance/students/{id}?month=` | Student-wise month: each day with `morning`, `afternoon` and the day `status` |
+
+### Admin web: daily attendance and bulk marking (AO, admin)
+
+| Call | What it does |
+|---|---|
+| `GET /admin/staff-attendance/board?date=&page=1&limit=20&search=&status=` | Staff for a date, **a page at a time** (default 20, max 100). `total`, `present`, `late`, `on_leave`, `not_checked_in` count the whole school; `staff` is the page after `search` (name, designation, department) and `status` (`present` includes half day, `not_checked_in` includes absent). Also `page`, `limit`, `filtered_total`, `total_pages`, `has_next` |
+| `PUT /admin/staff-attendance/{userId}` | Correct one person; reason required, saved as manual |
+| `PUT /admin/staff-attendance/bulk` | Mark many staff: `{ "date", "user_ids": [9, 12], "status": "present", "check_in_at": null, "check_out_at": null, "remarks": null }`, or `"all_not_checked_in": true` instead of `user_ids`. **Reason optional**. Staff on approved leave are skipped unless the status is `absent`. Returns `{ marked, skipped: [{ id, name, reason }] }`; `400` on `user_ids` when nobody is chosen, `FUTURE_DATE` |
+| `PUT /admin/attendance/bulk` | Mark many sections for a session: `{ "date", "session": "morning", "section_ids": [3, 4], "status": "present", "remarks": null, "overwrite": false }`; leave out `section_ids` for every section not marked yet. Every student gets the status, students on approved leave stay `leave`, sections already marked are skipped unless `overwrite`. Absent alerts go to parents as usual (today only). Returns `{ marked, students, skipped }`; `HOLIDAY`, `NOT_A_SCHOOL_DAY`, `NOTHING_TO_MARK` |
+
+Permission `attendance.manage` (AO, school admin, super admin).
 
 Biometric machines push punches to `POST /integrations/biometric/punches` with header `X-Device-Key` (`BIOMETRIC_WEBHOOK_KEY`); the first punch of the day is the check-in and the last is the check-out.
 
@@ -641,6 +674,26 @@ Every meeting has `from` (who booked), `to`, `teacher`, `parent`, `student`, `ho
 
 `GET /mobile/parent/meetings`, `GET /mobile/parent/children/{id}/teachers`, `POST /mobile/parent/children/{id}/meetings` `{ "teacher_user_id": 9, "title": "...", "scheduled_at": "...", "duration_minutes": 15 }`, `GET /mobile/parent/meetings/{id}`, `join` (role `participant`), `token`, `leave` and `cancel`. Parents cannot extend or end.
 
+### Agora uid
+
+`POST …/meetings/{id}/join` returns `uid` = user id × 2 for the teacher side and user id × 2 + 1 for the parent side, so one person who is both teacher and parent can join from two phones without Agora kicking one off. Always use the `uid` from the join response; never build it from the user id.
+
+### Accept or decline (like a Teams invite)
+
+Whoever books a meeting, the **other side** gets it as an invite: `response` is `pending`, then `accepted` or `declined` (with an optional `response_note`).
+
+| Call | Who |
+|---|---|
+| `POST /mobile/teacher/meetings/{id}/accept` · `/decline` | Teacher, for a meeting the **parent** booked |
+| `POST /mobile/parent/meetings/{id}/accept` · `/decline` | Parent, for a meeting the **teacher** booked |
+
+Body (optional): `{ "note": "Busy with exam duty" }`. The side that booked gets a push (`MEETING_ACCEPTED` / `MEETING_DECLINED`, category `meeting`, with `meeting_id`) and the `meeting.status` socket event now carries `response`.
+
+- **Joining does not depend on the reply**: pending or declined meetings can still be joined at the time, like Teams. Declining does not cancel; the booker can cancel or book another time.
+- The reply can be changed (decline → accept) until the meeting starts.
+- `403 NOT_MEETING_INVITEE` if the side that booked tries to reply; `409 MEETING_REPLY_CLOSED` once the meeting started, ended or was cancelled.
+- Every meeting in lists and details has `response`, `responded_at`, `response_note`; `to` is the invited person.
+
 ### Notes, meeting chat and recap
 
 Both apps use the same paths under `/mobile/teacher/meetings/{id}` and `/mobile/parent/meetings/{id}`. Everything is current academic year only, like the meetings themselves.
@@ -711,6 +764,25 @@ Office hours (School setup, default 08:00–17:00, Monday to Saturday, not on ho
 | `POST .../chat/threads/{id}/messages/{messageId}/flag` | `{ "reason": "..." }` reports it to the office |
 
 A message the school hides comes back with `hidden: true` and `body: null`. Office audit: `GET /admin/chat/threads?flagged=true`, `/insights`, `/flagged`, `GET /admin/chat/threads/{id}` (whole transcript; the visit is logged), `POST /admin/chat/messages/{id}/hide { "reason" }`, `/unhide` and `/dismiss-flag`. Permission `chat.audit`.
+
+## Push notification data (tap routing)
+
+Register the phone with `POST /me/devices` `{ "push_token": "<OneSignal subscription id>", "platform": "android" }` (`fcm_token` is the old name and still works); remove with `DELETE /me/devices?push_token=…`.
+
+**Delivery (PUSH_DRIVER=kafka):** pushes go through the central Notification Service with OneSignal. The app only needs the OneSignal **App ID** and must call `OneSignal.login("<our user id>")` right after sign-in (`data.user.id` from `/auth/otp/verify`) and `OneSignal.logout()` on sign-out; we target that external id. The Notification Service needs one push template registered once: `docs/notification-service/push-template.json` (`school_push`, title and body come ready from us in English or Tamil).
+
+Every push (OneSignal `additionalData`) has `category`, `template` and `notification_id`, plus the ids below. Ids are strings.
+
+| category | templates | ids sent | open |
+|---|---|---|---|
+| `chat` | CHAT_MESSAGE | `thread_id` | the chat thread |
+| `meeting` | MEETING_SCHEDULED, MEETING_REMINDER, MEETING_ENDING, MEETING_CANCELLED, MEETING_NOTES_SHARED | `meeting_id`, `student_id` | the meeting |
+| `approval` | LEAVE_APPROVAL_NEEDED (staff leave waiting for me), STUDENT_LEAVE_REQUEST (parent leave for my class), SUBSTITUTE_ASSIGNED, CLASS_COMBINED | `leave_id` and `student_id` for leaves; `on_date` (YYYY-MM-DD), `section_id` for proxies | the teacher Inbox |
+| `attendance` | STUDENT_ABSENT (`session`), LEAVE_STATUS (`leave_id`), STAFF_LEAVE_STATUS (`leave_id`) | `student_id` for parent pushes | attendance |
+| `diary` | DIARY_POSTED, DIARY_REJECTED | `entry_id` where present | diary |
+| `fees` | FEE_DUE, FEE_OVERDUE | `student_id` | fees |
+| `system` | RESULT_PUBLISHED (`exam_id`), ACHIEVEMENT_ADDED (`achievement_id`) | `student_id` | results / achievements |
+| `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips | `trip_id`, `alert_id`, `announcement_id` where present | the matching screen |
 
 ## Payslips (every staff app)
 

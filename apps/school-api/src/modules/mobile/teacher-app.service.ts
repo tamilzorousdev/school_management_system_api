@@ -74,8 +74,10 @@ export class TeacherAppService {
                       WHERE e.section_id = sec.id AND s.deleted_at IS NULL AND s.status = 'active') AS students,
                     (SELECT COUNT(*) FILTER (WHERE r.status IN ('present', 'late', 'half_day'))
                        FROM attendance_sessions a JOIN attendance_records r ON r.session_id = a.id
-                      WHERE a.section_id = sec.id AND a.date = $2 AND a.period = 0) AS present,
-                    EXISTS (SELECT 1 FROM attendance_sessions a WHERE a.section_id = sec.id AND a.date = $2 AND a.period = 0) AS marked
+                      WHERE a.section_id = sec.id AND a.date = $2
+                        AND a.period = (SELECT max(l.period) FROM attendance_sessions l
+                                        WHERE l.section_id = sec.id AND l.date = $2 AND l.period IN (1, 5))) AS present,
+                    EXISTS (SELECT 1 FROM attendance_sessions a WHERE a.section_id = sec.id AND a.date = $2 AND a.period IN (1, 5)) AS marked
              FROM sections sec WHERE sec.id = ANY($1)`,
             [sectionIds, date],
           )
@@ -152,10 +154,10 @@ export class TeacherAppService {
       this.students.get(schoolId, studentId),
       this.attendance.monthly(schoolId, studentId, month),
       this.dataSource.query(
-        `SELECT r.status FROM attendance_records r
-           JOIN attendance_sessions a ON a.id = r.session_id
-           JOIN academic_years y ON y.id = a.academic_year_id AND y.is_current
-           WHERE r.student_id = $1 AND r.school_id = $2 AND r.period = 0`,
+        `SELECT d.status FROM student_attendance_days d
+           JOIN academic_years y ON y.school_id = d.school_id AND y.is_current AND y.deleted_at IS NULL
+                                AND d.date BETWEEN y.start_date AND y.end_date
+           WHERE d.student_id = $1 AND d.school_id = $2`,
         [studentId, schoolId],
       ) as Promise<{ status: AttendanceStatus }[]>,
       this.leaves.forStudent(schoolId, studentId),
@@ -233,8 +235,9 @@ export class TeacherAppService {
       }),
       this.exams.sectionRanking(schoolId, sectionId, query.exam_id),
       this.dataSource.query(
-        `SELECT r.student_id, r.status FROM attendance_sessions a JOIN attendance_records r ON r.session_id = a.id
-         WHERE a.section_id = $1 AND a.date = $2 AND a.period = 0`,
+        `SELECT d.student_id, d.status FROM student_attendance_days d
+         JOIN student_enrollments e ON e.student_id = d.student_id AND e.section_id = $1
+         WHERE d.date = $2`,
         [sectionId, todayIn(this.app.timeZone)],
       ) as Promise<{ student_id: number; status: string }[]>,
     ]);

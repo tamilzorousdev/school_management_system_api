@@ -37,6 +37,9 @@ export const TEMPLATES = {
   RESULT_PUBLISHED: 'RESULT_PUBLISHED',
   ACHIEVEMENT_ADDED: 'ACHIEVEMENT_ADDED',
   CLASS_COMBINED: 'CLASS_COMBINED',
+  STUDENT_LEAVE_REQUEST: 'STUDENT_LEAVE_REQUEST',
+  MEETING_ACCEPTED: 'MEETING_ACCEPTED',
+  MEETING_DECLINED: 'MEETING_DECLINED',
 } as const;
 
 interface TemplateText {
@@ -155,7 +158,7 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
   },
   {
     code: TEMPLATES.LEAVE_APPROVAL_NEEDED,
-    category: 'attendance',
+    category: 'approval',
     push: true,
     sms: 'never',
     critical: false,
@@ -168,6 +171,63 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: 'உங்கள் ஒப்புதலுக்கு விடுப்பு',
         body: '{{name}} {{from}} முதல் {{to}} வரை {{type}} ({{days}} நாட்கள்) கோரியுள்ளார்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.MEETING_ACCEPTED,
+    category: 'meeting',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{by}} accepted the meeting',
+        body: '{{title}} about {{student}} on {{time}}.{{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{by}} சந்திப்பை ஏற்றுக்கொண்டார்',
+        body: '{{student}} பற்றிய {{title}}, {{time}}.{{note}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.MEETING_DECLINED,
+    category: 'meeting',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{by}} declined the meeting',
+        body: '{{title}} about {{student}} on {{time}}.{{note}} You can still join at that time, or cancel and book another time.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{by}} சந்திப்பை மறுத்தார்',
+        body: '{{student}} பற்றிய {{title}}, {{time}}.{{note}} அந்த நேரத்தில் இணையலாம் அல்லது ரத்து செய்து வேறு நேரம் பதிவு செய்யலாம்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.STUDENT_LEAVE_REQUEST,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Leave request for {{student}}',
+        body: '{{student}} ({{class}}): leave from {{from}} to {{to}}. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} விடுப்பு கோரிக்கை',
+        body: '{{student}} ({{class}}): {{from}} முதல் {{to}} வரை விடுப்பு. {{reason}}',
         sms_body: null,
       },
     },
@@ -500,7 +560,7 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
   },
   {
     code: TEMPLATES.SUBSTITUTE_ASSIGNED,
-    category: 'attendance',
+    category: 'approval',
     push: true,
     sms: 'fallback',
     critical: false,
@@ -519,7 +579,7 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
   },
   {
     code: TEMPLATES.CLASS_COMBINED,
-    category: 'attendance',
+    category: 'approval',
     push: true,
     sms: 'fallback',
     critical: false,

@@ -106,7 +106,7 @@ Every search word must match one searchable column; LIKE wildcards are escaped. 
 Send through `NotificationsService.dispatch({ template, audience, data })`:
 - `audience`: `{ user_ids }` or `{ roles, school_id }`.
 - Templates (English + Tamil) are in `notifications/notification-templates.catalog.ts`; add new ones there and run the seed.
-- Flow: in-app row → push via FCM (`PUSH_DRIVER`) → SMS when the template says `always`, or `fallback` and push did not reach a phone. Every attempt is a row in `notifications` (the outbox).
+- Flow: in-app row → push (`PUSH_DRIVER`: `kafka` = through the central Notification Service, which sends with OneSignal using its own key; we only publish `{ type: 'push', templateId: 'school_push', variables: { title, body, … }, externalIds: [user id] }`, and the app calls `OneSignal.login(<user id>)`; `onesignal`/`fcm` send directly) → SMS when the template says `always`, or `fallback` and push did not reach a phone. Every attempt is a row in `notifications` (the outbox).
 - Jobs run on the in-process queue (`QUEUE_DRIVER=memory`) with retries; queued jobs are lost on restart.
 
 ## SMS and Kafka

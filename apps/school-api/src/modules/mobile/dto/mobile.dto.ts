@@ -30,7 +30,25 @@ export class TodayAttendanceDto {
     nullable: true,
     type: String,
     enum: ['present', 'absent', 'late', 'half_day', 'leave'],
-    description: 'null until the class teacher marks attendance',
+    description: 'The day from both sessions (absent in one = half_day); null until attendance is marked',
   })
   status: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    enum: ['present', 'absent', 'late', 'half_day', 'leave'],
+    example: 'present',
+    description: 'Morning session (1st period)',
+  })
+  morning: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    enum: ['present', 'absent', 'late', 'half_day', 'leave'],
+    example: null,
+    description: 'Afternoon session (5th period); null until marked',
+  })
+  afternoon: string | null;
 }

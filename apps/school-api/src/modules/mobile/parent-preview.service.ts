@@ -42,11 +42,11 @@ export class ParentPreviewService {
   async home(schoolId: number, studentId: number): Promise<ParentPreviewDto> {
     await this.assertStudent(schoolId, studentId);
     const parent = await this.parentOf(schoolId, studentId);
-    const [child, status] = await Promise.all([
+    const [child, sessions] = await Promise.all([
       parent ? this.access.childCard(parent.user_id, studentId) : null,
-      this.attendance.todayStatus(studentId, schoolId),
+      this.attendance.todaySessions(studentId, schoolId),
     ]);
-    return { parent, child, today: { date: todayIn(this.app.timeZone), status } };
+    return { parent, child, today: { date: todayIn(this.app.timeZone), ...sessions } };
   }
 
   async bus(schoolId: number, studentId: number): Promise<ChildBusDto | null> {
