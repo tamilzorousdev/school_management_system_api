@@ -10,7 +10,12 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { School } from '../schools/entities/school.entity';
 import { UserRole } from '../users/entities/user-role.entity';
 import { Language, User } from '../users/entities/user.entity';
-import { GuardianInputDto, GuardianQueryDto, UpdateGuardianDto } from './dto/student-input.dto';
+import {
+  GuardianInputDto,
+  GuardianQueryDto,
+  UpdateGuardianDto,
+  UpdateMyParentProfileDto,
+} from './dto/student-input.dto';
 import {
   GuardianChildDto,
   GuardianDetailDto,
@@ -215,6 +220,24 @@ export class GuardiansService {
       pincode: guardian.pincode,
       co_guardians: coGuardians.map((row) => ({ ...row, id: Number(row.id) })),
     };
+  }
+
+  async profileForUser(userId: number): Promise<GuardianDetailDto> {
+    const guardian = await this.ownGuardian(userId);
+    return this.get(guardian.school_id, guardian.id);
+  }
+
+  async updateProfileForUser(userId: number, dto: UpdateMyParentProfileDto): Promise<GuardianDetailDto> {
+    const guardian = await this.ownGuardian(userId);
+    return this.update(guardian.school_id, guardian.id, dto);
+  }
+
+  private async ownGuardian(userId: number): Promise<Guardian> {
+    const guardian = await this.guardians.findOne({ where: { user_id: userId }, order: { id: 'ASC' } });
+    if (!guardian) {
+      throw AppException.notFound('No parent profile is linked to this login', 'PARENT_PROFILE_NOT_FOUND');
+    }
+    return guardian;
   }
 
   async update(schoolId: number, id: number, dto: UpdateGuardianDto): Promise<GuardianDetailDto> {

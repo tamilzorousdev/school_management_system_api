@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType, PickType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -564,3 +564,14 @@ export class UpdateGuardianDto extends PartialType(
   @Matches(/^\d{6}$/, { message: 'pincode must be 6 digits' })
   pincode?: string | null;
 }
+
+export class UpdateMyParentProfileDto extends PickType(UpdateGuardianDto, [
+  'alt_mobile',
+  'email',
+  'occupation',
+  'qualification',
+  'language',
+  'address_line',
+  'city',
+  'pincode',
+] as const) {}

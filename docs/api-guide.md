@@ -417,6 +417,18 @@ Student attendance is taken in the **1st period (`session: "morning"`)** and the
 | `GET /admin/attendance/sections/{id}/day?date=` | **Daily** report of a section: each student with `morning`, `afternoon`, day `status`, plus `summary` counts and % |
 | `GET /admin/attendance/students/{id}/summary` | Student this academic year: `year` totals and `months[]`, each with `working_days`, `marked_days`, counts and `percent` |
 
+### Parent profile (Parent app)
+
+| Call | What it does |
+|---|---|
+| `GET /mobile/parent/profile` | My profile: `name`, `mobile`, `alt_mobile`, `email`, `occupation`, `qualification`, `language`, `address_line`, `city`, `pincode`, `on_app`, `last_login_at`, `children[]` (`id`, `full_name`, `class_section`, `relation`, `admission_date`, `years_in_school`) and `co_guardians[]` (the other parent: `name`, `mobile`, `relation`) |
+| `PATCH /mobile/parent/profile` | Change `alt_mobile`, `email`, `occupation`, `qualification`, `address_line`, `city`, `pincode`, `language` (`en`/`ta`). Send only what changes; `null` clears a field. Returns the profile |
+
+- Name, mobile (the login), children and relation are changed only by the school office (`PATCH /admin/guardians/{id}`); sending `name` or `mobile` gives `400 VALIDATION_FAILED`.
+- `language` also changes the app and notification language (`GET /me` shows it).
+- Same data and table as the admin parent page: no copy.
+- `404 PARENT_PROFILE_NOT_FOUND` when the login is not linked to a parent record.
+
 ### Attendance time window, grace and missed
 
 Teachers mark the **morning** session in the 1st period and the **afternoon** session in the 5th period, plus a grace time after each period (school setting `attendance_grace_minutes`, default 15, 0–30, `PATCH /admin/school`). Example: 1st period 09:00–09:45 with 15 min grace → teachers can mark 09:00–10:00.

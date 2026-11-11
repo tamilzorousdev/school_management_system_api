@@ -40,6 +40,7 @@ import {
   UpdateAdmissionDto,
   UpdateGuardianDto,
   UpdateGuardianLinkDto,
+  UpdateMyParentProfileDto,
   UpdateStudentDto,
 } from './dto/student-input.dto';
 import {
@@ -392,5 +393,30 @@ export class MobileParentController {
   @ApiEnvelope(ParentChildDto, { isArray: true })
   children(@CurrentUser() user: AuthUser) {
     return this.guardians.childrenForUser(user.id);
+  }
+
+  @Get('profile')
+  @ApiOperation({
+    summary: 'My parent profile: contact details, address, my children and the other parent',
+    description:
+      'Name, mobile, children and relation are kept by the school office; the parent can change the rest with PATCH /mobile/parent/profile.',
+  })
+  @ApiEnvelope(GuardianDetailDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  profile(@CurrentUser() user: AuthUser) {
+    return this.guardians.profileForUser(user.id);
+  }
+
+  @Patch('profile')
+  @ResponseMessage('Profile updated')
+  @ApiOperation({
+    summary: 'Update my alternate mobile, email, occupation, qualification, address and app language',
+    description:
+      'Send only the fields to change; null clears a field. Name and mobile number (the login) can only be changed by the school office. language (en or ta) also changes the app and notification language.',
+  })
+  @ApiEnvelope(GuardianDetailDto, { message: 'Profile updated' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  updateProfile(@CurrentUser() user: AuthUser, @Body() dto: UpdateMyParentProfileDto) {
+    return this.guardians.updateProfileForUser(user.id, dto);
   }
 }
