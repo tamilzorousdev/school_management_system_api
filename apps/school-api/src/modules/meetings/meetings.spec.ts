@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { AppException } from '@app/common';
 import { agoraSignatureValid, AgoraTokenService } from './agora-token.service';
-import { MeetingStatus } from './entities/meeting.entity';
+import { MeetingResponse, MeetingStatus } from './entities/meeting.entity';
 import {
   actualMinutes,
   canJoin,
@@ -13,7 +13,9 @@ import {
   formatMeetingTime,
   isNoShow,
   isOverTime,
+  enterBlockReason,
   joinBlockReason,
+  joinClosesAt,
   minutesBetween,
   overlaps,
   scheduleError,
@@ -23,8 +25,9 @@ import {
 } from './meetings.logic';
 
 const at = (time: string) => new Date(`2026-11-11T${time}:00+05:30`);
-const meeting = (status: MeetingStatus = 'scheduled', end = '10:30') => ({
+const meeting = (status: MeetingStatus = 'scheduled', end = '10:30', response: MeetingResponse = 'accepted') => ({
   status,
+  response,
   scheduled_at: at('10:00'),
   scheduled_end_at: at(end),
 });
@@ -68,10 +71,22 @@ describe('meeting lifecycle (10:00 to 10:30, reminder at 10:25)', () => {
     expect(statusAfterJoin('scheduled', at('10:30'), at('10:40'))).toBe('time_exceeded');
   });
 
-  it('a meeting nobody joined becomes missed 30 minutes after its end', () => {
-    expect(isNoShow(meeting(), at('11:00'))).toBe(false);
-    expect(isNoShow(meeting(), at('11:01'))).toBe(true);
-    expect(joinBlockReason(meeting(), at('11:01'))?.code).toBe('MEETING_ENDED');
+  it('a meeting nobody joined closes for joining at its end time and becomes missed', () => {
+    expect(canJoin(meeting(), at('10:30'))).toBe(true);
+    expect(canJoin(meeting(), at('10:31'))).toBe(false);
+    expect(isNoShow(meeting(), at('10:31'))).toBe(true);
+    expect(joinBlockReason(meeting(), at('10:31'))?.code).toBe('MEETING_ENDED');
+    expect(joinClosesAt(meeting())).toEqual(at('10:30'));
+    expect(joinClosesAt(meeting('in_progress'))).toEqual(at('10:40'));
+    expect(joinClosesAt(meeting('completed'))).toBeNull();
+  });
+
+  it('can be joined only after the invite is accepted', () => {
+    expect(canJoin(meeting('scheduled', '10:30', 'pending'), at('10:00'))).toBe(false);
+    expect(enterBlockReason(meeting('scheduled', '10:30', 'pending'), at('10:00'))?.code).toBe('MEETING_NOT_ACCEPTED');
+    expect(enterBlockReason(meeting('scheduled', '10:30', 'declined'), at('10:00'))?.code).toBe('MEETING_DECLINED');
+    expect(enterBlockReason(meeting('scheduled', '10:30', 'accepted'), at('10:00'))).toBeNull();
+    expect(enterBlockReason(meeting('cancelled', '10:30', 'accepted'), at('10:00'))?.code).toBe('MEETING_CANCELLED');
   });
 
   it('completed, missed and cancelled meetings can never be joined again', () => {

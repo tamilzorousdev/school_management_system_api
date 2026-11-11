@@ -301,6 +301,15 @@ export class MeetingDto {
   })
   can_join: boolean;
 
+  @ApiProperty({
+    example: { teacher: true, parent: false },
+    description: 'Who is in the call right now. Ring only when the other side is in and you are not.',
+  })
+  in_call: { teacher: boolean; parent: boolean };
+
+  @ApiProperty({ example: 1, description: 'People in the call right now (0, 1 or 2)' })
+  active_participants: number;
+
   @ApiProperty({ example: '2026-11-11T16:20:00.000+05:30' })
   join_opens_at: Date;
 

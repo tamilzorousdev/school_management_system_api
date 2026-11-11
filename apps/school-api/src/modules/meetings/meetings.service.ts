@@ -53,18 +53,17 @@ import {
   canJoin,
   channelName,
   EMPTY_CLOSE_MINUTES,
-  HARD_STOP_MINUTES,
-  hardStopAt,
   END_REMINDER_MINUTES,
   endsAt,
+  enterBlockReason,
   extendedEnd,
   extensionError,
   formatMeetingTime,
-  joinBlockReason,
+  HARD_STOP_MINUTES,
+  joinClosesAt,
   joinOpensAt,
   minutesBetween,
   NO_SHOW_GRACE_MINUTES,
-  noShowAt,
   OPEN_STATUSES,
   scheduleError,
   START_REMINDER_MINUTES,
@@ -243,7 +242,8 @@ export class MeetingsService {
 
   async leave(actor: AuthUser, party: MeetingParty, id: number): Promise<MeetingDto> {
     const meeting = await this.findForParty(actor, party, id);
-    await this.closeOpenLogs(this.dataSource.manager, meeting.id, new Date(), actor.id, 'left');
+    const now = new Date();
+    await this.closeOpenLogs(this.dataSource.manager, meeting.id, now, actor.id, 'left');
     if (callerLeft(meeting, party))
       this.later(`ring stop ${meeting.id}`, () => this.stopRing(meeting.id, 'caller_left'));
     this.realtime.toUsers(this.members(meeting), 'meeting.participant', {
@@ -252,6 +252,17 @@ export class MeetingsService {
       party,
       action: 'left',
     });
+    const [closed] = await this.transition(
+      `id = $2 AND status IN ('in_progress', 'time_exceeded')
+       AND NOT EXISTS (SELECT 1 FROM meeting_call_logs l WHERE l.meeting_id = meetings.id AND l.left_at IS NULL)`,
+      `status = 'completed', end_reason = 'empty', ended_at = $1::timestamptz`,
+      [now, meeting.id],
+    );
+    if (closed) {
+      this.announceStatus(closed, actor.id);
+      this.later(`ring stop ${closed.id}`, () => this.stopRing(closed.id, 'ended'));
+      return (await this.present([closed]))[0];
+    }
     return (await this.present([meeting]))[0];
   }
 
@@ -779,6 +790,7 @@ export class MeetingsService {
     const [clash] = await this.dataSource.query(
       `SELECT id FROM meetings
        WHERE deleted_at IS NULL AND status IN ('scheduled', 'in_progress', 'time_exceeded')
+         AND response <> 'declined'
          AND (teacher_user_id = $1 OR parent_user_id = $2)
          AND scheduled_at < $4 AND scheduled_end_at > $3
        LIMIT 1`,
@@ -842,7 +854,7 @@ export class MeetingsService {
   }
 
   private assertJoinable(meeting: Meeting, now: Date): void {
-    const blocked = joinBlockReason(meeting, now);
+    const blocked = enterBlockReason(meeting, now);
     if (blocked) throw AppException.conflict(blocked.message, blocked.code);
   }
 
@@ -951,7 +963,7 @@ export class MeetingsService {
     const now = new Date();
     const studentIds = [...new Set(rows.map((row) => row.student_id))];
     const yearIds = [...new Set(rows.map((row) => row.academic_year_id))];
-    const [people, students, relations, years] = await Promise.all([
+    const [people, students, relations, years, open] = await Promise.all([
       this.people(
         rows.flatMap((row) => [
           row.teacher_user_id,
@@ -979,7 +991,12 @@ export class MeetingsService {
       this.dataSource.query(`SELECT id, name FROM academic_years WHERE id = ANY($1)`, [yearIds]) as Promise<
         { id: number; name: string }[]
       >,
+      this.dataSource.query(
+        `SELECT DISTINCT meeting_id, party FROM meeting_call_logs WHERE meeting_id = ANY($1) AND left_at IS NULL`,
+        [rows.map((row) => row.id)],
+      ) as Promise<{ meeting_id: number; party: MeetingParty }[]>,
     ]);
+    const inCall = new Set(open.map((row) => `${row.meeting_id}:${row.party}`));
     const studentMap = new Map(students.map((row) => [Number(row.id), row]));
     const relationMap = new Map(relations.map((row) => [`${row.student_id}:${row.user_id}`, row.relation]));
     const yearMap = new Map(years.map((row) => [Number(row.id), row.name]));
@@ -1027,9 +1044,10 @@ export class MeetingsService {
             : null,
         },
         can_join: canJoin(row, now),
+        in_call: { teacher: inCall.has(`${row.id}:teacher`), parent: inCall.has(`${row.id}:parent`) },
+        active_participants: Number(inCall.has(`${row.id}:teacher`)) + Number(inCall.has(`${row.id}:parent`)),
         join_opens_at: joinOpensAt(row),
-        join_closes_at:
-          row.status === 'scheduled' ? noShowAt(row) : ACTIVE_STATUSES.includes(row.status) ? hardStopAt(row) : null,
+        join_closes_at: joinClosesAt(row),
         started_at: row.started_at,
         ended_at: row.ended_at,
         call_minutes: actualMinutes(row, now),

@@ -147,10 +147,17 @@ export class PushService {
       }),
     });
     const body = (await response.json().catch(() => ({}))) as { id?: string; errors?: unknown };
-    if (!response.ok || !body.id) {
-      throw new Error(`OneSignal error (${response.status}): ${JSON.stringify(body.errors ?? body)}`);
+    if (response.ok && body.id) return { status: 'sent', provider: 'onesignal', successCount: 1, invalidTokens: [] };
+    if (response.ok && JSON.stringify(body.errors ?? '').includes('not subscribed')) {
+      return {
+        status: 'skipped',
+        provider: 'onesignal',
+        successCount: 0,
+        invalidTokens: [],
+        error: 'The phone is not subscribed to push in OneSignal',
+      };
     }
-    return { status: 'sent', provider: 'onesignal', successCount: 1, invalidTokens: [] };
+    throw new Error(`OneSignal error (${response.status}): ${JSON.stringify(body.errors ?? body)}`);
   }
 
   private async sendKafka(message: PushMessage): Promise<PushResult> {

@@ -763,7 +763,11 @@ Whoever books a meeting, the **other side** gets it as an invite: `response` is 
 
 Body (optional): `{ "note": "Busy with exam duty" }`. The side that booked gets a push (`MEETING_ACCEPTED` / `MEETING_DECLINED`, category `meeting`, with `meeting_id`) and the `meeting.status` socket event now carries `response`.
 
-- **Joining does not depend on the reply**: pending or declined meetings can still be joined at the time, like Teams. Declining does not cancel; the booker can cancel or book another time.
+- **Joining needs the reply `accepted`.** `can_join` is false while `response` is `pending` or `declined`; `POST .../join` returns `409 MEETING_NOT_ACCEPTED` or `409 MEETING_DECLINED`. Declining does not cancel; the booker can cancel or book another time.
+- A **declined** meeting does not hold the time slot: the same teacher and parent can book that time again.
+- `join_closes_at`: for a meeting nobody has joined yet it is the **end time** (it becomes `missed` then); once it is live it is the end time + 10 minutes (hard stop).
+- `in_call: { teacher, parent }` and `active_participants` (0, 1 or 2) show who is in the call right now. Ring only when the other side is in and you are not.
+- When the **last person leaves** (`POST .../leave`), the meeting ends at once: `status: completed`, `end_reason: empty`, and any ring is cancelled. If someone drops without calling leave, it closes 5 minutes after the last activity.
 - The reply can be changed (decline → accept) until the meeting starts.
 - `403 NOT_MEETING_INVITEE` if the side that booked tries to reply; `409 MEETING_REPLY_CLOSED` once the meeting started, ended or was cancelled.
 - Every meeting in lists and details has `response`, `responded_at`, `response_note`; `to` is the invited person.

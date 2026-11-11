@@ -1,8 +1,8 @@
 import { FieldError } from '@app/common';
-import { MeetingStatus } from './entities/meeting.entity';
+import { MeetingResponse, MeetingStatus } from './entities/meeting.entity';
 
 export const JOIN_EARLY_MINUTES = 10;
-export const NO_SHOW_GRACE_MINUTES = 30;
+export const NO_SHOW_GRACE_MINUTES = 0;
 export const START_REMINDER_MINUTES = 10;
 export const END_REMINDER_MINUTES = 5;
 export const EMPTY_CLOSE_MINUTES = 5;
@@ -61,8 +61,33 @@ export function joinBlockReason(meeting: MeetingTiming, now: Date): { message: s
   return null;
 }
 
-export function canJoin(meeting: MeetingTiming, now: Date): boolean {
-  return joinBlockReason(meeting, now) === null;
+export function replyBlockReason(meeting: { response: MeetingResponse }): { message: string; code: string } | null {
+  if (meeting.response === 'declined') {
+    return { message: 'This meeting was declined. Book another time.', code: 'MEETING_DECLINED' };
+  }
+  if (meeting.response !== 'accepted') {
+    return {
+      message: 'The meeting can be joined once it is accepted',
+      code: 'MEETING_NOT_ACCEPTED',
+    };
+  }
+  return null;
+}
+
+export function enterBlockReason(
+  meeting: MeetingTiming & { response: MeetingResponse },
+  now: Date,
+): { message: string; code: string } | null {
+  return joinBlockReason(meeting, now) ?? replyBlockReason(meeting);
+}
+
+export function canJoin(meeting: MeetingTiming & { response: MeetingResponse }, now: Date): boolean {
+  return enterBlockReason(meeting, now) === null;
+}
+
+export function joinClosesAt(meeting: MeetingTiming): Date | null {
+  if (meeting.status === 'scheduled') return noShowAt(meeting);
+  return ACTIVE_STATUSES.includes(meeting.status) ? hardStopAt(meeting) : null;
 }
 
 export function statusAfterJoin(status: MeetingStatus, scheduledEndAt: Date, now: Date): MeetingStatus {
