@@ -156,6 +156,8 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 | `LEAVE_NOT_PENDING` | 409 | The request was already decided or cancelled |
 | `NOT_CLASS_TEACHER`, `NOT_APPROVER`, `OWN_LEAVE` | 403 | This person cannot decide this leave |
 | `TEACHER_CLASH`, `ROOM_CLASH` | 409 | Timetable: the teacher or room is busy in that period |
+| `TEACHER_OVER_LIMIT` | 409 | Teacher assignments or the timetable would give a teacher more periods a week than their `max_periods_per_week`. Changes that bring an old overload down are still allowed |
+| `LIMIT_BELOW_LOAD` | 409 | Staff edit: the weekly limit cannot go below the periods a week the teacher already has |
 | `BELL_INVALID`, `PERIOD_IN_USE` | 400/409 | Bell schedule overlaps, or removes a period the timetable uses |
 | `TEACHER_NOT_ABSENT`, `SUBSTITUTE_BUSY` | 409 | Substitutes: the period's teacher is in, or the chosen teacher is not free |
 | `RUN_FINALIZED`, `RUN_EMPTY` | 409/400 | Payroll month is already final, or has no payslips |

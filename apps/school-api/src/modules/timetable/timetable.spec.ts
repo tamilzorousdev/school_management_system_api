@@ -46,7 +46,7 @@ describe('TimetableService.setSlot', () => {
   }));
   const slot = { day_of_week: 1, period_no: 2, subject_id: 4 };
 
-  function build(clash: { teacher?: boolean; room?: boolean }) {
+  function build(clash: { teacher?: boolean; room?: boolean; full?: boolean }) {
     const section = { id: 5, class_id: 1, academic_year_id: 2, name: 'A', room: 'R-6A', school_class: { name: '6' } };
     const repositories = new Map<unknown, unknown>([
       [Section, { findOne: jest.fn().mockResolvedValue(section) }],
@@ -57,6 +57,13 @@ describe('TimetableService.setSlot', () => {
     const query = jest.fn().mockImplementation((sql: string) => {
       if (sql.includes('t.teacher_user_id = $4')) {
         return Promise.resolve(clash.teacher ? [{ class_name: '7', section_name: 'B', teacher: 'Kavitha' }] : []);
+      }
+      if (sql.includes('AS scheduled')) {
+        return Promise.resolve(
+          clash.full
+            ? [{ user_id: 9, name: 'Joseph Antony', max_periods_per_week: 30, assigned: '30', scheduled: '30' }]
+            : [],
+        );
       }
       if (sql.includes('LOWER(t.room)')) {
         return Promise.resolve(clash.room ? [{ class_name: '8', section_name: 'A' }] : []);
@@ -93,6 +100,15 @@ describe('TimetableService.setSlot', () => {
       () => fail('expected a clash'),
       (error: AppException) => expect(codeOf(error)).toBe('ROOM_CLASH'),
     );
+  });
+
+  it('blocks a teacher whose week is already full', async () => {
+    const { service, save } = build({ full: true });
+    await service.setSlot(1, 5, slot).then(
+      () => fail('expected the weekly limit'),
+      (error: AppException) => expect(codeOf(error)).toBe('TEACHER_OVER_LIMIT'),
+    );
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('saves with the assigned teacher and section room when free', async () => {

@@ -20,6 +20,7 @@ import {
 import { BellPeriod } from './entities/bell-period.entity';
 import { TimetableSlot } from './entities/timetable-slot.entity';
 import { yearWhere } from '../../shared/year-context';
+import { assertCanScheduleOneMore, teacherLoads } from '../staff/teacher-load';
 
 export const SCHOOL_DAYS = [1, 2, 3, 4, 5, 6];
 
@@ -222,6 +223,10 @@ export class TimetableService {
       day_of_week: dto.day_of_week,
       period_no: dto.period_no,
     });
+    if (teacherId && existing?.teacher_user_id !== teacherId) {
+      const loads = await teacherLoads(this.dataSource, schoolId, section.academic_year_id, [teacherId]);
+      assertCanScheduleOneMore(loads.get(teacherId));
+    }
     await this.slots.save(
       this.slots.merge(existing ?? this.slots.create(), {
         school_id: schoolId,
@@ -306,7 +311,7 @@ export class TimetableService {
           max_periods_per_week: Number(row.max_periods_per_week),
           by_day: byDay,
           free: Math.max(0, inWeek - days.length),
-          overloaded: Math.max(days.length, Number(row.assigned)) > Number(row.max_periods_per_week),
+          overloaded: days.length > Number(row.max_periods_per_week),
         };
       })
       .sort((a, b) => b.scheduled - a.scheduled);

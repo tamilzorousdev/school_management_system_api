@@ -53,6 +53,7 @@ import {
   StaffMetrics,
 } from './staff-metrics';
 import { yearWhere } from '../../shared/year-context';
+import { assertLimitCoversLoad, teacherLoads } from './teacher-load';
 
 const DOCUMENT_TITLES: Record<StaffDocumentType, string> = {
   id_proof: 'ID proof',
@@ -384,6 +385,13 @@ export class StaffService {
     if (dto.role_codes) this.assertCanGrant(dto.role_codes, actor);
     const roles = dto.role_codes ? await this.access.resolveRoles(dto.role_codes, actor.roles) : null;
     await this.dataSource.transaction(async (manager) => {
+      if (dto.max_periods_per_week !== undefined && dto.max_periods_per_week < row.max_periods_per_week) {
+        const yearId = await this.currentYearId(schoolId);
+        if (yearId) {
+          const loads = await teacherLoads(manager, schoolId, yearId, [row.user_id]);
+          assertLimitCoversLoad(loads.get(row.user_id), dto.max_periods_per_week);
+        }
+      }
       const user = await manager.findOneByOrFail(User, { id: row.user_id });
       if (dto.mobile && dto.mobile !== user.mobile) {
         if (await manager.exists(User, { where: { mobile: dto.mobile, id: Not(user.id), deleted_at: IsNull() } })) {

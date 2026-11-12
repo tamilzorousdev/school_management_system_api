@@ -225,7 +225,7 @@ export class WorkloadRowDto {
   @ApiProperty({ example: 22, description: 'Teaching periods in the week with no class' })
   free: number;
 
-  @ApiProperty({ description: 'Scheduled or assigned periods are above max_periods_per_week' })
+  @ApiProperty({ description: 'Periods a week in the timetable are above max_periods_per_week' })
   overloaded: boolean;
 }
 

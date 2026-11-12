@@ -9,6 +9,7 @@ import { AssignmentsQueryDto, SaveAssignmentsDto } from './dto/staff-input.dto';
 import { AssignmentMatrixDto, MatrixCellDto, TeacherClassDto } from './dto/staff-response.dto';
 import { Staff } from './entities/staff.entity';
 import { TeacherAssignment } from './entities/teacher-assignment.entity';
+import { assertAssignedWithinLimit, teacherLoads } from './teacher-load';
 
 @Injectable()
 export class AssignmentsService {
@@ -142,6 +143,7 @@ export class AssignmentsService {
         }
       }
 
+      const before = await teacherLoads(manager, schoolId, year.id, teacherIds);
       for (const item of dto.items) {
         const existing = await manager.findOneBy(TeacherAssignment, {
           section_id: item.section_id,
@@ -162,6 +164,7 @@ export class AssignmentsService {
           }),
         );
       }
+      assertAssignedWithinLimit(before, await teacherLoads(manager, schoolId, year.id, teacherIds));
     });
     return this.matrix(schoolId, { academic_year_id: year.id });
   }
