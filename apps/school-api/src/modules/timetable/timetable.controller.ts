@@ -6,6 +6,7 @@ import { PERMISSIONS } from '../access/access.catalog';
 import {
   BellPeriodDto,
   BellScheduleDto,
+  BellScheduleQueryDto,
   SectionTimetableDto,
   SlotInputDto,
   SlotQueryDto,
@@ -26,8 +27,8 @@ export class TimetableController {
   @RequirePermissions(PERMISSIONS.TIMETABLE_VIEW)
   @ApiOperation({ summary: 'Bell schedule. 8 periods with a break and lunch are created the first time.' })
   @ApiEnvelope(BellPeriodDto, { isArray: true })
-  periods(@SchoolId() schoolId: number) {
-    return this.timetable.periods(schoolId);
+  periods(@SchoolId() schoolId: number, @Query() query: BellScheduleQueryDto) {
+    return this.timetable.periods(schoolId, query.class_id);
   }
 
   @Put('periods')
@@ -40,6 +41,18 @@ export class TimetableController {
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.CONFLICT)
   setPeriods(@SchoolId() schoolId: number, @Body() dto: BellScheduleDto) {
     return this.timetable.setPeriods(schoolId, dto);
+  }
+
+  @Delete('classes/:classId/periods')
+  @RequirePermissions(PERMISSIONS.TIMETABLE_MANAGE)
+  @ResponseMessage('Class bell schedule reset to default')
+  @ApiOperation({ summary: 'Reset a class bell schedule to default' })
+  @ApiEnvelope(BellPeriodDto, { isArray: true })
+  resetClassPeriods(
+    @SchoolId() schoolId: number,
+    @Param('classId', ParseIntPipe) classId: number,
+  ) {
+    return this.timetable.resetClassPeriods(schoolId, classId);
   }
 
   @Get('sections/:id')

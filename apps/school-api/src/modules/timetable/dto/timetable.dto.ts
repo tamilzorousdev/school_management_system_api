@@ -44,7 +44,21 @@ export class BellPeriodInputDto {
   is_break?: boolean;
 }
 
+export class BellScheduleQueryDto {
+  @ApiPropertyOptional({ example: 1, description: 'Class id to get class-specific bell schedule' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  class_id?: number;
+}
+
 export class BellScheduleDto {
+  @ApiPropertyOptional({ example: 1, nullable: true })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  class_id?: number | null;
+
   @ApiProperty({ type: [BellPeriodInputDto] })
   @IsArray()
   @ArrayMinSize(1)
@@ -110,6 +124,9 @@ export class SlotQueryDto {
 export class BellPeriodDto {
   @ApiProperty({ example: 1 })
   id: number;
+
+  @ApiPropertyOptional({ example: 1, nullable: true })
+  class_id?: number | null;
 
   @ApiProperty({ example: 1, nullable: true, type: Number, description: 'null for breaks' })
   period_no: number | null;

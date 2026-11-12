@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { AppException } from '@app/common';
 import { AcademicYear } from '../setup/entities/academic-year.entity';
 import { Section } from '../setup/entities/section.entity';
@@ -74,8 +74,25 @@ export class TimetableService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async periods(schoolId: number): Promise<BellPeriodDto[]> {
-    if (!(await this.bells.existsBy({ school_id: schoolId }))) {
+  async periods(schoolId: number, classId?: number): Promise<BellPeriodDto[]> {
+    if (classId) {
+      const classRows = await this.bells.find({
+        where: { school_id: schoolId, class_id: classId },
+        order: { sort_order: 'ASC' },
+      });
+      if (classRows.length > 0) {
+        return classRows.map(({ id, class_id, period_no, name, start_time, end_time, is_break }) => ({
+          id,
+          class_id,
+          period_no,
+          name,
+          start_time,
+          end_time,
+          is_break,
+        }));
+      }
+    }
+    if (!(await this.bells.existsBy({ school_id: schoolId, class_id: IsNull() }))) {
       await this.saveBell(
         schoolId,
         DEFAULT_BELL.map(([name, start, end, isBreak]) => ({
@@ -84,11 +101,16 @@ export class TimetableService {
           end_time: end,
           is_break: isBreak,
         })),
+        null,
       );
     }
-    const rows = await this.bells.find({ where: { school_id: schoolId }, order: { sort_order: 'ASC' } });
-    return rows.map(({ id, period_no, name, start_time, end_time, is_break }) => ({
+    const rows = await this.bells.find({
+      where: { school_id: schoolId, class_id: IsNull() },
+      order: { sort_order: 'ASC' },
+    });
+    return rows.map(({ id, class_id, period_no, name, start_time, end_time, is_break }) => ({
       id,
+      class_id,
       period_no,
       name,
       start_time,
@@ -102,24 +124,33 @@ export class TimetableService {
     if (error) throw AppException.badRequest(error, 'BELL_INVALID');
     const teaching = dto.items.filter((item) => !item.is_break).length;
     if (!teaching) throw AppException.badRequest('Add at least one teaching period', 'BELL_INVALID');
-    const [used] = await this.dataSource.query(
-      `SELECT MAX(period_no) AS max FROM timetable_slots WHERE school_id = $1`,
-      [schoolId],
-    );
-    if (Number(used?.max ?? 0) > teaching) {
-      throw AppException.conflict(
-        `The timetable uses period ${used.max}. Clear those periods before removing them.`,
-        'PERIOD_IN_USE',
+    const classId = dto.class_id ?? null;
+    if (classId) {
+      await this.dataSource.query(
+        `DELETE FROM timetable_slots t
+         USING sections sec
+         WHERE t.section_id = sec.id AND t.school_id = $1 AND sec.class_id = $2 AND t.period_no > $3`,
+        [schoolId, classId, teaching],
+      );
+    } else {
+      await this.dataSource.query(
+        `DELETE FROM timetable_slots WHERE school_id = $1 AND period_no > $2`,
+        [schoolId, teaching],
       );
     }
-    await this.saveBell(schoolId, dto.items);
-    return this.periods(schoolId);
+    await this.saveBell(schoolId, dto.items, classId);
+    return this.periods(schoolId, classId ?? undefined);
+  }
+
+  async resetClassPeriods(schoolId: number, classId: number): Promise<BellPeriodDto[]> {
+    await this.bells.delete({ school_id: schoolId, class_id: classId });
+    return this.periods(schoolId, classId);
   }
 
   async sectionGrid(schoolId: number, sectionId: number): Promise<SectionTimetableDto> {
     const section = await this.section(schoolId, sectionId);
     const [periods, slots, plan] = await Promise.all([
-      this.periods(schoolId),
+      this.periods(schoolId, section.class_id),
       this.dataSource.query(`${SLOT_SELECT} WHERE t.section_id = $1 ORDER BY t.day_of_week, t.period_no`, [
         sectionId,
       ]) as Promise<SlotRow[]>,
@@ -329,14 +360,20 @@ export class TimetableService {
   private async saveBell(
     schoolId: number,
     items: { name: string; start_time: string; end_time: string; is_break?: boolean }[],
+    classId?: number | null,
   ): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
-      await manager.delete(BellPeriod, { school_id: schoolId });
+      if (classId) {
+        await manager.delete(BellPeriod, { school_id: schoolId, class_id: classId });
+      } else {
+        await manager.delete(BellPeriod, { school_id: schoolId, class_id: IsNull() });
+      }
       let number = 0;
       await manager.insert(
         BellPeriod,
         items.map((item, index) => ({
           school_id: schoolId,
+          class_id: classId ?? null,
           name: item.name,
           start_time: item.start_time,
           end_time: item.end_time,
