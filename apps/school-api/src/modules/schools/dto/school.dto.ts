@@ -6,6 +6,7 @@ import {
   IsInt,
   IsLatitude,
   IsLongitude,
+  IsObject,
   IsOptional,
   IsString,
   Length,
@@ -17,6 +18,8 @@ import {
 } from 'class-validator';
 import { ListQueryDto, toBoolean } from '@app/common';
 import { MOBILE_PATTERN, normalizeMobile } from '../../../shared/mobile';
+import { ID_CARD_DESIGNS } from '../../../shared/id-card-design';
+import type { IdCardLayout } from '../../../shared/id-card-layout';
 import { DIARY_REVIEW_MODES, DiaryReviewMode, SCHOOL_BOARDS, SchoolBoard } from '../entities/school.entity';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -193,6 +196,51 @@ export class SchoolProfileDto {
   @IsInt()
   @Min(1)
   seal_file_id?: number | null;
+
+  @ApiPropertyOptional({
+    example: 'design3',
+    enum: ID_CARD_DESIGNS,
+    description: 'Active student ID card design template',
+  })
+  @IsOptional()
+  @IsIn(ID_CARD_DESIGNS)
+  id_card_design?: string | null;
+
+  @ApiPropertyOptional({
+    example: 51,
+    nullable: true,
+    type: Number,
+    description:
+      'Front side of the full ID card design from the design team (image from POST /files, purpose id_card_design). Printed when id_card_design is custom. null removes it.',
+  })
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsInt()
+  @Min(1)
+  id_card_front_file_id?: number | null;
+
+  @ApiPropertyOptional({
+    example: 52,
+    nullable: true,
+    type: Number,
+    description: 'Back side of the uploaded ID card design (image, purpose id_card_design). null removes it.',
+  })
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsInt()
+  @Min(1)
+  id_card_back_file_id?: number | null;
+
+  @ApiPropertyOptional({
+    type: Object,
+    nullable: true,
+    description:
+      'Where student details are printed on the uploaded design: { front: [...], back: [...] }, each { key, x, y, w, h, font_size, color, bold, align } with x, y, w, h as fractions (0 to 1) of the card.',
+  })
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsObject()
+  id_card_layout?: Record<string, unknown> | null;
 }
 
 export class CreateSchoolDto extends SchoolProfileDto {
@@ -323,6 +371,28 @@ export class SchoolDto {
     description: 'Signed link to the seal, valid for FILE_URL_TTL_SECONDS',
   })
   seal_url: string | null;
+
+  @ApiPropertyOptional({ example: 'design3', enum: ID_CARD_DESIGNS, nullable: true })
+  id_card_design: string | null;
+
+  @ApiPropertyOptional({ example: 51, nullable: true, type: Number })
+  id_card_front_file_id: number | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String, description: 'Signed link to the uploaded front design' })
+  id_card_front_url: string | null;
+
+  @ApiPropertyOptional({ example: 52, nullable: true, type: Number })
+  id_card_back_file_id: number | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String, description: 'Signed link to the uploaded back design' })
+  id_card_back_url: string | null;
+
+  @ApiPropertyOptional({
+    type: Object,
+    nullable: true,
+    description: 'Where student details are printed on the uploaded design',
+  })
+  id_card_layout: IdCardLayout | null;
 
   @ApiProperty()
   is_active: boolean;

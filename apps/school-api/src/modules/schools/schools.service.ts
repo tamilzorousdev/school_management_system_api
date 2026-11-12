@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, IsNull, Repository } from 'typeorm';
 import { AppException, AuthUser, listQuery, Paginated } from '@app/common';
+import { IdCardLayout, normalizeIdCardLayout, parseIdCardLayout } from '../../shared/id-card-layout';
 import { ROLES } from '../access/access.catalog';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -79,7 +80,8 @@ export class SchoolsService {
     await this.assertSignature(id, dto.signature_file_id);
     await this.assertSeal(id, dto.seal_file_id);
     this.assertOfficeHours(school, dto);
-    await this.schools.update(id, dto);
+    await this.assertIdCardDesign(id, school, dto);
+    await this.schools.update(id, this.withIdCardLayout(dto));
     return this.get(id);
   }
 
@@ -89,8 +91,17 @@ export class SchoolsService {
     await this.assertSignature(id, dto.signature_file_id);
     await this.assertSeal(id, dto.seal_file_id);
     this.assertOfficeHours(school, dto);
-    await this.schools.update(id, dto);
+    await this.assertIdCardDesign(id, school, dto);
+    await this.schools.update(id, this.withIdCardLayout(dto));
     return this.get(id);
+  }
+
+  private withIdCardLayout<T extends { id_card_layout?: Record<string, unknown> | null }>(
+    dto: T,
+  ): Omit<T, 'id_card_layout'> & { id_card_layout?: IdCardLayout | null } {
+    const { id_card_layout, ...rest } = dto;
+    if (id_card_layout === undefined) return rest;
+    return { ...rest, id_card_layout: id_card_layout === null ? null : normalizeIdCardLayout(id_card_layout) };
   }
 
   async find(id: number): Promise<School> {
@@ -121,6 +132,33 @@ export class SchoolsService {
     if (!file.mime_type.startsWith('image/')) {
       throw AppException.validation([
         { field: 'signature_file_id', message: 'The signature must be an image (PNG or JPG)' },
+      ]);
+    }
+  }
+
+  private async assertIdCardDesign(
+    schoolId: number,
+    school: School,
+    dto: {
+      id_card_design?: string | null;
+      id_card_front_file_id?: number | null;
+      id_card_back_file_id?: number | null;
+    },
+  ): Promise<void> {
+    for (const field of ['id_card_front_file_id', 'id_card_back_file_id'] as const) {
+      const fileId = dto[field];
+      if (!fileId) continue;
+      const file = await this.files.assertAttachable(fileId, schoolId, field);
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.mime_type)) {
+        throw AppException.validation([{ field, message: 'The ID card design must be a PNG or JPG image' }]);
+      }
+    }
+    if (dto.id_card_design === undefined && dto.id_card_front_file_id === undefined) return;
+    const design = dto.id_card_design === undefined ? school.id_card_design : dto.id_card_design;
+    const front = dto.id_card_front_file_id === undefined ? school.id_card_front_file_id : dto.id_card_front_file_id;
+    if (design === 'custom' && !front) {
+      throw AppException.validation([
+        { field: 'id_card_front_file_id', message: 'Upload the front side of the ID card design first' },
       ]);
     }
   }
@@ -178,6 +216,12 @@ export class SchoolsService {
       signature_url: this.files.linkFor(school.signature_file_id),
       seal_file_id: school.seal_file_id,
       seal_url: this.files.linkFor(school.seal_file_id),
+      id_card_design: school.id_card_design ?? 'design2',
+      id_card_front_file_id: school.id_card_front_file_id,
+      id_card_front_url: this.files.linkFor(school.id_card_front_file_id),
+      id_card_back_file_id: school.id_card_back_file_id,
+      id_card_back_url: this.files.linkFor(school.id_card_back_file_id),
+      id_card_layout: parseIdCardLayout(school.id_card_layout),
       is_active: school.is_active,
       student_count: count.students,
       user_count: count.users,

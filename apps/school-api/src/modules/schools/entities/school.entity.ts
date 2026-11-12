@@ -1,5 +1,6 @@
 import { TrackedEntity } from '@app/common';
 import { Column, Entity, Index } from 'typeorm';
+import type { IdCardLayout } from '../../../shared/id-card-layout';
 
 export const SCHOOL_BOARDS = ['CBSE', 'STATE', 'ICSE', 'OTHER'] as const;
 export type SchoolBoard = (typeof SCHOOL_BOARDS)[number];
@@ -48,6 +49,18 @@ export class School extends TrackedEntity {
 
   @Column({ type: 'int', nullable: true })
   seal_file_id: number | null;
+
+  @Column({ type: 'varchar', length: 30, nullable: true, default: 'design2' })
+  id_card_design: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  id_card_front_file_id: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  id_card_back_file_id: number | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  id_card_layout: IdCardLayout | null;
 
   @Column({ type: 'varchar', length: 50, default: 'Asia/Kolkata' })
   timezone: string;
