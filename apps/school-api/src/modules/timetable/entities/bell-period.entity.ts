@@ -9,6 +9,10 @@ export class BellPeriod {
   @Column({ type: 'int' })
   school_id: number;
 
+  @Index()
+  @Column({ type: 'int', nullable: true })
+  class_id: number | null;
+
   @Column({ type: 'smallint', nullable: true })
   period_no: number | null;
 
