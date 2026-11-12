@@ -48,10 +48,7 @@ export class TimetableController {
   @ResponseMessage('Class bell schedule reset to default')
   @ApiOperation({ summary: 'Reset a class bell schedule to default' })
   @ApiEnvelope(BellPeriodDto, { isArray: true })
-  resetClassPeriods(
-    @SchoolId() schoolId: number,
-    @Param('classId', ParseIntPipe) classId: number,
-  ) {
+  resetClassPeriods(@SchoolId() schoolId: number, @Param('classId', ParseIntPipe) classId: number) {
     return this.timetable.resetClassPeriods(schoolId, classId);
   }
 

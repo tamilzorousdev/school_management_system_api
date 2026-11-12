@@ -133,10 +133,10 @@ export class TimetableService {
         [schoolId, classId, teaching],
       );
     } else {
-      await this.dataSource.query(
-        `DELETE FROM timetable_slots WHERE school_id = $1 AND period_no > $2`,
-        [schoolId, teaching],
-      );
+      await this.dataSource.query(`DELETE FROM timetable_slots WHERE school_id = $1 AND period_no > $2`, [
+        schoolId,
+        teaching,
+      ]);
     }
     await this.saveBell(schoolId, dto.items, classId);
     return this.periods(schoolId, classId ?? undefined);
