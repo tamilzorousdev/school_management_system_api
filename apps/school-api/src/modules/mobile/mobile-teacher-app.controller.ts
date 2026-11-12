@@ -190,6 +190,6 @@ export class MobileParentBannerController {
   })
   @ApiEnvelope(MobileHolidayOverviewDto)
   holidays(@CurrentUser() user: AuthUser, @Query() query: HolidayQueryDto) {
-    return this.holidaysService.overview(this.access.teacherSchool(user), query);
+    return this.holidaysService.forTeacher(this.access.teacherSchool(user), user.id, query);
   }
 }

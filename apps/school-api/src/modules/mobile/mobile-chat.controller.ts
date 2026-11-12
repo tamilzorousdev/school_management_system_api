@@ -6,6 +6,9 @@ import { ChatService } from '../chat/chat.service';
 import {
   ChatMessageDto,
   ChatThreadDto,
+  ClearChatResultDto,
+  DeleteMessageDto,
+  DeleteMessageResultDto,
   FlagMessageDto,
   MessagesPageDto,
   MessagesQueryDto,
@@ -20,7 +23,7 @@ import { TEACHER_MODULE_TAGS } from './teacher-modules.catalog';
 import { PARENT_MODULE_TAGS } from './parent-modules.catalog';
 
 const REALTIME =
-  'Live updates on socket.io namespace /comm with { auth: { token } }: chat.message, chat.read, chat.updated, chat.typing ' +
+  'Live updates on socket.io namespace /comm with { auth: { token } }: chat.message, chat.read, chat.updated, chat.deleted, chat.restored, chat.typing ' +
   '(send chat.typing { thread_id }).';
 
 @ApiTags(TEACHER_MODULE_TAGS.MODULE_6)
@@ -71,7 +74,11 @@ export class MobileTeacherChatController {
 
   @Post('threads/:id/messages')
   @ResponseMessage('Message sent')
-  @ApiOperation({ summary: 'Send a message or a file to the parent (push to the parent at once)' })
+  @ApiOperation({
+    summary: 'Send a message, photo, file, voice message or video to the parent (push to the parent at once)',
+    description:
+      'Upload first with POST /files, then send file_id. Voice (m4a, aac, mp3, ogg, wav, webm) and video (mp4, mov, 3gp, webm) up to 25 MB; send duration_seconds (required for a video, at most 120 s). kind in the reply is text, image, file, voice or video. 400 VIDEO_TOO_LONG.',
+  })
   @ApiEnvelope(ChatMessageDto, { status: HttpStatus.CREATED, message: 'Message sent' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   send(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: SendMessageDto) {
@@ -100,6 +107,57 @@ export class MobileTeacherChatController {
     @Body() dto: FlagMessageDto,
   ) {
     return this.chat.flag(user, 'teacher', id, messageId, dto.reason);
+  }
+
+  @Post('threads/:id/messages/:messageId/delete')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Message deleted')
+  @ApiOperation({
+    summary: 'Delete a message for me, or for everyone',
+    description:
+      'Body { "for": "me" } removes it from my chat only; the parent still sees it. { "for": "everyone" } works on my own message within 24 hours: both sides then see "This message was deleted" (deleted true, body and file null) and the office can still read it. undo_until is the time Undo stays available (10 seconds). Socket event chat.deleted { thread_id, message_id }. 403 NOT_YOUR_MESSAGE, 400 DELETE_WINDOW_PASSED, 409 ALREADY_DELETED.',
+  })
+  @ApiEnvelope(DeleteMessageResultDto, { message: 'Message deleted' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  deleteMessage(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('messageId', ParseIntPipe) messageId: number,
+    @Body() dto: DeleteMessageDto,
+  ) {
+    return this.chat.deleteMessage(user, 'teacher', id, messageId, dto.for);
+  }
+
+  @Post('threads/:id/messages/:messageId/undo-delete')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Message restored')
+  @ApiOperation({
+    summary: 'Undo my delete for everyone (within 10 seconds)',
+    description:
+      'Brings the message back for both sides. Socket event chat.restored with the message. 400 UNDO_EXPIRED after 10 seconds, 409 NOTHING_TO_UNDO.',
+  })
+  @ApiEnvelope(ChatMessageDto, { message: 'Message restored' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  undoDelete(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('messageId', ParseIntPipe) messageId: number,
+  ) {
+    return this.chat.undoDelete(user, 'teacher', id, messageId);
+  }
+
+  @Post('threads/:id/clear')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Chat cleared')
+  @ApiOperation({
+    summary: 'Clear this chat for me',
+    description:
+      'Every message up to now is gone from my chat; the parent keeps the full history and new messages show as usual. The office can still read everything.',
+  })
+  @ApiEnvelope(ClearChatResultDto, { message: 'Chat cleared' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  clear(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.chat.clearChat(user, 'teacher', id);
   }
 }
 
@@ -152,7 +210,7 @@ export class MobileParentChatController {
   @Post('chat/threads/:id/messages')
   @ResponseMessage('Message sent')
   @ApiOperation({
-    summary: 'Send a message or a file to the teacher',
+    summary: 'Send a message, photo, file, voice message or video to the teacher',
     description:
       'Outside office hours (Monday to Saturday, not holidays) the message is saved and the teacher is told when office hours start: held_for_office_hours is true.',
   })
@@ -184,5 +242,56 @@ export class MobileParentChatController {
     @Body() dto: FlagMessageDto,
   ) {
     return this.chat.flag(user, 'parent', id, messageId, dto.reason);
+  }
+
+  @Post('chat/threads/:id/messages/:messageId/delete')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Message deleted')
+  @ApiOperation({
+    summary: 'Delete a message for me, or for everyone',
+    description:
+      'Body { "for": "me" } removes it from my chat only; the teacher still sees it. { "for": "everyone" } works on my own message within 24 hours: both sides then see "This message was deleted" (deleted true, body and file null) and the office can still read it. undo_until is the time Undo stays available (10 seconds). Socket event chat.deleted { thread_id, message_id }. 403 NOT_YOUR_MESSAGE, 400 DELETE_WINDOW_PASSED, 409 ALREADY_DELETED.',
+  })
+  @ApiEnvelope(DeleteMessageResultDto, { message: 'Message deleted' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  deleteMessage(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('messageId', ParseIntPipe) messageId: number,
+    @Body() dto: DeleteMessageDto,
+  ) {
+    return this.chat.deleteMessage(user, 'parent', id, messageId, dto.for);
+  }
+
+  @Post('chat/threads/:id/messages/:messageId/undo-delete')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Message restored')
+  @ApiOperation({
+    summary: 'Undo my delete for everyone (within 10 seconds)',
+    description:
+      'Brings the message back for both sides. Socket event chat.restored with the message. 400 UNDO_EXPIRED after 10 seconds, 409 NOTHING_TO_UNDO.',
+  })
+  @ApiEnvelope(ChatMessageDto, { message: 'Message restored' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  undoDelete(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('messageId', ParseIntPipe) messageId: number,
+  ) {
+    return this.chat.undoDelete(user, 'parent', id, messageId);
+  }
+
+  @Post('chat/threads/:id/clear')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Chat cleared')
+  @ApiOperation({
+    summary: 'Clear this chat for me',
+    description:
+      'Every message up to now is gone from my chat; the teacher keeps the full history and new messages show as usual. The office can still read everything.',
+  })
+  @ApiEnvelope(ClearChatResultDto, { message: 'Chat cleared' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  clear(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.chat.clearChat(user, 'parent', id);
   }
 }

@@ -111,3 +111,30 @@ export function belowLine(scores: StudentScore[], threshold?: number): number | 
   if (threshold !== undefined) return threshold;
   return average(scores.map((score) => score.percent));
 }
+
+export const AVERAGE_BAND = 10;
+
+export function bandLimits(
+  band: 'below' | 'average' | 'range',
+  sectionAverage: number | null,
+  line: number | null,
+  query: { from?: number; to?: number },
+): { from: number; to: number } | null {
+  if (band === 'range') {
+    const from = query.from ?? 0;
+    const to = query.to ?? 100;
+    return from <= to ? { from, to } : { from: to, to: from };
+  }
+  if (sectionAverage === null) return null;
+  if (band === 'average') {
+    return {
+      from: round1(Math.max(0, sectionAverage - AVERAGE_BAND)),
+      to: round1(Math.min(100, sectionAverage + AVERAGE_BAND)),
+    };
+  }
+  return line === null ? null : { from: 0, to: line };
+}
+
+export function inBand(percent: number, limits: { from: number; to: number }, below: boolean): boolean {
+  return below ? percent < limits.to : percent >= limits.from && percent <= limits.to;
+}

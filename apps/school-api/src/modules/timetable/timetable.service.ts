@@ -82,15 +82,19 @@ export class TimetableService {
         order: { sort_order: 'ASC' },
       });
       if (classRows.length > 0) {
-        return classRows.map(({ id, class_id, period_no, name, start_time, end_time, is_break }) => ({
-          id,
-          class_id,
-          period_no,
-          name,
-          start_time,
-          end_time,
-          is_break,
-        }));
+        return classRows.map(
+          ({ id, class_id, period_no, name, start_time, end_time, is_break, is_special, section_ids }) => ({
+            id,
+            class_id,
+            period_no,
+            name,
+            start_time,
+            end_time,
+            is_break,
+            is_special,
+            section_ids: is_special ? (section_ids ?? null) : null,
+          }),
+        );
       }
     }
     if (!(await this.bells.existsBy({ school_id: schoolId, class_id: IsNull() }))) {
@@ -109,7 +113,7 @@ export class TimetableService {
       where: { school_id: schoolId, class_id: IsNull() },
       order: { sort_order: 'ASC' },
     });
-    return rows.map(({ id, class_id, period_no, name, start_time, end_time, is_break }) => ({
+    return rows.map(({ id, class_id, period_no, name, start_time, end_time, is_break, is_special, section_ids }) => ({
       id,
       class_id,
       period_no,
@@ -117,13 +121,28 @@ export class TimetableService {
       start_time,
       end_time,
       is_break,
+      is_special,
+      section_ids: is_special ? (section_ids ?? null) : null,
     }));
   }
 
   async setPeriods(schoolId: number, dto: BellScheduleDto): Promise<BellPeriodDto[]> {
     const error = validateBell(dto.items);
     if (error) throw AppException.badRequest(error, 'BELL_INVALID');
-    const teaching = dto.items.filter((item) => !item.is_break).length;
+    const teaching = dto.items.filter((item) => !item.is_break && !item.is_special).length;
+    const teachingIndexes = dto.items
+      .map((item, index) => (!item.is_break && !item.is_special ? index : -1))
+      .filter((index) => index >= 0);
+    const misplaced = dto.items.find(
+      (item, index) =>
+        item.is_special && index > teachingIndexes[0] && index < teachingIndexes[teachingIndexes.length - 1],
+    );
+    if (misplaced) {
+      throw AppException.badRequest(
+        `${misplaced.name} must be before the first period or after the last one`,
+        'BELL_INVALID',
+      );
+    }
     if (!teaching) throw AppException.badRequest('Add at least one teaching period', 'BELL_INVALID');
     const classId = dto.class_id ?? null;
     if (classId) {
@@ -194,7 +213,7 @@ export class TimetableService {
   async setSlot(schoolId: number, sectionId: number, dto: SlotInputDto): Promise<SectionTimetableDto> {
     const section = await this.section(schoolId, sectionId);
     const periods = await this.periods(schoolId);
-    const teachingCount = periods.filter((period) => !period.is_break).length;
+    const teachingCount = periods.filter((period) => period.period_no !== null).length;
     if (dto.period_no > teachingCount) {
       throw AppException.validation([
         { field: 'period_no', message: `The bell schedule has ${teachingCount} periods` },
@@ -304,7 +323,7 @@ export class TimetableService {
   async workload(schoolId: number): Promise<WorkloadDto> {
     const year = await this.dataSource.getRepository(AcademicYear).findOneBy(yearWhere(schoolId));
     const periods = await this.periods(schoolId);
-    const inWeek = periods.filter((period) => !period.is_break).length * SCHOOL_DAYS.length;
+    const inWeek = periods.filter((period) => period.period_no !== null).length * SCHOOL_DAYS.length;
     const rows: {
       user_id: number;
       name: string;
@@ -364,7 +383,14 @@ export class TimetableService {
 
   private async saveBell(
     schoolId: number,
-    items: { name: string; start_time: string; end_time: string; is_break?: boolean }[],
+    items: {
+      name: string;
+      start_time: string;
+      end_time: string;
+      is_break?: boolean;
+      is_special?: boolean;
+      section_ids?: number[] | null;
+    }[],
     classId?: number | null,
   ): Promise<void> {
     await this.dataSource.transaction(async (manager) => {
@@ -382,8 +408,10 @@ export class TimetableService {
           name: item.name,
           start_time: item.start_time,
           end_time: item.end_time,
-          is_break: item.is_break ?? false,
-          period_no: item.is_break ? null : (number += 1),
+          is_break: (item.is_break ?? false) && !item.is_special,
+          is_special: item.is_special ?? false,
+          section_ids: item.is_special && item.section_ids?.length ? item.section_ids : null,
+          period_no: item.is_break || item.is_special ? null : (number += 1),
           sort_order: index + 1,
         })),
       );

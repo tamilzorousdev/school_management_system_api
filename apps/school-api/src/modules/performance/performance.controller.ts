@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, Get, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpStatus,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ApiEnvelope,
@@ -12,6 +24,7 @@ import {
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS, ROLES } from '../access/access.catalog';
 import { MobileAccessService } from '../mobile/mobile-access.service';
+import { AssignmentsService } from '../staff/assignments.service';
 import {
   BelowAverageDto,
   BelowAverageQueryDto,
@@ -20,6 +33,11 @@ import {
   SpecialClassDto,
   SpecialClassInputDto,
   SpecialClassQueryDto,
+  SpecialClassSettingsDto,
+  SpecialClassSettingsResultDto,
+  SpecialMarkDto,
+  SpecialRosterDto,
+  SpecialRosterQueryDto,
   UpdateSpecialClassDto,
 } from './dto/performance.dto';
 import { PerformanceService } from './performance.service';
@@ -74,19 +92,67 @@ export class SpecialClassesController {
 
   @Get()
   @RequirePermissions(PERMISSIONS.TIMETABLE_VIEW)
-  @ApiOperation({ summary: 'Special classes, with the day, period, teacher and students' })
+  @ApiOperation({
+    summary: 'Special and extra classes, with when they run, the teacher and students',
+    description: 'Filter by section_id (who in this class has one) or teacher_user_id (what a teacher takes).',
+  })
   @ApiEnvelope(SpecialClassDto, { isArray: true })
   list(@SchoolId() schoolId: number, @Query() query: SpecialClassQueryDto) {
-    return this.specials.list(schoolId, query.section_id);
+    return this.specials.list(schoolId, query);
+  }
+
+  @Get('settings')
+  @RequirePermissions(PERMISSIONS.TIMETABLE_VIEW)
+  @ApiOperation({ summary: 'Classes that can have a whole-class special class' })
+  @ApiEnvelope(SpecialClassSettingsResultDto)
+  settings(@SchoolId() schoolId: number) {
+    return this.specials.settings(schoolId);
+  }
+
+  @Put('settings')
+  @RequirePermissions(PERMISSIONS.TIMETABLE_MANAGE)
+  @ResponseMessage('Special class settings saved')
+  @ApiOperation({ summary: 'Choose the classes that can have a whole-class special class (null = every class)' })
+  @ApiEnvelope(SpecialClassSettingsResultDto, { message: 'Special class settings saved' })
+  @ApiErrors(HttpStatus.BAD_REQUEST)
+  saveSettings(@SchoolId() schoolId: number, @Body() dto: SpecialClassSettingsDto) {
+    return this.specials.saveSettings(schoolId, dto.class_ids);
+  }
+
+  @Get(':id/attendance')
+  @RequirePermissions(PERMISSIONS.TIMETABLE_VIEW)
+  @ApiOperation({ summary: 'Attendance of a special or extra class for a date' })
+  @ApiEnvelope(SpecialRosterDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  roster(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Query() query: SpecialRosterQueryDto) {
+    return this.specials.roster(schoolId, id, query.date);
+  }
+
+  @Put(':id/attendance')
+  @RequirePermissions(PERMISSIONS.ATTENDANCE_MANAGE)
+  @ResponseMessage('Attendance saved')
+  @ApiOperation({
+    summary: 'Save attendance of a special or extra class',
+    description: 'Students not sent stay present. 400 NOT_A_CLASS_DAY, FUTURE_DATE, STUDENT_NOT_IN_CLASS.',
+  })
+  @ApiEnvelope(SpecialRosterDto, { message: 'Attendance saved' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  mark(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SpecialMarkDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.specials.mark(schoolId, id, dto, user);
   }
 
   @Post()
   @RequirePermissions(PERMISSIONS.TIMETABLE_MANAGE)
   @ResponseMessage('Special class created')
   @ApiOperation({
-    summary: 'Create a special class for chosen students: one dedicated period every week',
+    summary: 'Create a special class (whole section) or an extra class (chosen students)',
     description:
-      'The period repeats every week on day_of_week. The teacher must be free then (409 TEACHER_CLASH) and within their weekly limit (409 TEACHER_OVER_LIMIT); a section has one special class per period (409 SPECIAL_CLASS_CLASH). Every student must be in the section (400 STUDENT_NOT_IN_SECTION). Parents of the students get a notification.',
+      'timing=period keeps one period every week (the students miss that regular period). timing=extra_time runs at its own time before or after school, in a break or lunch, or on a Sunday or holiday, on the chosen weekdays between start_date and end_date (no weekdays = that one date). Checks: 409 DURING_CLASS_TIME (overlaps a teaching period on a school day), TEACHER_CLASH, STUDENT_CLASH, SPECIAL_CLASS_CLASH; 409 TEACHER_OVER_LIMIT only for period classes; 400 CLASS_NOT_ALLOWED when whole-class special classes are not turned on for the class. The teacher and the parents are told at once.',
   })
   @ApiEnvelope(SpecialClassDto, { message: 'Special class created' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
@@ -98,8 +164,9 @@ export class SpecialClassesController {
   @RequirePermissions(PERMISSIONS.TIMETABLE_MANAGE)
   @ResponseMessage('Special class saved')
   @ApiOperation({
-    summary: 'Change a special class: students, teacher, day, period or title',
-    description: 'Same checks as create. Parents of newly added students get a notification.',
+    summary: 'Change a special or extra class',
+    description:
+      'Same checks as create. New students\u2019 parents are told it was added, removed students\u2019 parents that it is cancelled, and when the time changes the teacher and parents are told the new time.',
   })
   @ApiEnvelope(SpecialClassDto, { message: 'Special class saved' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
@@ -110,7 +177,7 @@ export class SpecialClassesController {
   @Delete(':id')
   @RequirePermissions(PERMISSIONS.TIMETABLE_MANAGE)
   @ResponseMessage('Special class removed')
-  @ApiOperation({ summary: 'Stop a special class' })
+  @ApiOperation({ summary: 'Stop a special or extra class; the teacher and parents are told it is cancelled' })
   @ApiErrors(HttpStatus.NOT_FOUND)
   remove(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
     return this.specials.remove(schoolId, id);
@@ -126,13 +193,44 @@ export class MobileTeacherSpecialClassesController {
   constructor(
     private readonly access: MobileAccessService,
     private readonly specials: SpecialClassesService,
+    private readonly assignments: AssignmentsService,
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Special classes I take: day, period, time, section and students' })
+  @ApiOperation({ summary: 'Special and extra classes I take: when, section and students' })
   @ApiEnvelope(SpecialClassDto, { isArray: true })
   mine(@CurrentUser() user: AuthUser) {
     return this.specials.forTeacher(this.access.teacherSchool(user), user.id);
+  }
+
+  @Get('sections/:sectionId')
+  @ApiOperation({ summary: 'Who in this section has a special or extra class' })
+  @ApiEnvelope(SpecialClassDto, { isArray: true })
+  async forSection(@CurrentUser() user: AuthUser, @Param('sectionId', ParseIntPipe) sectionId: number) {
+    const schoolId = this.access.teacherSchool(user);
+    await this.assignments.assertTeachesSection(schoolId, user.id, sectionId);
+    return this.specials.list(schoolId, { section_id: sectionId });
+  }
+
+  @Get(':id/attendance')
+  @ApiOperation({ summary: 'Attendance list of my special or extra class for a date (default present)' })
+  @ApiEnvelope(SpecialRosterDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  roster(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: SpecialRosterQueryDto) {
+    return this.specials.roster(this.access.teacherSchool(user), id, query.date, user.id);
+  }
+
+  @Put(':id/attendance')
+  @ResponseMessage('Attendance saved')
+  @ApiOperation({
+    summary: 'Save attendance of my special or extra class',
+    description:
+      'Send the students to mark (present, absent or late); the rest stay present. Parents of absent students get an alert the same day. 403 NOT_YOUR_SPECIAL_CLASS, 400 NOT_A_CLASS_DAY, FUTURE_DATE.',
+  })
+  @ApiEnvelope(SpecialRosterDto, { message: 'Attendance saved' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  mark(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: SpecialMarkDto) {
+    return this.specials.mark(this.access.teacherSchool(user), id, dto, user, true);
   }
 }
 
@@ -149,8 +247,8 @@ export class MobileParentSpecialClassesController {
 
   @Get()
   @ApiOperation({
-    summary: 'Special classes the child attends: subject, teacher, day, period and time',
-    description: 'students holds only this child.',
+    summary: 'Special and extra classes the child attends, with when they run and the child\u2019s attendance',
+    description: 'students holds only this child; attendance counts the days taken in that class.',
   })
   @ApiEnvelope(SpecialClassDto, { isArray: true })
   async forChild(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {

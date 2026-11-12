@@ -169,8 +169,14 @@ export class ParentTeachersService {
       ) as Promise<{ id: number; class_name: string; section_name: string }[]>,
       this.dataSource.query(
         `SELECT name FROM holidays WHERE school_id = $1 AND deleted_at IS NULL AND type <> 'event'
-         AND date <= $2 AND COALESCE(end_date, date) >= $2 LIMIT 1`,
-        [schoolId, on],
+         AND date <= $2 AND COALESCE(end_date, date) >= $2
+         AND (class_ids IS NULL OR (
+           SELECT sec.class_id FROM student_enrollments e
+           JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current AND y.deleted_at IS NULL
+           JOIN sections sec ON sec.id = e.section_id
+           WHERE e.student_id = $3 AND y.school_id = $1 LIMIT 1) = ANY(class_ids))
+         LIMIT 1`,
+        [schoolId, on, studentId],
       ) as Promise<{ name: string }[]>,
       this.bells.periods(schoolId),
     ]);
@@ -217,33 +223,35 @@ export class ParentTeachersService {
     const slotByPeriod = new Map(slots.map((row) => [Number(row.period_no), row]));
     const coverByPeriod = new Map(covers.map((row) => [Number(row.period_no), row]));
     const states = periodStates(bell, on === today, this.nowTime());
-    const periods: ChildPeriodDto[] = bell.map((period, index) => {
-      const slot = period.period_no ? slotByPeriod.get(period.period_no) : undefined;
-      const cover = period.period_no ? coverByPeriod.get(period.period_no) : undefined;
-      const usual = slot ? person(slot.teacher_user_id, slot.teacher_name, slot.teacher_photo) : null;
-      const proxy =
-        cover?.kind === 'proxy'
-          ? person(cover.substitute_user_id, cover.substitute_name, cover.substitute_photo)
-          : null;
-      return {
-        period_no: period.period_no,
-        name: period.name,
-        start_time: period.start_time,
-        end_time: period.end_time,
-        is_break: period.is_break,
-        state: states[index],
-        subject: slot ? { id: Number(slot.subject_id), name: slot.subject_name, code: slot.subject_code } : null,
-        teacher: proxy ?? usual,
-        usual_teacher: proxy ? usual : null,
-        note:
-          cover?.kind === 'combine'
-            ? `Combined with ${cover.combined_with ?? 'another class'}`
-            : proxy
-              ? `${proxy.name} takes this class today`
-              : null,
-        room: slot?.room ?? null,
-      };
-    });
+    const periods: ChildPeriodDto[] = bell
+      .filter((period) => !period.is_special)
+      .map((period, index) => {
+        const slot = period.period_no ? slotByPeriod.get(period.period_no) : undefined;
+        const cover = period.period_no ? coverByPeriod.get(period.period_no) : undefined;
+        const usual = slot ? person(slot.teacher_user_id, slot.teacher_name, slot.teacher_photo) : null;
+        const proxy =
+          cover?.kind === 'proxy'
+            ? person(cover.substitute_user_id, cover.substitute_name, cover.substitute_photo)
+            : null;
+        return {
+          period_no: period.period_no,
+          name: period.name,
+          start_time: period.start_time,
+          end_time: period.end_time,
+          is_break: period.is_break,
+          state: states[index],
+          subject: slot ? { id: Number(slot.subject_id), name: slot.subject_name, code: slot.subject_code } : null,
+          teacher: proxy ?? usual,
+          usual_teacher: proxy ? usual : null,
+          note:
+            cover?.kind === 'combine'
+              ? `Combined with ${cover.combined_with ?? 'another class'}`
+              : proxy
+                ? `${proxy.name} takes this class today`
+                : null,
+          room: slot?.room ?? null,
+        };
+      });
     return { ...base, periods };
   }
 

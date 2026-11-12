@@ -43,6 +43,10 @@ export const TEMPLATES = {
   ATTENDANCE_REMINDER: 'ATTENDANCE_REMINDER',
   ATTENDANCE_MISSED: 'ATTENDANCE_MISSED',
   SPECIAL_CLASS_ADDED: 'SPECIAL_CLASS_ADDED',
+  SPECIAL_CLASS_ASSIGNED: 'SPECIAL_CLASS_ASSIGNED',
+  SPECIAL_CLASS_CHANGED: 'SPECIAL_CLASS_CHANGED',
+  SPECIAL_CLASS_CANCELLED: 'SPECIAL_CLASS_CANCELLED',
+  SPECIAL_CLASS_ABSENT: 'SPECIAL_CLASS_ABSENT',
 } as const;
 
 interface TemplateText {
@@ -808,6 +812,82 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{student}}-க்கு சிறப்பு வகுப்பு',
         body: '{{student}} {{teacher}} அவர்களுடன் {{title}} வகுப்பில் கலந்துகொள்வார், {{when}}.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SPECIAL_CLASS_ASSIGNED,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'You have a {{kind}}: {{title}}',
+        body: 'You take {{title}} for {{class}}, {{when}}. {{students}} students.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உங்களுக்கு {{kind}}: {{title}}',
+        body: '{{class}} வகுப்புக்கு {{title}} நீங்கள் எடுக்கிறீர்கள், {{when}}. {{students}} மாணவர்கள்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SPECIAL_CLASS_CHANGED,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{title}} has changed',
+        body: '{{title}} for {{class}} is now {{when}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{title}} மாற்றப்பட்டது',
+        body: '{{class}} வகுப்புக்கான {{title}} இப்போது {{when}}.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SPECIAL_CLASS_CANCELLED,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{title}} cancelled',
+        body: '{{title}} for {{class}} ({{when}}) has been cancelled.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{title}} ரத்து செய்யப்பட்டது',
+        body: '{{class}} வகுப்புக்கான {{title}} ({{when}}) ரத்து செய்யப்பட்டது.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SPECIAL_CLASS_ABSENT,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: '{{student}} missed {{title}}',
+        body: '{{student}} was absent from {{title}} on {{date}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} {{title}} வகுப்புக்கு வரவில்லை',
+        body: '{{date}} அன்று {{title}} வகுப்புக்கு {{student}} வரவில்லை.',
         sms_body: null,
       },
     },

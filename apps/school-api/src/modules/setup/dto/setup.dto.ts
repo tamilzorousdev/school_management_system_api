@@ -2,6 +2,8 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsIn,
@@ -18,6 +20,7 @@ import {
 } from 'class-validator';
 import { ListQueryDto, toBoolean } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
+import { RefDto } from '../../students/dto/student-response.dto';
 import { HOLIDAY_TYPES, HolidayType } from '../entities/holiday.entity';
 import { SUBJECT_TYPES, SubjectType } from '../entities/subject.entity';
 
@@ -347,6 +350,22 @@ export class HolidayInputDto {
   @IsOptional()
   @IsIn(HOLIDAY_TYPES)
   type?: HolidayType;
+
+  @ApiPropertyOptional({
+    type: [Number],
+    nullable: true,
+    example: [11, 12],
+    description:
+      'Only these classes are off (for example study leave). Leave out or null for the whole school. Attendance is not expected from these classes on these days.',
+  })
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Choose at least one class, or leave it empty for the whole school' })
+  @ArrayMaxSize(50)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  class_ids?: number[] | null;
 }
 
 export class UpdateHolidayDto extends PartialType(HolidayInputDto) {}
@@ -388,6 +407,16 @@ export class HolidayDto {
 
   @ApiProperty({ example: 2 })
   days: number;
+
+  @ApiProperty({ example: true, description: 'false when only some classes are off' })
+  whole_school: boolean;
+
+  @ApiProperty({
+    type: [RefDto],
+    example: [{ id: 11, name: '10' }],
+    description: 'Classes that are off; empty for the whole school',
+  })
+  classes: RefDto[];
 }
 
 export class MobileHolidayDto extends HolidayDto {

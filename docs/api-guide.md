@@ -590,15 +590,31 @@ Read with `fleet.view`, change with `fleet.manage`. `{id}` of a bus is the schoo
 
 When the Telematics service reports a new engine fault code it sends `vehicle.fault` `{ id, type, at, device_id, fault: { code, description, severity }, odometer_km? }`. The bus with that tracker gets a maintenance ticket (`source: obd`, one open ticket per code; retries are stored once) and admins and the transport in-charge get `VEHICLE_FAULT` (push and in-app; `bus`, `code`, `fault`, `severity`).
 
-## Class performance and special classes
+## Class performance, special classes and extra classes
 
 | Call | What it gives |
 |---|---|
-| `GET /admin/performance/classes?exam_id=&class_id=` | Class-wise report: for each section `average_percent`, `pass_percent`, `fail_percent`, `attendance_percent` (this academic year) and `below_average`, plus school `totals`. Without `exam_id` every published exam of the year counts. A result fails when any subject is below its pass mark or absent |
-| `GET /admin/performance/sections/{id}/below-average?exam_id=&below=` | Students under the section average (or under `below` %), lowest first, with `gap`, `weak_subjects` (up to 3, against the section's subject average), `attendance_percent` and the `special_classes` they already attend |
-| `GET/POST /admin/special-classes`, `PATCH/DELETE /admin/special-classes/{id}` | A special class is one dedicated period every week (`day_of_week` 1–6, `period_no`) for chosen students of one section, with a teacher and optional subject. `409 TEACHER_CLASH` when the teacher is busy then, `409 SPECIAL_CLASS_CLASH` when the section already has one in that period, `409 TEACHER_OVER_LIMIT` above the weekly limit, `400 STUDENT_NOT_IN_SECTION`. Parents of added students get the `SPECIAL_CLASS_ADDED` notification |
-| `GET /mobile/teacher/special-classes` | Staff app: special classes I take |
-| `GET /mobile/parent/children/{id}/special-classes` | Parent app: special classes the child attends (`students` holds only this child) |
+| `GET /admin/performance/classes?exam_id=&class_id=` | Class-wise report: for each section `average_percent`, `pass_percent`, `fail_percent`, `attendance_percent` (this academic year) and `below_average`, plus school `totals`. Without `exam_id` every published exam of the year counts |
+| `GET /admin/performance/sections/{id}/below-average?band=&below=&from=&to=` | Students to pick, lowest first, with `gap` (points below the class average), `weak_subjects`, `attendance_percent` and the classes they already attend. `band=below` (default): under the class average or under `below` %. `band=average`: within 10 points of the class average. `band=range`: between `from` and `to` % |
+| `GET/POST /admin/special-classes`, `PATCH/DELETE /admin/special-classes/{id}` | See below. Filter the list with `section_id` (who in a class has one) or `teacher_user_id` (a teacher's profile) |
+| `GET/PUT /admin/special-classes/settings` | `class_ids`: classes that can have a whole-class special class; `null` = every class |
+| `GET/PUT /admin/special-classes/{id}/attendance?date=` | Attendance of the class for a date; students not sent stay present |
+| `GET /mobile/teacher/special-classes` | Staff app: classes I take |
+| `GET /mobile/teacher/special-classes/sections/{sectionId}` | Staff app: who in my section has a special or extra class |
+| `GET/PUT /mobile/teacher/special-classes/{id}/attendance` | Staff app: take attendance (only the teacher of that class, else 403 `NOT_YOUR_SPECIAL_CLASS`) |
+| `GET /mobile/parent/children/{id}/special-classes` | Parent app: classes the child attends, with `attendance` (days, present, absent, late, percent) |
+
+**Kinds.** `kind=extra`: only `student_ids` (for example below-average or average students). `kind=special`: the whole section, including students who join later; only for classes turned on in the settings (`400 CLASS_NOT_ALLOWED`).
+
+**Timing.** `timing=period`: one bell-schedule period every week (`day_of_week`, `period_no`); the students miss that period and it counts toward the teacher's weekly limit. `timing=extra_time`: its own `start_time` and `end_time` on the chosen `days` (0 = Sunday … 6 = Saturday) between `start_date` and `end_date` (no days = that one date). It may be before or after school, in a break or lunch, or on a Sunday or holiday (`day_part` full / morning / afternoon / custom is a label for people); it does not count toward the weekly limit. `when` is a ready line such as "every Mon, Wed, 4:00 PM – 5:00 PM, 1 Dec to 28 Feb".
+
+**Special class slots in the bell schedule.** `PUT /admin/timetable/periods` rows may set `is_special: true` (for example "Special class" 15:55–16:40 after the last period, with a "Special class break" before it as a normal break). A special slot is not a teaching period: it has no `period_no`, is not counted in attendance, workload or the teacher's limit, and is left out of the Staff and Parent app day timetables. The admin timetable builder shows it as its own column where extra-time special classes are added. `section_ids` on a special slot limits it to those sections (null = every section).
+
+**Checks.** `409 DURING_CLASS_TIME` (extra time overlaps a teaching period on a school day), `TEACHER_CLASH` (the teacher has another class, regular or special, then), `STUDENT_CLASH`, `SPECIAL_CLASS_CLASH` (two period classes in one section), `TEACHER_OVER_LIMIT` (period classes only).
+
+**Notifications.** Created: the teacher gets `SPECIAL_CLASS_ASSIGNED`, parents `SPECIAL_CLASS_ADDED`. Changed time or title: `SPECIAL_CLASS_CHANGED`; new students' parents get `ADDED`, removed students' parents and a replaced teacher get `SPECIAL_CLASS_CANCELLED`. Stopped: everyone gets `SPECIAL_CLASS_CANCELLED`. Absent in the class today: parents get `SPECIAL_CLASS_ABSENT`.
+
+**Class-wise holidays.** `POST/PATCH /admin/holidays` take `class_ids` (null = whole school); each holiday returns `whole_school` and `classes`. On those days attendance is not expected from those classes (the board shows `holiday` on the section, it is not counted as missed or as a working day in reports), and their timetable is empty in the Staff app. Parents see them in `GET /mobile/parent/children/{id}/holidays`, teachers in their holiday list when the class is one they teach. Special and extra classes can still be held on those days.
 
 ## Exams, marks and ranking
 
@@ -950,6 +966,21 @@ Office hours (School setup, default 08:00–17:00, Monday to Saturday, not on ho
 
 A message the school hides comes back with `hidden: true` and `body: null`. Office audit: `GET /admin/chat/threads?flagged=true`, `/insights`, `/flagged`, `GET /admin/chat/threads/{id}` (whole transcript; the visit is logged), `POST /admin/chat/messages/{id}/hide { "reason" }`, `/unhide` and `/dismiss-flag`. Permission `chat.audit`.
 
+
+### Deleting, clearing, voice and video
+
+Same paths for both apps: teacher under `/mobile/teacher/chat/threads/{id}/…`, parent under `/mobile/parent/chat/threads/{id}/…`.
+
+| Call | What it does |
+|---|---|
+| `POST …/messages/{messageId}/delete` `{ "for": "me" }` | Removes the message from my chat only; the other person still sees it |
+| `POST …/messages/{messageId}/delete` `{ "for": "everyone" }` | My own message, within 24 hours (`400 DELETE_WINDOW_PASSED` after, `403 NOT_YOUR_MESSAGE`, `409 ALREADY_DELETED`). Both sides get `deleted: true` with `body` and `file` null: show "This message was deleted". `undo_until` = 10 seconds |
+| `POST …/messages/{messageId}/undo-delete` | Brings it back for both within 10 seconds (`400 UNDO_EXPIRED`, `409 NOTHING_TO_UNDO`) |
+| `POST …/clear` | Clears the chat for me: older messages disappear from my list and preview; the other person keeps them |
+
+Socket events: `chat.deleted { thread_id, message_id, deleted_at }`, `chat.restored` (the message). Every message now has `kind` (text, image, file, voice, video), `duration_seconds`, `deleted`, `deleted_at`, `can_delete_for_everyone`, `undo_until`. The office always sees the original in Chat audit with `deleted_by` and `deleted_for_me_by`, and clears appear in the audit log.
+
+**Voice and video.** Upload with `POST /files` (multipart `file`, `purpose: chat_media`), then send `{ file_id, duration_seconds }`. Voice: m4a, aac, mp3, ogg, wav, webm, 3gp, up to 25 MB, no length limit. Video: mp4, mov, 3gp, webm, up to 25 MB and 120 seconds (`duration_seconds` required; `400 VIDEO_TOO_LONG`). Images and documents keep the `FILE_MAX_MB` limit.
 ## Push notification data (tap routing)
 
 Register the phone with `POST /me/devices` `{ "push_token": "<OneSignal subscription id>", "platform": "android" }` (`fcm_token` is the old name and still works); remove with `DELETE /me/devices?push_token=…`.

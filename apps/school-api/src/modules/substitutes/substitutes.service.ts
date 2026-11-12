@@ -691,7 +691,7 @@ export class SubstitutesService {
   private async holidayName(schoolId: number, date: string): Promise<string | null> {
     const [row] = await this.dataSource.query(
       `SELECT name FROM holidays WHERE school_id = $1 AND deleted_at IS NULL AND type <> 'event'
-       AND date <= $2 AND COALESCE(end_date, date) >= $2 LIMIT 1`,
+       AND date <= $2 AND COALESCE(end_date, date) >= $2 AND class_ids IS NULL LIMIT 1`,
       [schoolId, date],
     );
     return row?.name ?? null;

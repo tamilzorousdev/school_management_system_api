@@ -42,6 +42,28 @@ export class BellPeriodInputDto {
   @IsOptional()
   @IsBoolean()
   is_break?: boolean;
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      'A slot kept for special and extra classes (for example after the last period). Not a teaching period: it has no period_no and the timetable builder shows it as its own column.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_special?: boolean;
+
+  @ApiPropertyOptional({
+    type: [Number],
+    nullable: true,
+    example: [14, 15],
+    description: 'Special slots only: the sections that use this slot. Leave out or null for every section.',
+  })
+  @IsOptional()
+  @ValidateIf((_dto, value) => value !== null)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsInt({ each: true })
+  section_ids?: number[] | null;
 }
 
 export class BellScheduleQueryDto {
@@ -142,6 +164,16 @@ export class BellPeriodDto {
 
   @ApiProperty()
   is_break: boolean;
+
+  @ApiProperty({ description: 'Slot for special and extra classes; not a teaching period' })
+  is_special: boolean;
+
+  @ApiProperty({
+    type: [Number],
+    nullable: true,
+    description: 'Special slots: sections that use it; null = every section',
+  })
+  section_ids: number[] | null;
 }
 
 export class SlotSubjectDto extends RefDto {

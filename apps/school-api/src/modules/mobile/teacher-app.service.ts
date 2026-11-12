@@ -52,7 +52,7 @@ export class TeacherAppService {
     const day = weekday(date);
     const [holidayRow] = await this.dataSource.query(
       `SELECT name FROM holidays WHERE school_id = $1 AND deleted_at IS NULL AND type <> 'event'
-       AND date <= $2 AND COALESCE(end_date, date) >= $2 LIMIT 1`,
+       AND date <= $2 AND COALESCE(end_date, date) >= $2 AND class_ids IS NULL LIMIT 1`,
       [schoolId, date],
     );
     const holiday: string | null = holidayRow?.name ?? null;
@@ -62,6 +62,17 @@ export class TeacherAppService {
       working ? this.timetable.today(schoolId, user.id, day) : Promise.resolve([]),
       working ? this.substitutes.mine(user) : Promise.resolve([]),
     ]);
+    const offSections = new Set<number>(
+      (
+        (await this.dataSource.query(
+          `SELECT sec.id FROM sections sec JOIN holidays h ON h.school_id = sec.school_id
+           WHERE sec.school_id = $1 AND h.deleted_at IS NULL AND h.type <> 'event' AND h.class_ids IS NOT NULL
+             AND sec.class_id = ANY(h.class_ids) AND h.date <= $2 AND COALESCE(h.end_date, h.date) >= $2`,
+          [schoolId, date],
+        )) as { id: number }[]
+      ).map((row) => Number(row.id)),
+    );
+    mine.splice(0, mine.length, ...mine.filter((slot) => !offSections.has(slot.section.id)));
     const todayCovers = covers.filter((cover) => cover.date === date);
     const sectionIds = [
       ...new Set([...mine.map((slot) => slot.section.id), ...todayCovers.map((cover) => cover.section.id)]),
@@ -83,48 +94,56 @@ export class TeacherAppService {
           )
         : [];
     const clock = nowClock(this.app.timeZone);
-    const periods: TodayPeriodDto[] = bell.map((period) => {
-      const base = {
-        period_no: period.period_no,
-        name: period.name,
-        start_time: period.start_time,
-        end_time: period.end_time,
-        is_break: period.is_break,
-        is_now: working && clock >= period.start_time && clock < period.end_time,
-      };
-      const empty = {
-        section: null,
-        subject: null,
-        room: null,
-        covering_for: null,
-        students: 0,
-        present: null,
-        attendance_marked: false,
-      };
-      if (period.is_break || !working) return { ...base, ...empty, kind: period.is_break ? 'break' : 'free' };
-      const slot = mine.find((item) => item.period_no === period.period_no);
-      const cover = todayCovers.find((item) => item.period_no === period.period_no);
-      const lesson = slot
-        ? { kind: 'class' as const, section: slot.section, subject: slot.subject, room: slot.room, covering_for: null }
-        : cover
+    const periods: TodayPeriodDto[] = bell
+      .filter((period) => !period.is_special)
+      .map((period) => {
+        const base = {
+          period_no: period.period_no,
+          name: period.name,
+          start_time: period.start_time,
+          end_time: period.end_time,
+          is_break: period.is_break,
+          is_now: working && clock >= period.start_time && clock < period.end_time,
+        };
+        const empty = {
+          section: null,
+          subject: null,
+          room: null,
+          covering_for: null,
+          students: 0,
+          present: null,
+          attendance_marked: false,
+        };
+        if (period.is_break || !working) return { ...base, ...empty, kind: period.is_break ? 'break' : 'free' };
+        const slot = mine.find((item) => item.period_no === period.period_no);
+        const cover = todayCovers.find((item) => item.period_no === period.period_no);
+        const lesson = slot
           ? {
-              kind: 'substitute' as const,
-              section: cover.section,
-              subject: cover.subject,
-              room: cover.room,
-              covering_for: cover.absent_teacher,
+              kind: 'class' as const,
+              section: slot.section,
+              subject: slot.subject,
+              room: slot.room,
+              covering_for: null,
             }
-          : null;
-      if (!lesson) return { ...base, ...empty, kind: 'free' };
-      const count = counts.find((row) => Number(row.section_id) === lesson.section.id);
-      return {
-        ...base,
-        ...lesson,
-        students: Number(count?.students ?? 0),
-        present: count?.marked ? Number(count.present ?? 0) : null,
-        attendance_marked: Boolean(count?.marked),
-      };
-    });
+          : cover
+            ? {
+                kind: 'substitute' as const,
+                section: cover.section,
+                subject: cover.subject,
+                room: cover.room,
+                covering_for: cover.absent_teacher,
+              }
+            : null;
+        if (!lesson) return { ...base, ...empty, kind: 'free' };
+        const count = counts.find((row) => Number(row.section_id) === lesson.section.id);
+        return {
+          ...base,
+          ...lesson,
+          students: Number(count?.students ?? 0),
+          present: count?.marked ? Number(count.present ?? 0) : null,
+          attendance_marked: Boolean(count?.marked),
+        };
+      });
     return {
       date,
       day_of_week: day,

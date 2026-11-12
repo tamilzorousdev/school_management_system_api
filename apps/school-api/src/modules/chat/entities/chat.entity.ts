@@ -4,6 +4,9 @@ import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 
 export const CHAT_PARTIES = ['teacher', 'parent'] as const;
 export type ChatParty = (typeof CHAT_PARTIES)[number];
 
+export const CHAT_MESSAGE_KINDS = ['text', 'image', 'file', 'voice', 'video'] as const;
+export type ChatMessageKind = (typeof CHAT_MESSAGE_KINDS)[number];
+
 @Entity('chat_threads')
 @Index('UQ_chat_threads_pair', ['academic_year_id', 'teacher_user_id', 'parent_user_id', 'student_id'], {
   unique: true,
@@ -45,6 +48,12 @@ export class ChatThread extends SchoolScopedEntity {
 
   @Column({ type: 'int', default: 0 })
   open_flags: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  teacher_cleared_at: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  parent_cleared_at: Date | null;
 }
 
 @Entity('chat_messages')
@@ -99,9 +108,48 @@ export class ChatMessage extends BaseEntity {
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   hidden_reason: string | null;
+
+  @Column({ type: 'varchar', length: 10, default: 'text' })
+  kind: ChatMessageKind;
+
+  @Column({ type: 'int', nullable: true })
+  duration_seconds: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  deleted_for_all_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  deleted_for_all_by: number | null;
 }
 
-export const CHAT_AUDIT_ACTIONS = ['viewed_thread', 'hid_message', 'unhid_message', 'dismissed_flag'] as const;
+@Entity('chat_message_hides')
+@Index('UQ_chat_message_hides', ['message_id', 'user_id'], { unique: true })
+export class ChatMessageHide {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Index()
+  @Column({ type: 'int' })
+  message_id: number;
+
+  @Index()
+  @Column({ type: 'int' })
+  user_id: number;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  created_at: Date;
+}
+
+export const CHAT_AUDIT_ACTIONS = [
+  'viewed_thread',
+  'hid_message',
+  'unhid_message',
+  'dismissed_flag',
+  'deleted_for_everyone',
+  'undid_delete',
+  'deleted_for_me',
+  'cleared_chat',
+] as const;
 export type ChatAuditAction = (typeof CHAT_AUDIT_ACTIONS)[number];
 
 @Entity('chat_audit_logs')

@@ -1,10 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 import { ListQueryDto, PaginationDto, toBoolean } from '@app/common';
 import { FileDto } from '../../files/dto/file.dto';
 import { RefDto } from '../../students/dto/student-response.dto';
-import { CHAT_PARTIES, ChatParty } from '../entities/chat.entity';
+import { CHAT_MESSAGE_KINDS, CHAT_PARTIES, ChatMessageKind, ChatParty } from '../entities/chat.entity';
 
 const trimToNull = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() || null : value);
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -48,6 +59,31 @@ export class SendMessageDto {
   @Min(1)
   @IsInt()
   file_id?: number | null;
+
+  @ApiPropertyOptional({
+    example: 42,
+    description:
+      'Length in seconds of a voice message or video, measured by the app. Required for a video (at most 120 s); voice has no limit.',
+  })
+  @IsOptional()
+  @Min(1)
+  @Max(86400)
+  @IsInt()
+  duration_seconds?: number;
+}
+
+export const DELETE_SCOPES = ['me', 'everyone'] as const;
+export type DeleteScope = (typeof DELETE_SCOPES)[number];
+
+export class DeleteMessageDto {
+  @ApiProperty({
+    enum: DELETE_SCOPES,
+    example: 'everyone',
+    description:
+      'me: gone from my chat only. everyone: your own message, within 24 hours of sending; both sides see "This message was deleted" and it can be undone for 10 seconds.',
+  })
+  @IsIn(DELETE_SCOPES)
+  for: DeleteScope;
 }
 
 export class FlagMessageDto {
@@ -243,6 +279,53 @@ export class ChatMessageDto {
 
   @ApiProperty({ example: false })
   hidden: boolean;
+
+  @ApiProperty({ enum: CHAT_MESSAGE_KINDS, example: 'voice', description: 'text, image, file, voice or video' })
+  kind: ChatMessageKind;
+
+  @ApiProperty({ example: 42, nullable: true, type: Number, description: 'Voice or video length in seconds' })
+  duration_seconds: number | null;
+
+  @ApiProperty({
+    example: false,
+    description: 'Deleted for everyone: show "This message was deleted"; body and file are null',
+  })
+  deleted: boolean;
+
+  @ApiProperty({ nullable: true, type: Date })
+  deleted_at: Date | null;
+
+  @ApiProperty({ example: true, description: 'Your own message, not deleted, sent less than 24 hours ago' })
+  can_delete_for_everyone: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    type: Date,
+    description: 'You deleted it for everyone: show Undo until this time (10 seconds)',
+  })
+  undo_until: Date | null;
+}
+
+export class DeleteMessageResultDto {
+  @ApiProperty({ example: 120 })
+  message_id: number;
+
+  @ApiProperty({ enum: DELETE_SCOPES })
+  deleted_for: DeleteScope;
+
+  @ApiProperty({ nullable: true, type: Date, description: 'Undo is possible until this time (everyone only)' })
+  undo_until: Date | null;
+
+  @ApiProperty({ type: ChatMessageDto, nullable: true, description: 'The message as it now shows (everyone only)' })
+  message: ChatMessageDto | null;
+}
+
+export class ClearChatResultDto {
+  @ApiProperty({ example: 3 })
+  thread_id: number;
+
+  @ApiProperty({ description: 'Messages up to this time are gone from my chat; the other person still has them' })
+  cleared_at: Date;
 }
 
 export class AuditMessageDto extends ChatMessageDto {
@@ -266,6 +349,12 @@ export class AuditMessageDto extends ChatMessageDto {
 
   @ApiProperty({ nullable: true, type: String })
   hidden_reason: string | null;
+
+  @ApiProperty({ type: RefDto, nullable: true, description: 'Who deleted it for everyone (the sender)' })
+  deleted_by: RefDto | null;
+
+  @ApiProperty({ type: [RefDto], description: 'People who deleted it for themselves' })
+  deleted_for_me_by: RefDto[];
 }
 
 export class MessagesPageDto {

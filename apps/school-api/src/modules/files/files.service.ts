@@ -28,6 +28,25 @@ const DOCUMENT_TYPES: Record<string, string> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
   'text/csv': '.csv',
 };
+const AUDIO_TYPES: Record<string, string> = {
+  'audio/mp4': '.m4a',
+  'audio/x-m4a': '.m4a',
+  'audio/m4a': '.m4a',
+  'audio/aac': '.aac',
+  'audio/mpeg': '.mp3',
+  'audio/ogg': '.ogg',
+  'audio/wav': '.wav',
+  'audio/x-wav': '.wav',
+  'audio/webm': '.weba',
+  'audio/3gpp': '.3gp',
+};
+const VIDEO_TYPES: Record<string, string> = {
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+  'video/3gpp': '.3gp',
+  'video/webm': '.webm',
+};
+export const MEDIA_MAX_MB = 25;
 const MAX_IMAGE_SIDE = 1600;
 const THUMB_SIDE = 320;
 
@@ -36,6 +55,8 @@ export class FilesService {
   private readonly logger = new Logger('Files');
   private readonly signer: FileSigner;
 
+  private readonly maxFileMb: number;
+
   constructor(
     @InjectRepository(FileRecord) private readonly files: Repository<FileRecord>,
     @Inject(FILE_STORAGE) private readonly storage: FileStorage,
@@ -43,17 +64,27 @@ export class FilesService {
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {
     this.signer = new FileSigner(settings.signingSecret, settings.urlTtlSeconds);
+    this.maxFileMb = settings.maxFileMb;
   }
 
   async upload(input: UploadedFileInput | undefined, purpose: string | undefined, actor: AuthUser): Promise<FileDto> {
     if (!input?.buffer?.length) throw AppException.badRequest('Choose a file to upload', 'FILE_MISSING');
     const isImage = input.mimetype in IMAGE_TYPES;
-    const extension = IMAGE_TYPES[input.mimetype] ?? DOCUMENT_TYPES[input.mimetype];
+    const isMedia = input.mimetype in AUDIO_TYPES || input.mimetype in VIDEO_TYPES;
+    const extension =
+      IMAGE_TYPES[input.mimetype] ??
+      DOCUMENT_TYPES[input.mimetype] ??
+      AUDIO_TYPES[input.mimetype] ??
+      VIDEO_TYPES[input.mimetype];
     if (!extension) {
       throw AppException.badRequest(
-        'This file type is not allowed. Upload an image, PDF, Word, Excel or CSV file.',
+        'This file type is not allowed. Upload an image, PDF, Word, Excel, CSV, voice or video file.',
         'FILE_TYPE_NOT_ALLOWED',
       );
+    }
+    const limitMb = isMedia ? MEDIA_MAX_MB : this.maxFileMb;
+    if (input.buffer.length > limitMb * 1024 * 1024) {
+      throw AppException.badRequest(`The file is larger than ${limitMb} MB`, 'FILE_TOO_LARGE');
     }
 
     const folder = new Date().toISOString().slice(0, 7).replace('-', '/');

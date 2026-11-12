@@ -84,8 +84,35 @@ export function officeStatus(
   return { open: false, next_open_at: null };
 }
 
-export function messagePreview(body: string | null, hasFile: boolean): string {
-  if (!body) return hasFile ? 'Sent a file' : '';
+export const DELETE_WINDOW_HOURS = 24;
+export const UNDO_SECONDS = 10;
+export const VIDEO_MAX_SECONDS = 120;
+
+const KIND_PREVIEW: Record<string, string> = {
+  image: 'Photo',
+  voice: 'Voice message',
+  video: 'Video',
+  file: 'Sent a file',
+};
+
+export function messageKind(mime: string | null | undefined): 'text' | 'image' | 'file' | 'voice' | 'video' {
+  if (!mime) return 'text';
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('audio/')) return 'voice';
+  if (mime.startsWith('video/')) return 'video';
+  return 'file';
+}
+
+export function canDeleteForEveryone(sentAt: Date, now = new Date()): boolean {
+  return now.getTime() - sentAt.getTime() <= DELETE_WINDOW_HOURS * 3600 * 1000;
+}
+
+export function undoUntil(deletedAt: Date | null): Date | null {
+  return deletedAt ? new Date(deletedAt.getTime() + UNDO_SECONDS * 1000) : null;
+}
+
+export function messagePreview(body: string | null, hasFile: boolean, kind?: string): string {
+  if (!body) return hasFile ? (KIND_PREVIEW[kind ?? 'file'] ?? 'Sent a file') : '';
   const flat = body.replace(/\s+/g, ' ').trim();
   return flat.length > PREVIEW_LENGTH ? `${flat.slice(0, PREVIEW_LENGTH - 1).trimEnd()}…` : flat;
 }

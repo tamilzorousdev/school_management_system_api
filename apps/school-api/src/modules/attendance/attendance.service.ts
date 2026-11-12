@@ -3,7 +3,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { AppException, AuthUser } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
-import { holidaySet, monthRange, percent, WEEKLY_OFF, weekday, workingDays } from '../../shared/school-days';
+import { forClass, holidaySet, monthRange, percent, WEEKLY_OFF, weekday, workingDays } from '../../shared/school-days';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AcademicYear } from '../setup/entities/academic-year.entity';
 import {
@@ -50,6 +50,7 @@ import { yearClause, yearWhere } from '../../shared/year-context';
 interface SectionRow {
   id: number;
   name: string;
+  class_id: number;
   class_name: string;
   class_teacher_user_id: number | null;
   academic_year_id: number;
@@ -137,7 +138,7 @@ export class AttendanceService {
     const [row] = await this.dataSource.query(
       `SELECT s.attendance_mode AS mode,
               (SELECT COUNT(*) FROM bell_periods b
-               WHERE b.school_id = s.id AND b.class_id IS NULL AND b.is_break = false) AS teaching
+               WHERE b.school_id = s.id AND b.class_id IS NULL AND b.is_break = false AND b.period_no IS NOT NULL) AS teaching
        FROM schools s WHERE s.id = $1`,
       [schoolId],
     );
@@ -177,7 +178,7 @@ export class AttendanceService {
             [sectionId, date, period],
           ) as Promise<{ student_id: number; status: AttendanceStatus }[]>)
         : Promise.resolve([]),
-      this.holidayName(manager, schoolId, date),
+      this.holidayName(manager, schoolId, date, section.class_id),
       this.leaveStudents(manager, schoolId, date, session),
       this.window(manager, schoolId, period),
       this.modeOf(schoolId),
@@ -254,7 +255,7 @@ export class AttendanceService {
       if (WEEKLY_OFF.includes(weekday(dto.date))) {
         throw AppException.badRequest('Attendance is not taken on Sundays', 'NOT_A_SCHOOL_DAY');
       }
-      const holiday = await this.holidayName(manager, schoolId, dto.date);
+      const holiday = await this.holidayName(manager, schoolId, dto.date, section.class_id);
       if (holiday) throw AppException.badRequest(`${dto.date} is a holiday: ${holiday}`, 'HOLIDAY');
 
       const students = await this.students(manager, sectionId);
@@ -397,12 +398,14 @@ export class AttendanceService {
     const manager = this.dataSource.manager;
     const year = await manager.findOneBy(AcademicYear, yearWhere(schoolId));
     const holiday = await this.holidayName(manager, schoolId, date);
+    const classOff = await this.classHolidays(manager, schoolId, date);
     const window = await this.window(manager, schoolId, slot.period);
     const { mode } = await this.modeOf(schoolId);
     const workingDay = !holiday && !WEEKLY_OFF.includes(weekday(date));
     const closed = workingDay && windowClosed(window, date, todayIn(this.app.timeZone), this.nowTime());
     const rows: {
       section_id: number;
+      class_id: number;
       class_name: string;
       section_name: string;
       class_teacher: string | null;
@@ -415,7 +418,7 @@ export class AttendanceService {
       afternoon_marked: boolean;
     }[] = year
       ? await manager.query(
-          `SELECT sec.id AS section_id, c.name AS class_name, sec.name AS section_name, t.name AS class_teacher,
+          `SELECT sec.id AS section_id, sec.class_id, c.name AS class_name, sec.name AS section_name, t.name AS class_teacher,
                   sec.class_teacher_user_id AS class_teacher_id,
                   (SELECT COUNT(*) FROM student_enrollments e JOIN students s ON s.id = e.student_id
                     WHERE e.section_id = sec.id AND s.deleted_at IS NULL AND s.status = 'active') AS total,
@@ -435,6 +438,7 @@ export class AttendanceService {
       : [];
     const sections = rows.map((row) => {
       const statuses = row.statuses ?? [];
+      const classHoliday = classOff.get(Number(row.class_id)) ?? null;
       return {
         section_id: Number(row.section_id),
         name: `${row.class_name} - ${row.section_name}`,
@@ -443,14 +447,15 @@ export class AttendanceService {
         ...summarise(statuses),
         total: statuses.length || Number(row.total),
         marked: Boolean(row.taken_at),
-        missed: closed && !row.taken_at,
+        missed: closed && !row.taken_at && !classHoliday,
+        holiday: classHoliday,
         morning_marked: row.morning_marked,
         afternoon_marked: row.afternoon_marked,
         taken_by: row.taken_by,
         taken_at: row.taken_at,
       };
     });
-    const withStudents = sections.filter((section) => section.total > 0);
+    const withStudents = sections.filter((section) => section.total > 0 && !section.holiday);
     const allStatuses = rows.flatMap((row) => row.statuses ?? []);
     const { from } = monthRange(date.slice(0, 7));
     const [below, pending] = await Promise.all([
@@ -460,15 +465,17 @@ export class AttendanceService {
         [schoolId],
       ),
     ]);
-    const shown = withStudents.filter((section) =>
-      filter === 'missed'
-        ? section.missed
-        : filter === 'not_marked'
-          ? !section.marked
-          : filter === 'marked'
-            ? section.marked
-            : true,
-    );
+    const shown = sections
+      .filter((section) => section.total > 0)
+      .filter((section) =>
+        filter === 'missed'
+          ? section.missed
+          : filter === 'not_marked'
+            ? !section.marked && !section.holiday
+            : filter === 'marked'
+              ? section.marked
+              : true,
+      );
     return {
       date,
       mode,
@@ -494,7 +501,13 @@ export class AttendanceService {
     const today = todayIn(this.app.timeZone);
     const range = monthRange(month);
     const to = range.to < today ? range.to : today;
-    const holidays = await holidaySet(manager, schoolId, range.from, range.to);
+    const holidays = await holidaySet(
+      manager,
+      schoolId,
+      range.from,
+      range.to,
+      await this.studentClassId(manager, schoolId, studentId),
+    );
     const records: {
       date: string;
       status: AttendanceStatus;
@@ -542,11 +555,11 @@ export class AttendanceService {
 
   async sectionReport(schoolId: number, sectionId: number, month: string): Promise<SectionReportDto> {
     const manager = this.dataSource.manager;
-    await this.section(manager, schoolId, sectionId);
+    const section = await this.section(manager, schoolId, sectionId);
     const range = monthRange(month);
     const today = todayIn(this.app.timeZone);
     const to = range.to < today ? range.to : today;
-    const holidays = await holidaySet(manager, schoolId, range.from, range.to);
+    const holidays = await holidaySet(manager, schoolId, range.from, range.to, section.class_id);
     const students = await this.students(manager, sectionId);
     const [records, sessions] = await Promise.all([
       manager.query(
@@ -602,7 +615,7 @@ export class AttendanceService {
     const range = monthRange(month);
     const today = todayIn(this.app.timeZone);
     const to = range.to < today ? range.to : today;
-    const holidays = await holidaySet(manager, schoolId, range.from, range.to);
+    const holidays = await holidaySet(manager, schoolId, range.from, range.to, classId);
     const reports = await Promise.all(
       sections.map(async (row) => {
         const section = await this.section(manager, schoolId, Number(row.id));
@@ -639,7 +652,7 @@ export class AttendanceService {
     const section = await this.section(manager, schoolId, sectionId);
     const [students, holiday, sessions] = await Promise.all([
       this.students(manager, sectionId),
-      this.holidayName(manager, schoolId, date),
+      this.holidayName(manager, schoolId, date, section.class_id),
       manager.query(
         `SELECT DISTINCT period FROM attendance_sessions WHERE section_id = $1 AND date = $2 ORDER BY period`,
         [sectionId, date],
@@ -702,7 +715,7 @@ export class AttendanceService {
       };
     }
     const [holidays, records] = await Promise.all([
-      holidaySet(manager, schoolId, range.from, range.to),
+      holidaySet(manager, schoolId, range.from, range.to, await this.studentClassId(manager, schoolId, studentId)),
       manager.query(
         `SELECT to_char(date, 'YYYY-MM-DD') AS date, status FROM student_attendance_days
          WHERE student_id = $1 AND school_id = $2 AND date BETWEEN $3 AND $4`,
@@ -978,6 +991,10 @@ export class AttendanceService {
                        WHERE e.section_id = sec.id AND s.deleted_at IS NULL AND s.status = 'active')
            AND NOT EXISTS (SELECT 1 FROM attendance_sessions a
                            WHERE a.section_id = sec.id AND a.date = $2 AND a.period = $3)
+           AND NOT EXISTS (SELECT 1 FROM holidays h
+                           WHERE h.school_id = $1 AND h.deleted_at IS NULL AND h.type <> 'event'
+                             AND h.class_ids IS NOT NULL AND sec.class_id = ANY(h.class_ids)
+                             AND $2 BETWEEN h.date AND COALESCE(h.end_date, h.date))
          ORDER BY c.grade_level, sec.name`,
         [schoolId, date, period],
       );
@@ -1006,7 +1023,7 @@ export class AttendanceService {
     const [holidays, sections, saved] = await Promise.all([
       holidaySet(manager, schoolId, range.from, to),
       manager.query(
-        `SELECT sec.id, c.name AS class_name, sec.name, sec.class_teacher_user_id, t.name AS teacher
+        `SELECT sec.id, sec.class_id, c.name AS class_name, sec.name, sec.class_teacher_user_id, t.name AS teacher
          FROM sections sec
          JOIN classes c ON c.id = sec.class_id
          JOIN academic_years y ON y.id = sec.academic_year_id AND ${yearClause('y')} AND y.deleted_at IS NULL
@@ -1017,7 +1034,14 @@ export class AttendanceService {
          ORDER BY c.grade_level, sec.name`,
         [schoolId],
       ) as Promise<
-        { id: number; class_name: string; name: string; class_teacher_user_id: number | null; teacher: string | null }[]
+        {
+          id: number;
+          class_id: number;
+          class_name: string;
+          name: string;
+          class_teacher_user_id: number | null;
+          teacher: string | null;
+        }[]
       >,
       manager.query(
         `SELECT section_id, to_char(date, 'YYYY-MM-DD') AS date, period,
@@ -1028,12 +1052,20 @@ export class AttendanceService {
       ) as Promise<{ section_id: number; date: string; period: number; saved_at: string }[]>,
     ]);
     const savedAt = new Map(saved.map((row) => [`${row.section_id}:${row.date}:${row.period}`, row.saved_at]));
+    const classDaysOff = new Map(
+      await Promise.all(
+        [...new Set(sections.map((section) => Number(section.class_id)))].map(
+          async (classId) => [classId, await holidaySet(manager, schoolId, range.from, to, classId)] as const,
+        ),
+      ),
+    );
     const byTeacher = new Map<string, MissedTeacherDto>();
     for (const date of workingDays(range.from, to, holidays)) {
       for (const period of periods) {
         const window = windows.get(period)!;
         if (!windowClosed(window, date, today, now)) continue;
         for (const section of sections) {
+          if (classDaysOff.get(Number(section.class_id))?.has(date)) continue;
           const at = savedAt.get(`${section.id}:${date}:${period}`);
           if (at && (!window.closes_at || at <= `${date} ${window.closes_at}`)) continue;
           const teacherId = section.class_teacher_user_id === null ? null : Number(section.class_teacher_user_id);
@@ -1088,13 +1120,18 @@ export class AttendanceService {
 
   private async section(manager: EntityManager, schoolId: number, sectionId: number): Promise<SectionRow> {
     const [row] = await manager.query(
-      `SELECT sec.id, sec.name, c.name AS class_name, sec.class_teacher_user_id, sec.academic_year_id
+      `SELECT sec.id, sec.name, c.name AS class_name, sec.class_id, sec.class_teacher_user_id, sec.academic_year_id
        FROM sections sec JOIN classes c ON c.id = sec.class_id
        WHERE sec.id = $1 AND sec.school_id = $2 AND sec.deleted_at IS NULL`,
       [sectionId, schoolId],
     );
     if (!row) throw AppException.notFound('Section not found', 'SECTION_NOT_FOUND');
-    return { ...row, id: Number(row.id), academic_year_id: Number(row.academic_year_id) };
+    return {
+      ...row,
+      id: Number(row.id),
+      class_id: Number(row.class_id),
+      academic_year_id: Number(row.academic_year_id),
+    };
   }
 
   private students(manager: EntityManager, sectionId: number): Promise<StudentRow[]> {
@@ -1122,13 +1159,41 @@ export class AttendanceService {
     return new Set(rows.map((row) => Number(row.student_id)));
   }
 
-  private async holidayName(manager: EntityManager, schoolId: number, date: string): Promise<string | null> {
+  private async holidayName(
+    manager: EntityManager,
+    schoolId: number,
+    date: string,
+    classId?: number | null,
+  ): Promise<string | null> {
     const [row] = await manager.query(
       `SELECT name FROM holidays WHERE school_id = $1 AND deleted_at IS NULL AND type <> 'event'
-       AND $2 BETWEEN date AND COALESCE(end_date, date) LIMIT 1`,
-      [schoolId, date],
+       AND $2 BETWEEN date AND COALESCE(end_date, date)
+       AND ${classId ? forClass('$3') : 'class_ids IS NULL'}
+       ORDER BY class_ids NULLS FIRST LIMIT 1`,
+      classId ? [schoolId, date, classId] : [schoolId, date],
     );
     return row?.name ?? null;
+  }
+
+  private async studentClassId(manager: EntityManager, schoolId: number, studentId: number): Promise<number | null> {
+    const [row] = await manager.query(
+      `SELECT e.class_id FROM student_enrollments e
+       JOIN academic_years y ON y.id = e.academic_year_id AND ${yearClause('y')} AND y.deleted_at IS NULL
+       WHERE e.student_id = $1 AND y.school_id = $2 LIMIT 1`,
+      [studentId, schoolId],
+    );
+    return row ? Number(row.class_id) : null;
+  }
+
+  private async classHolidays(manager: EntityManager, schoolId: number, date: string): Promise<Map<number, string>> {
+    const rows: { name: string; class_ids: number[] }[] = await manager.query(
+      `SELECT name, class_ids FROM holidays WHERE school_id = $1 AND deleted_at IS NULL AND type <> 'event'
+       AND $2 BETWEEN date AND COALESCE(end_date, date) AND class_ids IS NOT NULL`,
+      [schoolId, date],
+    );
+    const byClass = new Map<number, string>();
+    for (const row of rows) for (const id of row.class_ids) byClass.set(Number(id), row.name);
+    return byClass;
   }
 
   private async belowCount(manager: EntityManager, schoolId: number, from: string, to: string): Promise<number> {

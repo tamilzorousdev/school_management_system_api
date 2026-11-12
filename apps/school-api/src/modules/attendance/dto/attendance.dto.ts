@@ -416,6 +416,14 @@ export class BoardSectionDto extends AttendanceSummaryDto {
 
   @ApiProperty({ nullable: true, type: Date })
   taken_at: Date | null;
+
+  @ApiProperty({
+    example: null,
+    nullable: true,
+    type: String,
+    description: 'Name of a holiday for this class only (attendance is not expected)',
+  })
+  holiday: string | null;
 }
 
 export class AttendanceBoardDto {

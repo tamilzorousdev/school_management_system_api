@@ -28,17 +28,21 @@ export function workingDays(from: string, to: string, holidays: Set<string>): st
   return datesBetween(from, to).filter((date) => !WEEKLY_OFF.includes(weekday(date)) && !holidays.has(date));
 }
 
+export const forClass = (param: string) => `(class_ids IS NULL OR ${param}::int = ANY(class_ids))`;
+
 export async function holidaySet(
   manager: EntityManager,
   schoolId: number,
   from: string,
   to: string,
+  classId?: number | null,
 ): Promise<Set<string>> {
   const rows: { date: string; end_date: string | null }[] = await manager.query(
     `SELECT to_char(date, 'YYYY-MM-DD') AS date, to_char(end_date, 'YYYY-MM-DD') AS end_date FROM holidays
      WHERE school_id = $1 AND deleted_at IS NULL AND type <> 'event'
-       AND date <= $3 AND COALESCE(end_date, date) >= $2`,
-    [schoolId, from, to],
+       AND date <= $3 AND COALESCE(end_date, date) >= $2
+       AND ${classId ? forClass('$4') : 'class_ids IS NULL'}`,
+    classId ? [schoolId, from, to, classId] : [schoolId, from, to],
   );
   const set = new Set<string>();
   for (const row of rows) for (const date of datesBetween(row.date, row.end_date ?? row.date)) set.add(date);

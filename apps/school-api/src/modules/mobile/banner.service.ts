@@ -45,13 +45,13 @@ export class BannerService {
       query<{ reporting: string }>(`SELECT staff_reporting_time AS reporting FROM schools WHERE id = $1`, [schoolId]),
       query<{ name: string }>(
         `SELECT name FROM holidays WHERE school_id = $1 AND deleted_at IS NULL AND type <> 'event'
-           AND date <= $2 AND COALESCE(end_date, date) >= $2 LIMIT 1`,
+           AND date <= $2 AND COALESCE(end_date, date) >= $2 AND class_ids IS NULL LIMIT 1`,
         [schoolId, date],
       ),
       query<{ name: string; date: string }>(
         `SELECT name, to_char(date, 'YYYY-MM-DD') AS date FROM holidays
            WHERE school_id = $1 AND deleted_at IS NULL AND type <> 'event'
-           AND date > $2 AND date <= (CAST($2 AS date) + INTERVAL '7 days')
+           AND date > $2 AND date <= (CAST($2 AS date) + INTERVAL '7 days') AND class_ids IS NULL
            ORDER BY date ASC LIMIT 1`,
         [schoolId, date],
       ),
@@ -157,13 +157,13 @@ export class BannerService {
     const [[holiday], [upcoming], posters] = await Promise.all([
       query<{ name: string }>(
         `SELECT name FROM holidays WHERE school_id = $1 AND deleted_at IS NULL AND type <> 'event'
-         AND date <= $2 AND COALESCE(end_date, date) >= $2 LIMIT 1`,
+         AND date <= $2 AND COALESCE(end_date, date) >= $2 AND class_ids IS NULL LIMIT 1`,
         [schoolId, date],
       ),
       query<{ name: string; date: string }>(
         `SELECT name, to_char(date, 'YYYY-MM-DD') AS date FROM holidays
          WHERE school_id = $1 AND deleted_at IS NULL AND type <> 'event'
-         AND date > $2 AND date <= (CAST($2 AS date) + INTERVAL '7 days')
+         AND date > $2 AND date <= (CAST($2 AS date) + INTERVAL '7 days') AND class_ids IS NULL
          ORDER BY date ASC LIMIT 1`,
         [schoolId, date],
       ),

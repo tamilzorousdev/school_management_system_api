@@ -76,6 +76,14 @@ export class ReportCardSchoolDto {
 
   @ApiPropertyOptional({ example: '/api/v1/files/4/content?expires=…&signature=…', nullable: true, type: String })
   signature_url?: string | null;
+
+  @ApiPropertyOptional({
+    example: '/api/v1/files/5/content?expires=…&signature=…',
+    nullable: true,
+    type: String,
+    description: 'School seal, uploaded in School setup',
+  })
+  seal_url?: string | null;
 }
 
 export class ReportCardStudentDto {

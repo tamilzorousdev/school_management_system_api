@@ -67,6 +67,7 @@ interface SchoolInfo {
   board: string | null;
   logo_file_id: number | null;
   signature_file_id: number | null;
+  seal_file_id: number | null;
   principal_name: string | null;
 }
 
@@ -176,6 +177,7 @@ export class ReportCardsService {
         logo_url: this.files.linkFor(school.logo_file_id),
         principal_name: school.principal_name,
         signature_url: this.files.linkFor(school.signature_file_id),
+        seal_url: this.files.linkFor(school.seal_file_id),
       },
       student: this.studentDto(enrollment),
       scope: {
@@ -430,7 +432,8 @@ export class ReportCardsService {
 
   private async school(schoolId: number): Promise<SchoolInfo> {
     const [row] = await this.dataSource.query(
-      `SELECT name, address, city, state, pincode, phone, email, board, logo_file_id, signature_file_id FROM schools WHERE id = $1`,
+      `SELECT name, address, city, state, pincode, phone, email, board, logo_file_id, signature_file_id, seal_file_id
+       FROM schools WHERE id = $1`,
       [schoolId],
     );
     const [principal] = await this.dataSource.query(
@@ -446,6 +449,7 @@ export class ReportCardsService {
       board: row?.board ?? null,
       logo_file_id: row?.logo_file_id ?? null,
       signature_file_id: row?.signature_file_id ?? null,
+      seal_file_id: row?.seal_file_id ?? null,
       principal_name: principal?.name ?? null,
     };
   }

@@ -1,4 +1,13 @@
-import { belowLine, MarkRow, scoreStudents, sectionFigures, subjectAverages, weakSubjects } from './performance.logic';
+import {
+  bandLimits,
+  belowLine,
+  inBand,
+  MarkRow,
+  scoreStudents,
+  sectionFigures,
+  subjectAverages,
+  weakSubjects,
+} from './performance.logic';
 
 const mark = (student: number, exam: number, subject: number, marks: number | null, absent = false): MarkRow => ({
   section_id: 7,
@@ -61,5 +70,15 @@ describe('class performance', () => {
     const scores = [...scoreStudents(rows).values()];
     expect(belowLine(scores)).toBe(52.5);
     expect(belowLine(scores, 40)).toBe(40);
+  });
+
+  it('picks below-average, average or a range of students', () => {
+    expect(bandLimits('below', 60, 60, {})).toEqual({ from: 0, to: 60 });
+    expect(bandLimits('average', 60, 60, {})).toEqual({ from: 50, to: 70 });
+    expect(bandLimits('range', 60, 60, { from: 60, to: 35 })).toEqual({ from: 35, to: 60 });
+    expect(bandLimits('average', null, null, {})).toBeNull();
+    expect(inBand(59.9, { from: 0, to: 60 }, true)).toBe(true);
+    expect(inBand(60, { from: 0, to: 60 }, true)).toBe(false);
+    expect(inBand(70, { from: 50, to: 70 }, false)).toBe(true);
   });
 });

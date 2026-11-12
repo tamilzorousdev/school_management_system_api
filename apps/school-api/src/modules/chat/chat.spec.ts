@@ -1,4 +1,13 @@
-import { isWorkingDay, messagePreview, officeStatus, zonedParts, zonedToUtc } from './chat.logic';
+import {
+  canDeleteForEveryone,
+  isWorkingDay,
+  messageKind,
+  messagePreview,
+  officeStatus,
+  undoUntil,
+  zonedParts,
+  zonedToUtc,
+} from './chat.logic';
 
 const TZ = 'Asia/Kolkata';
 const hours = { start: '08:00', end: '17:00' };
@@ -57,5 +66,30 @@ describe('message preview', () => {
     expect(messagePreview('Hello\n\nthere', false)).toBe('Hello there');
     expect(messagePreview(null, true)).toBe('Sent a file');
     expect(messagePreview('x'.repeat(200), false).length).toBeLessThanOrEqual(120);
+  });
+});
+
+describe('chat delete and media', () => {
+  it('tells the kind of message from the file type', () => {
+    expect(messageKind(null)).toBe('text');
+    expect(messageKind('image/jpeg')).toBe('image');
+    expect(messageKind('audio/mp4')).toBe('voice');
+    expect(messageKind('video/mp4')).toBe('video');
+    expect(messageKind('application/pdf')).toBe('file');
+  });
+
+  it('shows a preview for voice and video', () => {
+    expect(messagePreview(null, true, 'voice')).toBe('Voice message');
+    expect(messagePreview(null, true, 'video')).toBe('Video');
+    expect(messagePreview(null, true, 'image')).toBe('Photo');
+    expect(messagePreview(null, true)).toBe('Sent a file');
+  });
+
+  it('allows delete for everyone within 24 hours and undo within 10 seconds', () => {
+    const now = new Date('2026-11-12T12:00:00Z');
+    expect(canDeleteForEveryone(new Date('2026-11-11T12:30:00Z'), now)).toBe(true);
+    expect(canDeleteForEveryone(new Date('2026-11-11T11:30:00Z'), now)).toBe(false);
+    expect(undoUntil(now)?.toISOString()).toBe('2026-11-12T12:00:10.000Z');
+    expect(undoUntil(null)).toBeNull();
   });
 });

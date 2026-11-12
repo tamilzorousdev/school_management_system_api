@@ -7,6 +7,7 @@ import { FileRecord } from './entities/file-record.entity';
 import { FilesController } from './files.controller';
 import { FilesService } from './files.service';
 import { FILE_STORAGE, LocalFileStorage } from './storage/local.storage';
+import { MEDIA_MAX_MB } from './files.service';
 
 @Global()
 @Module({
@@ -16,7 +17,7 @@ import { FILE_STORAGE, LocalFileStorage } from './storage/local.storage';
       inject: [storageConfig.KEY],
       useFactory: (storage: StorageConfig) => ({
         storage: memoryStorage(),
-        limits: { fileSize: storage.maxFileMb * 1024 * 1024, files: 1 },
+        limits: { fileSize: Math.max(storage.maxFileMb, MEDIA_MAX_MB) * 1024 * 1024, files: 1 },
       }),
     }),
   ],

@@ -12,7 +12,9 @@ import {
 } from './dto/performance.dto';
 import {
   average,
+  bandLimits,
   belowLine,
+  inBand,
   MarkRow,
   round1,
   scoreStudents,
@@ -108,15 +110,22 @@ export class PerformanceService {
     ]);
     const scores = [...scoreStudents(marks).values()];
     const sectionAverage = average(scores.map((score) => score.percent));
-    const line = belowLine(scores, query.below);
+    const band = query.band ?? 'below';
+    const line = band === 'below' ? belowLine(scores, query.below) : sectionAverage;
+    const limits = bandLimits(band, sectionAverage, line, query);
     const subjects = subjectAverages(scores);
     const byId = new Map(students.map((student) => [Number(student.id), student]));
-    const below = line === null ? [] : scores.filter((score) => score.percent < line && byId.has(score.student_id));
+    const below = limits
+      ? scores.filter((score) => byId.has(score.student_id) && inBand(score.percent, limits, band === 'below'))
+      : [];
     return {
       section: { id: Number(section.id), name: `${section.class_name} - ${section.name}` },
       exam,
       section_average: sectionAverage,
       line,
+      band,
+      from: limits?.from ?? null,
+      to: limits?.to ?? null,
       students: below
         .sort((a, b) => a.percent - b.percent)
         .map((score: StudentScore) => {
@@ -126,7 +135,7 @@ export class PerformanceService {
             full_name: [student.first_name, student.last_name].filter(Boolean).join(' '),
             roll_no: student.roll_no,
             percent: score.percent,
-            gap: round1(line! - score.percent),
+            gap: round1((sectionAverage ?? score.percent) - score.percent),
             failed_results: score.failed_results,
             attendance_percent: attendance.get(score.student_id) ?? null,
             weak_subjects: weakSubjects(score, subjects),

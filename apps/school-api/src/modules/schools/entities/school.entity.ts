@@ -87,6 +87,9 @@ export class School extends TrackedEntity {
   @Column({ type: 'varchar', length: 10, default: 'session' })
   attendance_mode: AttendanceMode;
 
+  @Column({ type: 'int', array: true, nullable: true })
+  special_class_class_ids: number[] | null;
+
   @Column({ type: 'varchar', length: 5, default: '08:00' })
   chat_office_start: string;
 

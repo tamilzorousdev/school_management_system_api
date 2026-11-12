@@ -41,7 +41,24 @@ export class MobileParentChildController {
     private readonly records: StudentRecordsService,
     private readonly lifecycle: StudentLifecycleService,
     private readonly parentTeachers: ParentTeachersService,
+    private readonly childHolidays: HolidaysService,
   ) {}
+
+  @Get('holidays')
+  @ApiTags(PARENT_MODULE_TAGS.MODULE_1)
+  @ApiOperation({
+    summary: 'Holidays for the child: whole-school holidays and holidays only for the child’s class',
+    description:
+      'Same shape as the teacher holidays call. whole_school is false for a class-only holiday (for example study leave), with classes naming the class.',
+  })
+  @ApiEnvelope(MobileHolidayOverviewDto)
+  async holidays(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: HolidayQueryDto,
+  ) {
+    return this.childHolidays.forStudent(await this.access.childSchool(user.id, id), id, query);
+  }
 
   @Get('timetable')
   @ApiTags(PARENT_MODULE_TAGS.MODULE_1)
@@ -267,7 +284,7 @@ export class MobileTeacherController {
   })
   @ApiEnvelope(MobileHolidayOverviewDto)
   holidays(@CurrentUser() user: AuthUser, @Query() query: HolidayQueryDto) {
-    return this.holidaysService.overview(this.access.teacherSchool(user), query);
+    return this.holidaysService.forTeacher(this.access.teacherSchool(user), user.id, query);
   }
 
   @Get('sections/:id/students')

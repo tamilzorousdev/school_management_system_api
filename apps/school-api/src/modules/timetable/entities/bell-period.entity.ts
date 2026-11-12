@@ -28,6 +28,12 @@ export class BellPeriod {
   @Column({ type: 'boolean', default: false })
   is_break: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  is_special: boolean;
+
+  @Column({ type: 'int', array: true, nullable: true })
+  section_ids: number[] | null;
+
   @Column({ type: 'smallint', default: 0 })
   sort_order: number;
 }

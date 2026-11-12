@@ -18,4 +18,7 @@ export class Holiday extends SchoolScopedEntity {
 
   @Column({ type: 'varchar', length: 20, default: 'holiday' })
   type: HolidayType;
+
+  @Column({ type: 'int', array: true, nullable: true })
+  class_ids: number[] | null;
 }

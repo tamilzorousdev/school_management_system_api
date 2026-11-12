@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, LessThan, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { AppException, AuthUser, listQuery, offset, paginate, Paginated } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { currentYearId, currentYearSql, onlyCurrentYear } from '../../shared/academic-year';
@@ -13,7 +13,19 @@ import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AssignmentsService } from '../staff/assignments.service';
-import { LOOKAHEAD_DAYS, messagePreview, officeStatus, PAGE_SIZE, zonedParts } from './chat.logic';
+import {
+  canDeleteForEveryone,
+  DELETE_WINDOW_HOURS,
+  LOOKAHEAD_DAYS,
+  messageKind,
+  messagePreview,
+  officeStatus,
+  PAGE_SIZE,
+  UNDO_SECONDS,
+  undoUntil,
+  VIDEO_MAX_SECONDS,
+  zonedParts,
+} from './chat.logic';
 import {
   AuditMessageDto,
   AuditThreadDetailDto,
@@ -31,6 +43,9 @@ import {
   SendMessageDto,
   TeacherThreadInputDto,
   ThreadsQueryDto,
+  ClearChatResultDto,
+  DeleteMessageResultDto,
+  DeleteScope,
 } from './dto/chat.dto';
 import { ChatAuditAction, ChatAuditLog, ChatMessage, ChatParty, ChatThread } from './entities/chat.entity';
 
@@ -104,12 +119,20 @@ export class ChatService {
   async history(actor: AuthUser, party: ChatParty, id: number, query: MessagesQueryDto): Promise<MessagesPageDto> {
     const thread = await this.findForParty(actor, party, id);
     const limit = query.limit ?? PAGE_SIZE;
-    const rows = await this.messages.find({
-      where: { thread_id: thread.id, ...(query.before_id ? { id: LessThan(query.before_id) } : {}) },
-      order: { id: 'DESC' },
-      take: limit + 1,
-    });
-    return { items: await this.presentMessages(rows.slice(0, limit)), has_more: rows.length > limit };
+    const cleared = party === 'teacher' ? thread.teacher_cleared_at : thread.parent_cleared_at;
+    const qb = this.messages
+      .createQueryBuilder('m')
+      .where('m.thread_id = :threadId', { threadId: thread.id })
+      .andWhere('NOT EXISTS (SELECT 1 FROM chat_message_hides h WHERE h.message_id = m.id AND h.user_id = :viewer)', {
+        viewer: actor.id,
+      });
+    if (query.before_id) qb.andWhere('m.id < :beforeId', { beforeId: query.before_id });
+    if (cleared) qb.andWhere('m.created_at > :cleared', { cleared });
+    const rows = await qb
+      .orderBy('m.id', 'DESC')
+      .take(limit + 1)
+      .getMany();
+    return { items: await this.presentMessages(rows.slice(0, limit), actor.id), has_more: rows.length > limit };
   }
 
   async previewHistory(
@@ -134,6 +157,20 @@ export class ChatService {
       throw AppException.validation([{ field: 'body', message: 'Write a message or attach a file' }]);
     }
     if (dto.file_id) await this.files.assertAttachable(dto.file_id, thread.school_id, 'file_id');
+    const [file] = dto.file_id
+      ? ((await this.dataSource.query(`SELECT mime_type FROM files WHERE id = $1`, [dto.file_id])) as {
+          mime_type: string;
+        }[])
+      : [];
+    const kind = messageKind(file?.mime_type);
+    if (kind === 'video') {
+      if (!dto.duration_seconds) {
+        throw AppException.validation([{ field: 'duration_seconds', message: 'Send the video length in seconds' }]);
+      }
+      if (dto.duration_seconds > VIDEO_MAX_SECONDS) {
+        throw AppException.badRequest(`A video can be at most ${VIDEO_MAX_SECONDS / 60} minutes`, 'VIDEO_TOO_LONG');
+      }
+    }
     const now = new Date();
     const hold = party === 'parent' ? await this.officeHoursFor(thread.school_id, now) : null;
     const held = Boolean(hold && !hold.open_now && hold.next_open_at);
@@ -146,6 +183,8 @@ export class ChatService {
           sender_party: party,
           body: dto.body ?? null,
           file_id: dto.file_id ?? null,
+          kind,
+          duration_seconds: kind === 'voice' || kind === 'video' ? (dto.duration_seconds ?? null) : null,
           push_pending: held,
           push_after: held ? hold!.next_open_at : null,
         }),
@@ -155,7 +194,7 @@ export class ChatService {
         .update(ChatThread)
         .set({
           last_message_at: now,
-          last_message_preview: messagePreview(message.body, Boolean(message.file_id)),
+          last_message_preview: messagePreview(message.body, Boolean(message.file_id), kind),
           last_sender_id: actor.id,
           message_count: () => 'message_count + 1',
           ...(party === 'teacher'
@@ -166,11 +205,17 @@ export class ChatService {
         .execute();
       return message;
     });
-    const [presented] = await this.presentMessages([saved]);
+    const [presented] = await this.presentMessages([saved], actor.id);
     this.realtime.toUsers([thread.teacher_user_id, thread.parent_user_id], 'chat.message', presented);
     if (!held) {
       const recipient = party === 'teacher' ? thread.parent_user_id : thread.teacher_user_id;
-      await this.pushMessage(thread, recipient, actor.name, messagePreview(saved.body, Boolean(saved.file_id)), 1);
+      await this.pushMessage(
+        thread,
+        recipient,
+        actor.name,
+        messagePreview(saved.body, Boolean(saved.file_id), kind),
+        1,
+      );
     }
     return presented;
   }
@@ -215,7 +260,80 @@ export class ChatService {
     });
     await this.messages.save(message);
     await this.threads.increment({ id: thread.id }, 'open_flags', 1);
-    return (await this.presentMessages([message]))[0];
+    return (await this.presentMessages([message], actor.id))[0];
+  }
+
+  async deleteMessage(
+    actor: AuthUser,
+    party: ChatParty,
+    threadId: number,
+    messageId: number,
+    scope: DeleteScope,
+  ): Promise<DeleteMessageResultDto> {
+    const thread = await this.findForParty(actor, party, threadId);
+    const message = await this.visibleMessage(thread, party, actor.id, messageId);
+    if (scope === 'me') {
+      await this.dataSource.query(
+        `INSERT INTO chat_message_hides (message_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [message.id, actor.id],
+      );
+      await this.log(thread, actor.id, 'deleted_for_me', message.id);
+      return { message_id: message.id, deleted_for: 'me', undo_until: null, message: null };
+    }
+    if (message.sender_user_id !== actor.id) {
+      throw AppException.forbidden('You can delete only your own messages for everyone', 'NOT_YOUR_MESSAGE');
+    }
+    if (message.deleted_for_all_at) throw AppException.conflict('This message is already deleted', 'ALREADY_DELETED');
+    if (!canDeleteForEveryone(message.created_at)) {
+      throw AppException.badRequest(
+        `Messages can be deleted for everyone within ${DELETE_WINDOW_HOURS} hours. You can still delete it for yourself.`,
+        'DELETE_WINDOW_PASSED',
+      );
+    }
+    message.deleted_for_all_at = new Date();
+    message.deleted_for_all_by = actor.id;
+    await this.messages.save(message);
+    await this.refreshPreview(thread.id);
+    await this.log(thread, actor.id, 'deleted_for_everyone', message.id);
+    const [presented] = await this.presentMessages([message], actor.id);
+    this.realtime.toUsers([thread.teacher_user_id, thread.parent_user_id], 'chat.deleted', {
+      thread_id: thread.id,
+      message_id: message.id,
+      deleted_at: message.deleted_for_all_at,
+    });
+    return { message_id: message.id, deleted_for: 'everyone', undo_until: presented.undo_until, message: presented };
+  }
+
+  async undoDelete(actor: AuthUser, party: ChatParty, threadId: number, messageId: number): Promise<ChatMessageDto> {
+    const thread = await this.findForParty(actor, party, threadId);
+    const message = await this.visibleMessage(thread, party, actor.id, messageId);
+    if (!message.deleted_for_all_at || message.deleted_for_all_by !== actor.id) {
+      throw AppException.conflict('There is no delete of yours to undo on this message', 'NOTHING_TO_UNDO');
+    }
+    if (Date.now() > undoUntil(message.deleted_for_all_at)!.getTime()) {
+      throw AppException.badRequest(`Undo is possible for ${UNDO_SECONDS} seconds after deleting`, 'UNDO_EXPIRED');
+    }
+    message.deleted_for_all_at = null;
+    message.deleted_for_all_by = null;
+    await this.messages.save(message);
+    await this.refreshPreview(thread.id);
+    await this.log(thread, actor.id, 'undid_delete', message.id);
+    const [presented] = await this.presentMessages([message], actor.id);
+    this.realtime.toUsers([thread.teacher_user_id, thread.parent_user_id], 'chat.restored', presented);
+    return presented;
+  }
+
+  async clearChat(actor: AuthUser, party: ChatParty, threadId: number): Promise<ClearChatResultDto> {
+    const thread = await this.findForParty(actor, party, threadId);
+    const now = new Date();
+    await this.threads.update(
+      thread.id,
+      party === 'teacher'
+        ? { teacher_cleared_at: now, teacher_unread: 0 }
+        : { parent_cleared_at: now, parent_unread: 0 },
+    );
+    await this.log(thread, actor.id, 'cleared_chat');
+    return { thread_id: thread.id, cleared_at: now };
   }
 
   async auditThreads(schoolId: number, query: AuditThreadsQueryDto): Promise<Paginated<ChatThreadDto>> {
@@ -468,6 +586,36 @@ export class ChatService {
     return thread;
   }
 
+  private async visibleMessage(
+    thread: ChatThread,
+    party: ChatParty,
+    viewerId: number,
+    messageId: number,
+  ): Promise<ChatMessage> {
+    const cleared = party === 'teacher' ? thread.teacher_cleared_at : thread.parent_cleared_at;
+    const message = await this.messages.findOneBy({ id: messageId, thread_id: thread.id });
+    const [hidden] = message
+      ? await this.dataSource.query(`SELECT 1 FROM chat_message_hides WHERE message_id = $1 AND user_id = $2`, [
+          messageId,
+          viewerId,
+        ])
+      : [];
+    if (!message || hidden || (cleared && message.created_at <= cleared)) {
+      throw AppException.notFound('Message not found', 'MESSAGE_NOT_FOUND');
+    }
+    return message;
+  }
+
+  private async refreshPreview(threadId: number): Promise<void> {
+    const [latest] = await this.messages.find({ where: { thread_id: threadId }, order: { id: 'DESC' }, take: 1 });
+    if (!latest) return;
+    await this.threads.update(threadId, {
+      last_message_preview: latest.deleted_for_all_at
+        ? 'This message was deleted'
+        : messagePreview(latest.body, Boolean(latest.file_id), latest.kind),
+    });
+  }
+
   private async schoolThread(schoolId: number, id: number): Promise<ChatThread> {
     const thread = await onlyCurrentYear(this.threads.createQueryBuilder('t'))
       .where('t.id = :id AND t.school_id = :schoolId', { id, schoolId })
@@ -522,32 +670,47 @@ export class ChatService {
     return new Map(rows.map((row) => [Number(row.id), row.name]));
   }
 
-  private async presentMessages(rows: ChatMessage[]): Promise<ChatMessageDto[]> {
+  private async presentMessages(rows: ChatMessage[], viewerId: number | null = null): Promise<ChatMessageDto[]> {
     if (!rows.length) return [];
+    const gone = (row: ChatMessage) => Boolean(row.hidden_at || row.deleted_for_all_at);
     const [people, files] = await Promise.all([
       this.users(rows.map((row) => row.sender_user_id)),
-      this.files.presentMany(rows.map((row) => (row.hidden_at ? null : row.file_id))),
+      this.files.presentMany(rows.map((row) => (gone(row) ? null : row.file_id))),
     ]);
     return rows.map((row) => ({
       id: row.id,
       thread_id: row.thread_id,
       sender: { id: row.sender_user_id, name: people.get(row.sender_user_id) ?? '' },
       sender_party: row.sender_party,
-      body: row.hidden_at ? null : row.body,
-      file: row.hidden_at || !row.file_id ? null : (files.get(row.file_id) ?? null),
+      body: gone(row) ? null : row.body,
+      file: gone(row) || !row.file_id ? null : (files.get(row.file_id) ?? null),
       sent_at: row.created_at,
       read_at: row.read_at,
       held_for_office_hours: row.push_pending,
       flagged: Boolean(row.flagged_at && !row.flag_resolved_at),
       hidden: Boolean(row.hidden_at),
+      kind: row.kind ?? 'text',
+      duration_seconds: row.duration_seconds ?? null,
+      deleted: Boolean(row.deleted_for_all_at),
+      deleted_at: row.deleted_for_all_at ?? null,
+      can_delete_for_everyone:
+        viewerId === row.sender_user_id && !row.deleted_for_all_at && canDeleteForEveryone(row.created_at),
+      undo_until: viewerId !== null && row.deleted_for_all_by === viewerId ? undoUntil(row.deleted_for_all_at) : null,
     }));
   }
 
   private async presentAudit(rows: ChatMessage[]): Promise<AuditMessageDto[]> {
     if (!rows.length) return [];
+    const hides: { message_id: number; user_id: number }[] = await this.dataSource.query(
+      `SELECT message_id, user_id FROM chat_message_hides WHERE message_id = ANY($1)`,
+      [rows.map((row) => row.id)],
+    );
     const [base, people, files] = await Promise.all([
       this.presentMessages(rows),
-      this.users(rows.flatMap((row) => [row.flagged_by, row.hidden_by])),
+      this.users([
+        ...rows.flatMap((row) => [row.flagged_by, row.hidden_by, row.deleted_for_all_by]),
+        ...hides.map((row) => Number(row.user_id)),
+      ]),
       this.files.presentMany(rows.map((row) => row.file_id)),
     ]);
     const ref = (id: number | null) => (id ? { id, name: people.get(id) ?? '' } : null);
@@ -561,6 +724,10 @@ export class ChatService {
       flag_resolved_at: row.flag_resolved_at,
       hidden_by: ref(row.hidden_by),
       hidden_reason: row.hidden_reason,
+      deleted_by: ref(row.deleted_for_all_by),
+      deleted_for_me_by: hides
+        .filter((hide) => Number(hide.message_id) === row.id)
+        .map((hide) => ref(Number(hide.user_id))!),
     }));
   }
 
@@ -619,7 +786,7 @@ export class ChatService {
           ? [student.class_name, student.section_name].filter(Boolean).join(' - ')
           : null,
         last_message_at: row.last_message_at,
-        last_message_preview: row.last_message_preview,
+        last_message_preview: clearedFor(row, viewerId) ? null : row.last_message_preview,
         unread:
           viewerId === null
             ? row.teacher_unread + row.parent_unread
@@ -634,4 +801,10 @@ export class ChatService {
       };
     });
   }
+}
+
+function clearedFor(thread: ChatThread, viewerId: number | null): boolean {
+  if (viewerId === null || !thread.last_message_at) return false;
+  const cleared = viewerId === thread.teacher_user_id ? thread.teacher_cleared_at : thread.parent_cleared_at;
+  return Boolean(cleared && thread.last_message_at <= cleared);
 }
