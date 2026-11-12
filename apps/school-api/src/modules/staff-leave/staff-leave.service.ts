@@ -21,6 +21,7 @@ import {
 } from './dto/staff-leave.dto';
 import { LeaveType } from './entities/leave-type.entity';
 import { StaffLeave, StaffLeaveStatus } from './entities/staff-leave.entity';
+import { yearWhere } from '../../shared/year-context';
 
 export const DEFAULT_LEAVE_TYPES: [string, string, number, boolean][] = [
   ['CL', 'Casual leave', 12, true],
@@ -330,7 +331,7 @@ export class StaffLeaveService {
   }
 
   private async currentYear(schoolId: number): Promise<AcademicYear> {
-    const year = await this.dataSource.getRepository(AcademicYear).findOneBy({ school_id: schoolId, is_current: true });
+    const year = await this.dataSource.getRepository(AcademicYear).findOneBy(yearWhere(schoolId));
     if (!year) throw AppException.badRequest('Set the current academic year in School setup first', 'NO_CURRENT_YEAR');
     return year;
   }

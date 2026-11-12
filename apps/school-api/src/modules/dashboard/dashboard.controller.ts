@@ -4,6 +4,8 @@ import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { DashboardService } from './dashboard.service';
 import { DashboardDto } from './dto/dashboard.dto';
+import { YearPerformanceListDto } from './dto/year-performance.dto';
+import { YearPerformanceService } from './year-performance.service';
 
 @ApiTags('Admin · Dashboard')
 @ApiBearerAuth()
@@ -11,7 +13,10 @@ import { DashboardDto } from './dto/dashboard.dto';
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.BAD_REQUEST)
 @Controller('admin/dashboard')
 export class DashboardController {
-  constructor(private readonly dashboard: DashboardService) {}
+  constructor(
+    private readonly dashboard: DashboardService,
+    private readonly performance: YearPerformanceService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -22,5 +27,16 @@ export class DashboardController {
   @ApiEnvelope(DashboardDto)
   overview(@SchoolId() schoolId: number, @CurrentUser() user: AuthUser) {
     return this.dashboard.overview(schoolId, user);
+  }
+
+  @Get('year-performance')
+  @ApiOperation({
+    summary: 'Year by year performance: students, attendance, exam results, sports and activities, fees',
+    description:
+      'One row per academic year, newest first, up to the current year, so the office can compare years. Each section follows the same permissions as the dashboard and is null without them: students and activities (students.view), attendance (attendance.view), studies (exams.view), fees (fees.view).',
+  })
+  @ApiEnvelope(YearPerformanceListDto)
+  yearPerformance(@SchoolId() schoolId: number, @CurrentUser() user: AuthUser) {
+    return this.performance.list(schoolId, user);
   }
 }

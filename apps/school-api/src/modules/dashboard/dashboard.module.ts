@@ -7,10 +7,11 @@ import { StudentsModule } from '../students/students.module';
 import { TrackingModule } from '../tracking/tracking.module';
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
+import { YearPerformanceService } from './year-performance.service';
 
 @Module({
   imports: [StudentsModule, StaffModule, AttendanceModule, StaffAttendanceModule, FeesModule, TrackingModule],
   controllers: [DashboardController],
-  providers: [DashboardService],
+  providers: [DashboardService, YearPerformanceService],
 })
 export class DashboardModule {}

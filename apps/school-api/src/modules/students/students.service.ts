@@ -26,6 +26,7 @@ import { StudentGuardian } from './entities/student-guardian.entity';
 import { Guardian } from './entities/guardian.entity';
 import { Student } from './entities/student.entity';
 import { GuardiansService, Invite } from './guardians.service';
+import { viewingYearId, yearClause, yearWhere } from '../../shared/year-context';
 
 type ListedStudent = Student & {
   current?: StudentEnrollment | null;
@@ -158,7 +159,7 @@ export class StudentsService {
   }
 
   async list(schoolId: number, query: StudentQueryDto): Promise<Paginated<StudentListItemDto>> {
-    const year = await this.years.findOneBy({ school_id: schoolId, is_current: true });
+    const year = await this.years.findOneBy(yearWhere(schoolId));
     const qb = this.students
       .createQueryBuilder('s')
       .leftJoinAndMapOne('s.current', StudentEnrollment, 'e', 'e.student_id = s.id AND e.academic_year_id = :yearId', {
@@ -169,6 +170,7 @@ export class StudentsService {
       .leftJoinAndSelect('s.guardian_links', 'gl')
       .leftJoinAndSelect('gl.guardian', 'g')
       .where('s.school_id = :schoolId', { schoolId });
+    if (viewingYearId()) qb.andWhere('e.id IS NOT NULL');
 
     if (query.status) qb.andWhere('s.status = :status', { status: query.status });
     if (query.gender) qb.andWhere('s.gender = :gender', { gender: query.gender });
@@ -207,7 +209,7 @@ export class StudentsService {
   }
 
   async insights(schoolId: number): Promise<StudentInsightsDto> {
-    const year = await this.years.findOneBy({ school_id: schoolId, is_current: true });
+    const year = await this.years.findOneBy(yearWhere(schoolId));
     const [row] = await this.dataSource.query(
       `SELECT COUNT(*) AS total,
               COUNT(*) FILTER (WHERE s.admission_date >= $3) AS new_this_month,
@@ -217,7 +219,8 @@ export class StudentsService {
               COUNT(*) FILTER (WHERE s.gender = 'female') AS girls
        FROM students s
        LEFT JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = $2
-       WHERE s.school_id = $1 AND s.deleted_at IS NULL AND s.status = 'active'`,
+       WHERE s.school_id = $1 AND s.deleted_at IS NULL
+         AND ${viewingYearId() ? 'e.id IS NOT NULL' : "s.status = 'active'"}`,
       [schoolId, year?.id ?? 0, monthStartIn(this.app.timeZone)],
     );
     return {
@@ -244,7 +247,11 @@ export class StudentsService {
     const enrollments = (student.enrollments ?? []).sort((a, b) =>
       (b.academic_year?.start_date ?? '').localeCompare(a.academic_year?.start_date ?? ''),
     );
-    const current = enrollments.find((enrollment) => enrollment.academic_year?.is_current) ?? null;
+    const viewing = viewingYearId();
+    const current =
+      enrollments.find((enrollment) =>
+        viewing ? enrollment.academic_year_id === viewing : enrollment.academic_year?.is_current,
+      ) ?? null;
     const listed: ListedStudent = Object.assign(student, {
       current,
       current_class: current?.school_class ?? null,
@@ -261,7 +268,7 @@ export class StudentsService {
          FROM student_guardians a
          JOIN student_guardians b ON b.guardian_id = a.guardian_id AND b.student_id <> a.student_id
          JOIN students x ON x.id = b.student_id AND x.deleted_at IS NULL
-         LEFT JOIN academic_years y ON y.school_id = x.school_id AND y.is_current = true AND y.deleted_at IS NULL
+         LEFT JOIN academic_years y ON y.school_id = x.school_id AND ${yearClause('y')} AND y.deleted_at IS NULL
          LEFT JOIN student_enrollments e ON e.student_id = x.id AND e.academic_year_id = y.id
          LEFT JOIN classes c ON c.id = e.class_id
          LEFT JOIN sections sec ON sec.id = e.section_id
@@ -460,7 +467,7 @@ export class StudentsService {
   }
 
   private async currentYear(manager: EntityManager, schoolId: number): Promise<AcademicYear> {
-    const year = await manager.findOneBy(AcademicYear, { school_id: schoolId, is_current: true });
+    const year = await manager.findOneBy(AcademicYear, yearWhere(schoolId));
     if (!year) throw AppException.badRequest('Set the current academic year in School setup first', 'NO_CURRENT_YEAR');
     return year;
   }

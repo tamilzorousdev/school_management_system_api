@@ -25,6 +25,7 @@ import {
 } from './dto/student-response.dto';
 import { Guardian } from './entities/guardian.entity';
 import { StudentGuardian } from './entities/student-guardian.entity';
+import { yearClause } from '../../shared/year-context';
 
 export interface Invite {
   user_id: number;
@@ -295,7 +296,7 @@ export class GuardiansService {
        JOIN student_guardians sg ON sg.guardian_id = g.id
        JOIN students s ON s.id = sg.student_id AND s.deleted_at IS NULL AND s.status = 'active'
        JOIN schools sch ON sch.id = s.school_id
-       LEFT JOIN academic_years y ON y.school_id = s.school_id AND y.is_current = true AND y.deleted_at IS NULL
+       LEFT JOIN academic_years y ON y.school_id = s.school_id AND ${yearClause('y')} AND y.deleted_at IS NULL
        LEFT JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = y.id
        LEFT JOIN classes c ON c.id = e.class_id
        LEFT JOIN sections sec ON sec.id = e.section_id
@@ -347,7 +348,7 @@ export class GuardiansService {
               to_char(s.admission_date, 'YYYY-MM-DD') AS admission_date
        FROM student_guardians sg
        JOIN students s ON s.id = sg.student_id AND s.deleted_at IS NULL
-       LEFT JOIN academic_years y ON y.school_id = $1 AND y.is_current = true AND y.deleted_at IS NULL
+       LEFT JOIN academic_years y ON y.school_id = $1 AND ${yearClause('y')} AND y.deleted_at IS NULL
        LEFT JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = y.id
        LEFT JOIN classes c ON c.id = e.class_id
        LEFT JOIN sections sec ON sec.id = e.section_id

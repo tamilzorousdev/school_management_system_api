@@ -40,6 +40,7 @@ import { AttendanceSession } from './entities/attendance-session.entity';
 import { clampRange, monthsBetween } from './attendance-reports.logic';
 import { currentSession, DEFAULT_GRACE_MINUTES, GraceWindow, graceWindow, windowClosed } from './attendance-window';
 import { bulkPlan, mergeMarks } from './bulk-attendance.logic';
+import { yearClause, yearWhere } from '../../shared/year-context';
 
 interface SectionRow {
   id: number;
@@ -368,7 +369,7 @@ export class AttendanceService {
     filter?: BoardFilter,
   ): Promise<AttendanceBoardDto> {
     const manager = this.dataSource.manager;
-    const year = await manager.findOneBy(AcademicYear, { school_id: schoolId, is_current: true });
+    const year = await manager.findOneBy(AcademicYear, yearWhere(schoolId));
     const holiday = await this.holidayName(manager, schoolId, date);
     const window = await this.window(manager, schoolId, session);
     const workingDay = !holiday && !WEEKLY_OFF.includes(weekday(date));
@@ -562,7 +563,7 @@ export class AttendanceService {
       [classId, schoolId],
     );
     if (!schoolClass) throw AppException.notFound('Class not found', 'CLASS_NOT_FOUND');
-    const year = await manager.findOneBy(AcademicYear, { school_id: schoolId, is_current: true });
+    const year = await manager.findOneBy(AcademicYear, yearWhere(schoolId));
     const sections: { id: number }[] = year
       ? await manager.query(
           `SELECT id FROM sections WHERE class_id = $1 AND academic_year_id = $2 AND deleted_at IS NULL ORDER BY name`,
@@ -651,7 +652,7 @@ export class AttendanceService {
   async yearSummary(schoolId: number, studentId: number): Promise<AttendanceYearDto> {
     const manager = this.dataSource.manager;
     const [year, student] = await Promise.all([
-      manager.findOneBy(AcademicYear, { school_id: schoolId, is_current: true }),
+      manager.findOneBy(AcademicYear, yearWhere(schoolId)),
       manager.query(`SELECT id FROM students WHERE id = $1 AND school_id = $2 AND deleted_at IS NULL`, [
         studentId,
         schoolId,
@@ -713,7 +714,7 @@ export class AttendanceService {
   async assertClassTeacherOfStudent(schoolId: number, studentId: number, userId: number): Promise<void> {
     const [row] = await this.dataSource.query(
       `SELECT s.id, sec.class_teacher_user_id FROM students s
-       LEFT JOIN academic_years y ON y.school_id = s.school_id AND y.is_current AND y.deleted_at IS NULL
+       LEFT JOIN academic_years y ON y.school_id = s.school_id AND ${yearClause('y')} AND y.deleted_at IS NULL
        LEFT JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = y.id
        LEFT JOIN sections sec ON sec.id = e.section_id
        WHERE s.id = $1 AND s.school_id = $2 AND s.deleted_at IS NULL`,
@@ -896,7 +897,7 @@ export class AttendanceService {
         `SELECT sec.id, c.name AS class_name, sec.name, sec.class_teacher_user_id
          FROM sections sec
          JOIN classes c ON c.id = sec.class_id
-         JOIN academic_years y ON y.id = sec.academic_year_id AND y.is_current AND y.deleted_at IS NULL
+         JOIN academic_years y ON y.id = sec.academic_year_id AND ${yearClause('y')} AND y.deleted_at IS NULL
          WHERE sec.school_id = $1 AND sec.deleted_at IS NULL
            AND EXISTS (SELECT 1 FROM student_enrollments e JOIN students s ON s.id = e.student_id
                        WHERE e.section_id = sec.id AND s.deleted_at IS NULL AND s.status = 'active')
@@ -932,7 +933,7 @@ export class AttendanceService {
         `SELECT sec.id, c.name AS class_name, sec.name, sec.class_teacher_user_id, t.name AS teacher
          FROM sections sec
          JOIN classes c ON c.id = sec.class_id
-         JOIN academic_years y ON y.id = sec.academic_year_id AND y.is_current AND y.deleted_at IS NULL
+         JOIN academic_years y ON y.id = sec.academic_year_id AND ${yearClause('y')} AND y.deleted_at IS NULL
          LEFT JOIN users t ON t.id = sec.class_teacher_user_id
          WHERE sec.school_id = $1 AND sec.deleted_at IS NULL
            AND EXISTS (SELECT 1 FROM student_enrollments e JOIN students s ON s.id = e.student_id

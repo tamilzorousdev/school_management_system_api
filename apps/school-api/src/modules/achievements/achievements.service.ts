@@ -23,6 +23,7 @@ import {
   AchievementLevel,
   StudentAchievement,
 } from './entities/student-achievement.entity';
+import { yearClause } from '../../shared/year-context';
 
 export const LEVEL_LABELS: Record<string, string> = {
   class: 'Class',
@@ -243,7 +244,7 @@ export class AchievementsService {
         new Brackets((where) => {
           where.where(
             `EXISTS (SELECT 1 FROM student_enrollments e
-               JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current
+               JOIN academic_years y ON y.id = e.academic_year_id AND ${yearClause('y')}
                JOIN sections sec ON sec.id = e.section_id
                WHERE e.student_id = a.student_id
                AND (CAST(:sectionId AS int) IS NULL OR sec.id = :sectionId)
@@ -265,7 +266,7 @@ export class AchievementsService {
     }
     const [year] = await this.dataSource.query(
       `SELECT to_char(start_date, 'YYYY-MM-DD') AS start_date, to_char(end_date, 'YYYY-MM-DD') AS end_date
-       FROM academic_years WHERE school_id = $1 AND is_current LIMIT 1`,
+       FROM academic_years y WHERE y.school_id = $1 AND ${yearClause('y')} LIMIT 1`,
       [schoolId],
     );
     return {
@@ -286,7 +287,7 @@ export class AchievementsService {
     }[] = await this.dataSource.query(
       `SELECT s.id, concat_ws(' ', s.first_name, s.last_name) AS name, s.admission_no, s.photo_file_id,
               (SELECT c.name || ' - ' || sec.name FROM student_enrollments e
-                 JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current
+                 JOIN academic_years y ON y.id = e.academic_year_id AND ${yearClause('y')}
                  JOIN sections sec ON sec.id = e.section_id JOIN classes c ON c.id = sec.class_id
                  WHERE e.student_id = s.id LIMIT 1) AS section
        FROM students s WHERE s.id = ANY($1)`,

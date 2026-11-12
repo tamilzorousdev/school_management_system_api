@@ -114,6 +114,17 @@ export class AuditThreadsQueryDto extends ListQueryDto {
   @Min(1)
   @IsInt()
   student_id?: number;
+
+  @ApiPropertyOptional({
+    example: 3,
+    description:
+      'An earlier academic year: its conversations are archived (hidden from the apps) and kept for 2 years after that year ends. Leave out for the current year.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @Min(1)
+  @IsInt()
+  academic_year_id?: number;
 }
 
 export class FlaggedQueryDto extends PaginationDto {
@@ -191,6 +202,12 @@ export class ChatThreadDto {
 
   @ApiProperty({ type: RefDto })
   academic_year: RefDto;
+
+  @ApiProperty({
+    example: false,
+    description: 'true for an earlier academic year: hidden from the apps, read-only for the office',
+  })
+  archived: boolean;
 }
 
 export class ChatMessageDto {

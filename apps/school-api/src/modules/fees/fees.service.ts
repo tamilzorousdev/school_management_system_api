@@ -55,6 +55,7 @@ import {
   sumAmounts,
 } from './fees.logic';
 import { receiptPdf } from './receipt.pdf';
+import { yearClause } from '../../shared/year-context';
 
 interface StudentRow {
   id: number;
@@ -147,7 +148,7 @@ export class FeesService {
   async year(schoolId: number, yearId?: number): Promise<FeeYear> {
     const [row] = await this.dataSource.query(
       `SELECT id, name, to_char(start_date, 'YYYY-MM-DD') AS start_date, to_char(end_date, 'YYYY-MM-DD') AS end_date
-       FROM academic_years WHERE school_id = $1 AND deleted_at IS NULL AND ${yearId ? 'id = $2' : 'is_current = true'}`,
+       FROM academic_years WHERE school_id = $1 AND deleted_at IS NULL AND ${yearId ? 'id = $2' : yearClause('academic_years')}`,
       yearId ? [schoolId, yearId] : [schoolId],
     );
     if (!row) {
@@ -673,7 +674,7 @@ export class FeesService {
       `SELECT s.id, sec.class_teacher_user_id FROM students s
        LEFT JOIN student_enrollments e ON e.student_id = s.id AND e.status = 'studying'
          AND e.academic_year_id = (SELECT id FROM academic_years y WHERE y.school_id = s.school_id
-           AND y.is_current = true AND y.deleted_at IS NULL)
+           AND ${yearClause('y')} AND y.deleted_at IS NULL)
        LEFT JOIN sections sec ON sec.id = e.section_id
        WHERE s.id = $1 AND s.school_id = $2 AND s.deleted_at IS NULL`,
       [studentId, schoolId],
@@ -887,7 +888,7 @@ export class FeesService {
     const rows: StudentRow[] = await this.dataSource.query(
       `SELECT s.id, s.first_name, s.last_name, s.admission_no, c.name AS class_name, sec.name AS section_name
        FROM students s
-       LEFT JOIN academic_years y ON y.school_id = s.school_id AND y.is_current = true AND y.deleted_at IS NULL
+       LEFT JOIN academic_years y ON y.school_id = s.school_id AND ${yearClause('y')} AND y.deleted_at IS NULL
        LEFT JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = y.id
        LEFT JOIN classes c ON c.id = e.class_id
        LEFT JOIN sections sec ON sec.id = e.section_id
@@ -925,7 +926,7 @@ export class FeesService {
     if (!heads.length) return [];
     const rows: { fee_head_id: number; count: string }[] = await this.dataSource.query(
       `SELECT p.fee_head_id, count(*) AS count FROM fee_plans p
-       JOIN academic_years y ON y.id = p.academic_year_id AND y.is_current = true
+       JOIN academic_years y ON y.id = p.academic_year_id AND ${yearClause('y')}
        WHERE p.school_id = $1 AND p.deleted_at IS NULL AND p.fee_head_id = ANY($2) GROUP BY p.fee_head_id`,
       [schoolId, heads.map((head) => head.id)],
     );

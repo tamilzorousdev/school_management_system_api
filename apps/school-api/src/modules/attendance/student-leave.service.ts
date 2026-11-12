@@ -10,6 +10,7 @@ import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LeaveDecisionDto, StudentLeaveDto, StudentLeaveInputDto, StudentLeaveQueryDto } from './dto/attendance.dto';
 import { StudentLeave } from './entities/student-leave.entity';
+import { yearClause } from '../../shared/year-context';
 
 const MAX_LEAVE_DAYS = 30;
 const BACKDATE_DAYS = 7;
@@ -85,7 +86,7 @@ export class StudentLeaveService {
       `SELECT sec.class_teacher_user_id AS teacher_id, c.name || ' - ' || sec.name AS class_name,
               trim(s.first_name || ' ' || COALESCE(s.last_name, '')) AS student
        FROM student_enrollments e
-       JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current
+       JOIN academic_years y ON y.id = e.academic_year_id AND ${yearClause('y')}
        JOIN sections sec ON sec.id = e.section_id
        JOIN classes c ON c.id = sec.class_id
        JOIN students s ON s.id = e.student_id
@@ -124,7 +125,7 @@ export class StudentLeaveService {
     if (query.status) qb.andWhere('l.status = :status', { status: query.status });
     if (query.section_id || sectionIds) {
       qb.andWhere(
-        `EXISTS (SELECT 1 FROM student_enrollments e JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current
+        `EXISTS (SELECT 1 FROM student_enrollments e JOIN academic_years y ON y.id = e.academic_year_id AND ${yearClause('y')}
                  WHERE e.student_id = l.student_id AND e.section_id = ANY(:sections))`,
         { sections: query.section_id ? [query.section_id] : sectionIds },
       );
@@ -170,7 +171,7 @@ export class StudentLeaveService {
     if (!leave) throw AppException.notFound('Leave request not found', 'LEAVE_NOT_FOUND');
     if (sectionIds) {
       const [row] = await this.dataSource.query(
-        `SELECT 1 FROM student_enrollments e JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current
+        `SELECT 1 FROM student_enrollments e JOIN academic_years y ON y.id = e.academic_year_id AND ${yearClause('y')}
          WHERE e.student_id = $1 AND e.section_id = ANY($2)`,
         [leave.student_id, sectionIds],
       );
@@ -230,7 +231,7 @@ export class StudentLeaveService {
       this.dataSource.query(
         `SELECT s.id, concat_ws(' ', s.first_name, s.last_name) AS name, c.name AS class_name, sec.name AS section_name
          FROM students s
-         LEFT JOIN academic_years y ON y.school_id = s.school_id AND y.is_current AND y.deleted_at IS NULL
+         LEFT JOIN academic_years y ON y.school_id = s.school_id AND ${yearClause('y')} AND y.deleted_at IS NULL
          LEFT JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = y.id
          LEFT JOIN classes c ON c.id = e.class_id LEFT JOIN sections sec ON sec.id = e.section_id
          WHERE s.id = ANY($1)`,

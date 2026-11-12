@@ -19,6 +19,7 @@ import {
 } from './dto/timetable.dto';
 import { BellPeriod } from './entities/bell-period.entity';
 import { TimetableSlot } from './entities/timetable-slot.entity';
+import { yearWhere } from '../../shared/year-context';
 
 export const SCHOOL_DAYS = [1, 2, 3, 4, 5, 6];
 
@@ -248,7 +249,7 @@ export class TimetableService {
       schoolId,
     ]);
     if (!user) throw AppException.notFound('Teacher not found', 'TEACHER_NOT_FOUND');
-    const year = await this.dataSource.getRepository(AcademicYear).findOneBy({ school_id: schoolId, is_current: true });
+    const year = await this.dataSource.getRepository(AcademicYear).findOneBy(yearWhere(schoolId));
     const [periods, slots] = await Promise.all([
       this.periods(schoolId),
       this.dataSource.query(
@@ -265,7 +266,7 @@ export class TimetableService {
   }
 
   async workload(schoolId: number): Promise<WorkloadDto> {
-    const year = await this.dataSource.getRepository(AcademicYear).findOneBy({ school_id: schoolId, is_current: true });
+    const year = await this.dataSource.getRepository(AcademicYear).findOneBy(yearWhere(schoolId));
     const periods = await this.periods(schoolId);
     const inWeek = periods.filter((period) => !period.is_break).length * SCHOOL_DAYS.length;
     const rows: {

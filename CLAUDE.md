@@ -60,6 +60,7 @@ Bus tracking is **not** in this repo. The Telematics service (`C:/Users/DELL/tel
 - URI versioning: every route is `/api/v1/...` by default. Add `v2` only for a breaking change and keep `v1` working (`@Controller({ path, version: '2' })` or `@Version('2')`).
 - Route families: `auth/*`, `me/*` (all apps), `admin/*` (web), `mobile/parent|teacher|driver/*` (Flutter screens), `admin/fleet/*` (read-only bus status from the Telematics service), `files/*`.
 - Success body `{ status, message, data }` is added by `ResponseInterceptor`; controllers return plain data. Set the message with `@ResponseMessage('User created')`.
+- **Academic year being viewed.** The admin web may send `X-Academic-Year-Id` on `/admin/*` to read an earlier year (`YearContextInterceptor`, `shared/year-context.ts`); non-GET requests then get 403 `YEAR_READ_ONLY`. Never filter by `is_current = true` directly: use `yearClause(alias)` in SQL and `yearWhere(schoolId)` in TypeORM lookups so the chosen year applies.
 - Lists return `paginate(...)`: `{ items, total, page, limit, total_pages, has_next }`.
 - Errors: throw `AppException.notFound('Student not found', 'STUDENT_NOT_FOUND')` etc. **No try/catch in controllers.** `AllExceptionsFilter` is the only error handler and returns `{ status, error, message, errors? }`. The `error` code is what clients switch on, so keep codes stable and SCREAMING_SNAKE_CASE.
 - Validation: global pipe has `whitelist` + `forbidNonWhitelisted`; field errors come back as `errors: [{ field, message }]`.

@@ -25,6 +25,7 @@ import {
 } from './dto/substitute.dto';
 import { MergeGroup, SubstitutionMerge } from './entities/substitution-merge.entity';
 import { CoverKind, Substitution } from './entities/substitution.entity';
+import { yearClause } from '../../shared/year-context';
 
 interface SlotRow {
   id: number;
@@ -103,7 +104,7 @@ const SLOT_SELECT = `SELECT t.id, t.day_of_week, t.period_no, t.section_id, c.na
   FROM timetable_slots t
   JOIN sections sec ON sec.id = t.section_id JOIN classes c ON c.id = sec.class_id
   JOIN subjects s ON s.id = t.subject_id
-  JOIN academic_years y ON y.id = t.academic_year_id AND y.is_current`;
+  JOIN academic_years y ON y.id = t.academic_year_id AND ${yearClause('y')}`;
 
 const displayDate = (date: string) =>
   new Date(`${date}T00:00:00Z`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', timeZone: 'UTC' });
@@ -176,7 +177,7 @@ export class SubstitutesService {
     const week = weekRange(date);
     const rows: CandidateRow[] = await this.dataSource.query(
       `SELECT st.user_id, u.name, st.department,
-         (SELECT COUNT(*) FROM timetable_slots t JOIN academic_years y ON y.id = t.academic_year_id AND y.is_current
+         (SELECT COUNT(*) FROM timetable_slots t JOIN academic_years y ON y.id = t.academic_year_id AND ${yearClause('y')}
             WHERE t.teacher_user_id = st.user_id AND t.day_of_week = $3)
          + (SELECT COUNT(*) FROM substitutions sb WHERE sb.substitute_user_id = st.user_id AND sb.date = $2) AS periods_today,
          (SELECT COUNT(*) FROM substitutions sb WHERE sb.substitute_user_id = st.user_id
@@ -188,7 +189,7 @@ export class SubstitutesService {
        FROM staff st JOIN users u ON u.id = st.user_id AND u.deleted_at IS NULL AND u.status = 'active'
        WHERE st.school_id = $1 AND st.deleted_at IS NULL AND st.status = 'active' AND st.staff_type = 'teaching'
          AND NOT (st.user_id = ANY($9))
-         AND NOT EXISTS (SELECT 1 FROM timetable_slots t JOIN academic_years y ON y.id = t.academic_year_id AND y.is_current
+         AND NOT EXISTS (SELECT 1 FROM timetable_slots t JOIN academic_years y ON y.id = t.academic_year_id AND ${yearClause('y')}
             WHERE t.teacher_user_id = st.user_id AND t.day_of_week = $3 AND t.period_no = $4)
          AND NOT EXISTS (SELECT 1 FROM substitutions sb WHERE sb.substitute_user_id = st.user_id
             AND sb.date = $2 AND sb.period_no = $4 AND sb.slot_id <> $10)`,
@@ -572,7 +573,7 @@ export class SubstitutesService {
     const rows: { section_id: number; total: string; boys: string }[] = await this.dataSource.query(
       `SELECT e.section_id, COUNT(*) AS total, COUNT(*) FILTER (WHERE s.gender = 'male') AS boys
        FROM student_enrollments e
-       JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current
+       JOIN academic_years y ON y.id = e.academic_year_id AND ${yearClause('y')}
        JOIN students s ON s.id = e.student_id AND s.deleted_at IS NULL AND s.status = 'active'
        WHERE e.section_id = ANY($1) GROUP BY e.section_id`,
       [ids],

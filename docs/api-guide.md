@@ -139,6 +139,9 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 | `PAYLOAD_TOO_LARGE` | 413 | File over the size limit |
 | `LINK_EXPIRED` | 403 | Fetch the file again to get a fresh link |
 | `SCHOOL_REQUIRED` | 400 | Super admin only: send `X-School-Id` |
+| `YEAR_READ_ONLY` | 403 | Admin web is viewing an earlier academic year; switch back to change anything |
+| `ACADEMIC_YEAR_NOT_FOUND` | 404 | `X-Academic-Year-Id` is not a year of this school |
+| `INVALID_ACADEMIC_YEAR` | 400 | `X-Academic-Year-Id` is not a number |
 | `CHILD_NOT_FOUND` | 404 | Parent app: this child is not linked to the signed-in mobile |
 | `NOT_YOUR_SECTION` | 403 | Staff app: the teacher does not teach this section |
 | `QR_INVALID`, `QR_REPLACED` | 400/409 | Scanned card is not a school card, or it was replaced |
@@ -708,6 +711,19 @@ Parents get `FEE_DUE` (category `fees`) when the school raises an invoice, and `
 
 Meetings, diary posts, announcements and chats belong to the academic year they were created in. Every list (apps and admin web) shows only the **current** academic year; when the school switches to a new year, last year's history is no longer shown (the records stay in the database). An old record opened by id returns 404.
 
+**Viewing an earlier year (admin web only).** On `/admin/*` routes the web may send `X-Academic-Year-Id: <id>` to see an earlier year: attendance, students (only those enrolled that year, with their class that year), exams and results, fees, diary, leave, timetable and the dashboard then use that year instead of the current one. Leave the header out (or send the current year's id) for normal use.
+
+| Case | Answer |
+|---|---|
+| Earlier year, `GET` | 200, that year's data |
+| Earlier year, `POST`/`PUT`/`PATCH`/`DELETE` | 403 `YEAR_READ_ONLY` (earlier years are read only) |
+| Year of another school | 404 `ACADEMIC_YEAR_NOT_FOUND` |
+| Not a number | 400 `INVALID_ACADEMIC_YEAR` |
+
+`/mobile/*`, `auth/*` and `me/*` ignore the header: the Staff and Parent apps always show the current year.
+
+**Year by year on the dashboard.** `GET /admin/dashboard/year-performance` returns `{ years: [...] }`, one row per academic year, newest first, up to the current year, so the office can compare years. Each row has `academic_year`, `studies` (published exams, average result %, pass rate, fail rate, % of papers absent), `attendance` (student %, students below 75%, staff %), `activities` (achievements, sports, podium finishes, students taking part, points, highest level), `students` (enrolled, promoted, left) and `fees` (billed, collected, collection %, and `heads`: the same for every fee head such as Tuition, Sports or Transport, biggest first; a payment is shared across its invoice lines by amount, and `is_transport` marks the bus fee). A section is `null` without its permission, the same as the dashboard. It lists every year whatever `X-Academic-Year-Id` says.
+
 ## Live updates (socket.io `/comm`)
 
 Connect once after sign-in: `io('<server>/comm', { auth: { token: access_token } })`. The server puts you in your own room and sends:
@@ -892,6 +908,10 @@ Every app reads them the same way:
 Office: `GET`/`POST /admin/announcements`, `GET`/`PATCH`/`DELETE /admin/announcements/{id}` (edit and delete only drafts and scheduled ones), `POST .../publish`, `POST .../archive`, `GET .../readers?state=read|unread` and `GET /admin/announcements/insights`. Permissions `announcements.view` and `announcements.manage`.
 
 ## Chat (teacher and parent)
+
+**Each academic year starts fresh.** Conversations belong to an academic year. When a new year becomes current, the earlier year's conversations are **soft-deleted** (hidden from the Staff and Parent apps, kept in the database) by an hourly job. Two years after that academic year ends they are **deleted for good** (messages and audit log too). A year created ahead of time is never touched.
+
+The office can still read an archived year: `GET /admin/chat/threads?academic_year_id=<earlier year id>` lists it (each thread has `archived: true`) and `GET /admin/chat/threads/{id}` opens it read-only. Without `academic_year_id` the list is the current year. Code: `chat/chat-retention.service.ts` (`CHAT_KEEP_YEARS = 2`).
 
 One conversation per teacher, parent and child per academic year. Messages are saved first, then delivered live over `/comm` with a `CHAT_MESSAGE` push.
 

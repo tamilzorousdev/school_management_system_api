@@ -23,6 +23,7 @@ import {
   DashboardStaffDto,
   DashboardStudentsDto,
 } from './dto/dashboard.dto';
+import { yearClause } from '../../shared/year-context';
 
 @Injectable()
 export class DashboardService {
@@ -121,7 +122,7 @@ export class DashboardService {
               COUNT(*) FILTER (WHERE x.start_date <= $2 AND x.end_date >= $2)::int AS in_progress,
               COUNT(*) FILTER (WHERE x.status = 'published')::int AS published
        FROM exams x
-       JOIN academic_years y ON y.id = x.academic_year_id AND y.is_current
+       JOIN academic_years y ON y.id = x.academic_year_id AND ${yearClause('y')}
        WHERE x.school_id = $1 AND x.deleted_at IS NULL`,
       [schoolId, date],
     );

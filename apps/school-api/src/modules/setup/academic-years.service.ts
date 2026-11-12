@@ -11,6 +11,7 @@ import {
 } from './dto/setup.dto';
 import { AcademicYear } from './entities/academic-year.entity';
 import { Term } from './entities/term.entity';
+import { yearWhere } from '../../shared/year-context';
 
 @Injectable()
 export class AcademicYearsService {
@@ -30,7 +31,7 @@ export class AcademicYearsService {
   }
 
   async current(schoolId: number): Promise<AcademicYear> {
-    const year = await this.years.findOneBy({ school_id: schoolId, is_current: true });
+    const year = await this.years.findOneBy(yearWhere(schoolId));
     if (!year) {
       throw AppException.badRequest('Set the current academic year in School setup first', 'NO_CURRENT_YEAR');
     }
@@ -39,7 +40,7 @@ export class AcademicYearsService {
 
   async currentOrNull(schoolId: number): Promise<AcademicYearDto | null> {
     const year = await this.years.findOne({
-      where: { school_id: schoolId, is_current: true },
+      where: yearWhere(schoolId),
       relations: { terms: true },
       order: { terms: { sort_order: 'ASC' } },
     });

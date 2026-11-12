@@ -219,14 +219,15 @@ export class ChatService {
   }
 
   async auditThreads(schoolId: number, query: AuditThreadsQueryDto): Promise<Paginated<ChatThreadDto>> {
-    const qb = onlyCurrentYear(
-      this.threads
-        .createQueryBuilder('t')
-        .innerJoin('users', 'tu', 'tu.id = t.teacher_user_id')
-        .innerJoin('users', 'pu', 'pu.id = t.parent_user_id')
-        .innerJoin('students', 's', 's.id = t.student_id')
-        .where('t.school_id = :schoolId', { schoolId }),
-    );
+    const base = this.threads
+      .createQueryBuilder('t')
+      .innerJoin('users', 'tu', 'tu.id = t.teacher_user_id')
+      .innerJoin('users', 'pu', 'pu.id = t.parent_user_id')
+      .innerJoin('students', 's', 's.id = t.student_id')
+      .where('t.school_id = :schoolId', { schoolId });
+    const qb = query.academic_year_id
+      ? base.withDeleted().andWhere('t.academic_year_id = :yearId', { yearId: query.academic_year_id })
+      : onlyCurrentYear(base);
     if (query.flagged) qb.andWhere('t.open_flags > 0');
     if (query.teacher_user_id) qb.andWhere('t.teacher_user_id = :teacher', { teacher: query.teacher_user_id });
     if (query.student_id) qb.andWhere('t.student_id = :student', { student: query.student_id });
@@ -244,7 +245,8 @@ export class ChatService {
   }
 
   async auditThread(schoolId: number, id: number, actor: AuthUser): Promise<AuditThreadDetailDto> {
-    const thread = await this.schoolThread(schoolId, id);
+    const thread = await this.threads.findOne({ where: { id, school_id: schoolId }, withDeleted: true });
+    if (!thread) throw AppException.notFound('Conversation not found', 'THREAD_NOT_FOUND');
     await this.log(thread, actor.id, 'viewed_thread');
     const [presented] = await this.present([thread], null);
     const rows = await this.messages.find({ where: { thread_id: thread.id }, order: { id: 'ASC' } });
@@ -628,6 +630,7 @@ export class ChatService {
         open_flags: row.open_flags,
         office_hours: hoursMap.get(row.school_id)!,
         academic_year: { id: row.academic_year_id, name: yearMap.get(row.academic_year_id) ?? '' },
+        archived: Boolean(row.deleted_at),
       };
     });
   }

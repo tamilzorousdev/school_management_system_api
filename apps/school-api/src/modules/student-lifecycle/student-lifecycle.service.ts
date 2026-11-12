@@ -29,6 +29,7 @@ import { IdCardData, idCardPdf, idCardSheetPdf } from './pdf/id-card.pdf';
 import { UploadedIdCardDesign, uploadedIdCardPdf, uploadedIdCardSheetPdf } from './pdf/id-card-uploaded.pdf';
 import { parseIdCardLayout } from '../../shared/id-card-layout';
 import { tcPdf } from './pdf/tc.pdf';
+import { yearClause, yearWhere } from '../../shared/year-context';
 
 interface CardRow {
   id: number;
@@ -111,7 +112,7 @@ export class StudentLifecycleService {
     if (!row) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
     const [school, year, photos] = await Promise.all([
       this.dataSource.getRepository(School).findOneByOrFail({ id: schoolId }),
-      this.years.findOneBy({ school_id: schoolId, is_current: true }),
+      this.years.findOneBy(yearWhere(schoolId)),
       this.files.presentMany([row.photo_file_id]),
     ]);
     return {
@@ -169,7 +170,7 @@ export class StudentLifecycleService {
           { field: 'leaving_date', message: 'Leaving date cannot be before the admission date' },
         ]);
       }
-      const year = await manager.findOneBy(AcademicYear, { school_id: schoolId, is_current: true });
+      const year = await manager.findOneBy(AcademicYear, yearWhere(schoolId));
       const enrollment = year
         ? await manager.findOne(StudentEnrollment, {
             where: { student_id: studentId, academic_year_id: year.id },
@@ -375,7 +376,7 @@ export class StudentLifecycleService {
   }
 
   private async promotionYears(schoolId: number): Promise<{ current: AcademicYear; next: AcademicYear }> {
-    const current = await this.years.findOneBy({ school_id: schoolId, is_current: true });
+    const current = await this.years.findOneBy(yearWhere(schoolId));
     if (!current)
       throw AppException.badRequest('Set the current academic year in School setup first', 'NO_CURRENT_YEAR');
     const next = await this.years.findOne({
@@ -441,7 +442,7 @@ export class StudentLifecycleService {
               f.name AS father_name, m.name AS mother_name,
               s.address_line, s.city, s.pincode
        FROM students s
-       LEFT JOIN academic_years y ON y.school_id = s.school_id AND y.is_current = true AND y.deleted_at IS NULL
+       LEFT JOIN academic_years y ON y.school_id = s.school_id AND ${yearClause('y')} AND y.deleted_at IS NULL
        LEFT JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = y.id
        LEFT JOIN classes c ON c.id = e.class_id
        LEFT JOIN sections sec ON sec.id = e.section_id
@@ -480,7 +481,7 @@ export class StudentLifecycleService {
     if (!rows.length) return [];
     const [school, year] = await Promise.all([
       this.dataSource.getRepository(School).findOneByOrFail({ id: schoolId }),
-      this.years.findOneBy({ school_id: schoolId, is_current: true }),
+      this.years.findOneBy(yearWhere(schoolId)),
     ]);
     const logo = await this.files.readImage(school.logo_file_id);
     const cards: (IdCardData & { admission_no: string })[] = [];

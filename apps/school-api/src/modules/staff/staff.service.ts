@@ -52,6 +52,7 @@ import {
   OVERLOADED_SQL,
   StaffMetrics,
 } from './staff-metrics';
+import { yearWhere } from '../../shared/year-context';
 
 const DOCUMENT_TITLES: Record<StaffDocumentType, string> = {
   id_proof: 'ID proof',
@@ -674,7 +675,7 @@ export class StaffService {
   }
 
   async currentYearId(schoolId: number): Promise<number | null> {
-    return (await this.years.findOneBy({ school_id: schoolId, is_current: true }))?.id ?? null;
+    return (await this.years.findOneBy(yearWhere(schoolId)))?.id ?? null;
   }
 
   private assertCanGrant(codes: string[], actor: AuthUser): void {

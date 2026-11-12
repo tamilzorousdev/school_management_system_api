@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ALL_CONFIGS } from './config/configuration';
 import { validate } from './config/env.validation';
+import { YearContextInterceptor } from './shared/year-context.interceptor';
 import { DatabaseModule } from './database/database.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AccessModule } from './modules/access/access.module';
@@ -89,6 +90,7 @@ import { UsersModule } from './modules/users/users.module';
   providers: [
     { provide: APP_GUARD, useExisting: JwtAuthGuard },
     { provide: APP_GUARD, useExisting: PermissionsGuard },
+    { provide: APP_INTERCEPTOR, useClass: YearContextInterceptor },
   ],
 })
 export class AppModule {}
