@@ -11,7 +11,14 @@ import { StudentDetailDto } from '../students/dto/student-response.dto';
 import { StudentsService } from '../students/students.service';
 import { ChildCardDto } from './dto/mobile.dto';
 import { BenchPlanDto, BenchQueryDto, RosterQueryDto, RosterStudentDto } from './dto/teacher-app.dto';
+import {
+  ChildTeacherProfileDto,
+  ChildTeachersOverviewDto,
+  ChildTimetableDto,
+  ChildTimetableQueryDto,
+} from './dto/parent-teachers.dto';
 import { MobileAccessService } from './mobile-access.service';
+import { ParentTeachersService } from './parent-teachers.service';
 import { MyClassDto, TeacherProfileDto } from './dto/teacher-insights.dto';
 import { TeacherAppService } from './teacher-app.service';
 import { TeacherInsightsService } from './teacher-insights.service';
@@ -33,7 +40,53 @@ export class MobileParentChildController {
     private readonly access: MobileAccessService,
     private readonly records: StudentRecordsService,
     private readonly lifecycle: StudentLifecycleService,
+    private readonly parentTeachers: ParentTeachersService,
   ) {}
+
+  @Get('timetable')
+  @ApiTags(PARENT_MODULE_TAGS.MODULE_1)
+  @ApiOperation({
+    summary: 'The child\u2019s periods for a day (default today) with subject, teacher and room, breaks included',
+    description:
+      'state is done, now, next or later (only today). When a proxy takes a period, teacher is the proxy and usual_teacher the regular one; a combined class has a note. Empty periods on Sundays and holidays.',
+  })
+  @ApiEnvelope(ChildTimetableDto)
+  @ApiErrors(HttpStatus.BAD_REQUEST)
+  async timetable(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: ChildTimetableQueryDto,
+  ) {
+    return this.parentTeachers.timetable(await this.access.childSchool(user.id, id), id, query.date);
+  }
+
+  @Get('teachers-overview')
+  @ApiTags(PARENT_MODULE_TAGS.MODULE_1)
+  @ApiOperation({
+    summary: 'The child’s class teacher on its own, then the subject teachers',
+    description:
+      'class_teacher is null when the section has no class teacher. subject_teachers leaves out the class teacher. Each has designation, experience, photo and the subjects taught to this child; open one with GET .../teachers/{teacherId}.',
+  })
+  @ApiEnvelope(ChildTeachersOverviewDto)
+  async teachersOverview(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.parentTeachers.overview(await this.access.childSchool(user.id, id), id, user.id);
+  }
+
+  @Get('teachers/:teacherId')
+  @ApiTags(PARENT_MODULE_TAGS.MODULE_1)
+  @ApiOperation({
+    summary: 'Teacher profile: photo, designation, experience, qualifications and the classes they handle',
+    description:
+      'Only teachers of this child (404 TEACHER_NOT_FOUND otherwise). Phone, email, address and other staff records are never shown.',
+  })
+  @ApiEnvelope(ChildTeacherProfileDto)
+  async teacherProfile(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('teacherId', ParseIntPipe) teacherId: number,
+  ) {
+    return this.parentTeachers.teacherProfile(await this.access.childSchool(user.id, id), id, teacherId, user.id);
+  }
 
   @Get()
   @ApiTags(PARENT_MODULE_TAGS.MODULE_1)

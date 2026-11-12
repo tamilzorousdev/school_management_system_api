@@ -81,26 +81,26 @@ export class PushService {
     if (driver === 'off') {
       return { status: 'skipped', provider: 'off', successCount: 0, invalidTokens: [], error: 'Call push is off' };
     }
+    if (!message.tokens.length) {
+      return {
+        status: 'skipped',
+        provider: driver,
+        successCount: 0,
+        invalidTokens: [],
+        error: 'No phone is registered for this side of the call',
+      };
+    }
     if (driver === 'kafka') {
       await this.kafka.sendPush({
         templateId: this.kafka.templateId(KAFKA_CALL_TEMPLATE),
         variables: message.data,
-        externalIds: [String(message.userId)],
+        externalIds: [],
         playerIds: message.tokens,
         dataOnly: { data: message.data, ttlSeconds: message.ttlSeconds },
       });
       return { status: 'sent', provider: 'kafka', successCount: 1, invalidTokens: [] };
     }
     if (driver === 'onesignal') return this.sendOneSignalData(message);
-    if (!message.tokens.length) {
-      return {
-        status: 'skipped',
-        provider: 'fcm',
-        successCount: 0,
-        invalidTokens: [],
-        error: 'No registered device for this user',
-      };
-    }
     const response = await getMessaging(this.firebase()).sendEachForMulticast({
       tokens: message.tokens,
       data: message.data,
@@ -139,7 +139,7 @@ export class PushService {
       body: JSON.stringify({
         app_id: this.config.oneSignalAppId,
         target_channel: 'push',
-        include_aliases: { external_id: [String(message.userId)] },
+        include_subscription_ids: message.tokens,
         data: message.data,
         content_available: true,
         priority: 10,

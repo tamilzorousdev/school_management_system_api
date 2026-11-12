@@ -417,6 +417,19 @@ Student attendance is taken in the **1st period (`session: "morning"`)** and the
 | `GET /admin/attendance/sections/{id}/day?date=` | **Daily** report of a section: each student with `morning`, `afternoon`, day `status`, plus `summary` counts and % |
 | `GET /admin/attendance/students/{id}/summary` | Student this academic year: `year` totals and `months[]`, each with `working_days`, `marked_days`, counts and `percent` |
 
+### Child timetable and teachers (Parent app)
+
+| Call | What it gives |
+|---|---|
+| `GET /mobile/parent/children/{id}/timetable?date=` | The child's day (default today): `day`, `class_section`, `working_day`, `holiday` and `periods[]` in bell order with breaks: `period_no`, `name`, `start_time`, `end_time`, `is_break`, `state` (`done`/`now`/`next`/`later`, today only), `subject`, `teacher` (`id`, `name`, `photo_url`), `usual_teacher` (when a proxy takes it), `note` ("Combined with 6 - B"), `room` |
+| `GET /mobile/parent/children/{id}/teachers` | The child's teachers, class teacher first: `id`, `name`, `is_class_teacher`, `subjects` (taught to this child), `designation`, `department`, `experience_years`, `photo_url`. Same `id` for meetings and chat |
+| `GET /mobile/parent/children/{id}/teachers-overview` | For the teachers screen: `class_teacher` on its own (or `null`) and `subject_teachers` without the class teacher, by name. Same fields as the list |
+| `GET /mobile/parent/children/{id}/teachers/{teacherId}` | Teacher profile: everything above plus `joined_year`, `qualifications[]` (`degree`, `specialization`, `institution`, `year_completed`), `classes[]` they handle this year (`class_section`, `subjects`, `is_class_teacher`) and `periods_per_week` |
+
+- `experience_years` = experience before joining + full years at this school.
+- Only teachers of this child: other ids give `404 TEACHER_NOT_FOUND`. Phone, email, address, salary, bank and staff documents are never returned to parents.
+- Sundays and holidays return `working_day: false` and no periods.
+
 ### Parent profile (Parent app)
 
 | Call | What it does |
@@ -764,6 +777,7 @@ Whoever books a meeting, the **other side** gets it as an invite: `response` is 
 Body (optional): `{ "note": "Busy with exam duty" }`. The side that booked gets a push (`MEETING_ACCEPTED` / `MEETING_DECLINED`, category `meeting`, with `meeting_id`) and the `meeting.status` socket event now carries `response`.
 
 - **Joining needs the reply `accepted`.** `can_join` is false while `response` is `pending` or `declined`; `POST .../join` returns `409 MEETING_NOT_ACCEPTED` or `409 MEETING_DECLINED`. Declining does not cancel; the booker can cancel or book another time.
+- **No meeting with yourself:** a person who is both teacher and parent cannot book a meeting with themselves (`400 SAME_PERSON`). **Chat with yourself is allowed** (for example to share a file as the teacher with yourself as the parent). In the pickers (`/students/{id}/parents`, `/children/{id}/teachers`) that person comes with `is_me: true`: hide them when booking a meeting, show them for chat.
 - A **declined** meeting does not hold the time slot: the same teacher and parent can book that time again.
 - `join_closes_at`: for a meeting nobody has joined yet it is the **end time** (it becomes `missed` then); once it is live it is the end time + 10 minutes (hard stop).
 - `in_call: { teacher, parent }` and `active_participants` (0, 1 or 2) show who is in the call right now. Ring only when the other side is in and you are not.
@@ -810,6 +824,7 @@ Ring and cancel arrive as a **data-only, high-priority push** (no title or body,
 - Accept = `POST .../join` as usual (it also sends `cancel` with `answered` to the caller's other devices).
 - `reject-call` is safe to repeat; if the ring already stopped nothing happens. No body.
 - One ring at a time per meeting. Rejoining while the other side is in the call does not ring.
+- **Rings only the phone signed in for that side.** The ring and cancel go to the devices registered with `POST /me/devices` whose `app` matches the side being called (`staff` for the teacher, `parent` for the parent), never to every phone of the user. A person who is both teacher and parent is not rung on their Staff app for a parent call. Devices registered without `app` (or `mobile`) are used only when the user has no device for the other side. So the app must send `app: "staff"` or `app: "parent"` (the selected side) with `push_token` after login and whenever the user switches side.
 - Delivery: `CALL_PUSH_DRIVER` (`kafka` → Notification Service template `school_call` with `dataOnly: true`, `data`, `priority: high`, `ttl`; `onesignal` → OneSignal data-only with `content_available`, `priority 10`, `include_aliases.external_id`; `fcm` → FCM data message, Android priority high). Empty = same as `PUSH_DRIVER`.
 - iOS VoIP (PushKit through APNs) is not in this phase: it needs the Apple VoIP certificate.
 

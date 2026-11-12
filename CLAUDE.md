@@ -107,7 +107,7 @@ Send through `NotificationsService.dispatch({ template, audience, data })`:
 - `audience`: `{ user_ids }` or `{ roles, school_id }`.
 - Templates (English + Tamil) are in `notifications/notification-templates.catalog.ts`; add new ones there and run the seed.
 - Flow: in-app row → push (`PUSH_DRIVER`: `kafka` = through the central Notification Service, which sends with OneSignal using its own key; we only publish `{ type: 'push', templateId: 'school_push', variables: { title, body, … }, externalIds: [user id] }`, and the app calls `OneSignal.login(<user id>)`; `onesignal`/`fcm` send directly) → SMS when the template says `always`, or `fallback` and push did not reach a phone. Every attempt is a row in `notifications` (the outbox).
-- Incoming meeting calls: on `join` the other side gets a data-only `category: call` push (`event: ring`, then `cancel` with the same `call_id` on answer, `reject-call`, caller left, end or 45 s timeout), plus the `meeting.call` socket event. `CALL_PUSH_DRIVER` picks the route (empty = `PUSH_DRIVER`); code in `meetings/meeting-ring.ts`.
+- Incoming meeting calls: on `join` the other side gets a data-only `category: call` push (`event: ring`, then `cancel` with the same `call_id` on answer, `reject-call`, caller left, end or 45 s timeout), plus the `meeting.call` socket event. Sent to the devices whose `app` (from `POST /me/devices`) matches the side called (`staff` / `parent`, `notifications/call-devices.ts`), not to the user's external id. `CALL_PUSH_DRIVER` picks the route (empty = `PUSH_DRIVER`); code in `meetings/meeting-ring.ts`.
 - Jobs run on the in-process queue (`QUEUE_DRIVER=memory`) with retries; queued jobs are lost on restart.
 
 ## SMS and Kafka
@@ -116,6 +116,10 @@ Send through `NotificationsService.dispatch({ template, audience, data })`:
 - Kafka message on topic `NOTIFY_KAFKA_TOPIC` (default `notifications`): `{ type: 'sms'|'email', tenantId, to: '91XXXXXXXXXX', templateId, variables }`. `templateId` = `NOTIFY_TEMPLATE_PREFIX` + lowercase template code (`school_student_absent`). Variables are the dispatch `data` plus `name`.
 - With `AUTH_PROVIDER=central` the OTP comes from the Auth Service and these OTP settings do not apply. In local mode `OTP_SMS_DRIVER` (optional, default `kafka`, shared `otp` template) picks the OTP route; `ping4sms` also needs the `PING_*` settings.
 - Code: `modules/sms/sms.service.ts`, `modules/sms/kafka-notify.service.ts`.
+
+## Deploy
+
+Set `DB_MIGRATE_ON_START=true` and `SEED_ON_START=true` on servers: on every start the API runs pending migrations (TypeORM `migrationsRun`) and then the production-safe seed (roles, permissions, notification templates, `database/startup-seed.ts`). A deploy is then `git pull` → `npm ci` → `npm run build` → restart. Demo data (`seed:demo`) and the super admin are never created automatically. Run one API instance during a deploy so two starts do not migrate at the same time.
 
 ## Infrastructure switches
 

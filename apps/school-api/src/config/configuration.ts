@@ -26,6 +26,8 @@ export const dbConfig = registerAs('db', () => ({
   database: process.env.DB_NAME,
   ssl: process.env.DB_SSL === 'true',
   poolSize: Number(process.env.DB_POOL_SIZE ?? 10),
+  migrateOnStart: process.env.DB_MIGRATE_ON_START === 'true',
+  seedOnStart: process.env.SEED_ON_START === 'true',
 }));
 
 export const authConfig = registerAs('auth', () => ({

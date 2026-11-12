@@ -32,6 +32,7 @@ import {
 } from './dto/meeting.dto';
 import { MeetingCallLog } from './entities/meeting-call-log.entity';
 import { Meeting, MeetingParty, MeetingResponse, MeetingStatus } from './entities/meeting.entity';
+import { appOf, samePersonError } from './meeting-people';
 import { replyError } from './meeting-reply';
 import {
   CallCancelReason,
@@ -123,7 +124,8 @@ export class MeetingsService {
   async scheduleByTeacher(actor: AuthUser, dto: TeacherMeetingInputDto): Promise<MeetingDto> {
     const schoolId = this.teacherSchool(actor);
     await this.assignments.assertTeachesStudent(schoolId, actor.id, dto.student_id);
-    const parents = await this.parentsForStudent(schoolId, dto.student_id);
+    if (dto.parent_user_id === actor.id) throw samePersonError();
+    const parents = (await this.parentsForStudent(schoolId, dto.student_id)).filter((item) => item.id !== actor.id);
     if (!parents.length) {
       throw AppException.conflict('No parent of this student has the app yet', 'NO_PARENT_ACCOUNT');
     }
@@ -150,6 +152,7 @@ export class MeetingsService {
     dto: ParentMeetingInputDto,
     actor: AuthUser,
   ): Promise<MeetingDto> {
+    if (dto.teacher_user_id === actor.id) throw samePersonError();
     const teachers = await this.teachersForStudent(schoolId, studentId);
     if (!teachers.some((teacher) => teacher.id === dto.teacher_user_id)) {
       throw AppException.validation([{ field: 'teacher_user_id', message: 'This teacher does not teach your child' }]);
@@ -712,7 +715,7 @@ export class MeetingsService {
     if (!claimed.length) return;
     const call = await this.callDetails(meeting, callId, party);
     this.realtime.toUsers(this.members(meeting), 'meeting.call', callPayload('ring', call));
-    await this.notifications.sendCallPush(otherUserId, callPayload('ring', call), RING_TIMEOUT_SECONDS);
+    await this.notifications.sendCallPush(otherUserId, appOf(other), callPayload('ring', call), RING_TIMEOUT_SECONDS);
     setTimeout(() => {
       this.later(`ring timeout ${meeting.id}`, () => this.stopRing(meeting.id, 'timeout', callId));
     }, RING_TIMEOUT_SECONDS * 1000).unref();
@@ -735,7 +738,7 @@ export class MeetingsService {
     const payload = callPayload('cancel', call, reason);
     this.realtime.toUsers(this.members(meeting), 'meeting.call', payload);
     const ringingUser = Number(stopped.ring_to === 'teacher' ? meeting.teacher_user_id : meeting.parent_user_id);
-    await this.notifications.sendCallPush(ringingUser, payload, RING_TIMEOUT_SECONDS);
+    await this.notifications.sendCallPush(ringingUser, appOf(stopped.ring_to), payload, RING_TIMEOUT_SECONDS);
   }
 
   private async callDetails(meeting: Meeting, callId: string, callerRole: MeetingParty) {
@@ -781,6 +784,7 @@ export class MeetingsService {
   }
 
   private async create(input: NewMeeting): Promise<MeetingDto> {
+    if (input.teacherUserId === input.parentUserId) throw samePersonError();
     const now = new Date();
     const scheduledAt = new Date(input.dto.scheduled_at);
     const error = scheduleError(scheduledAt, now);

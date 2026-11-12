@@ -10,7 +10,6 @@ import {
   MeetingDto,
   MeetingJoinDto,
   MeetingParentOptionDto,
-  MeetingTeacherOptionDto,
   MobileMeetingQueryDto,
   ParentMeetingInputDto,
   RespondMeetingDto,
@@ -18,7 +17,9 @@ import {
 } from '../meetings/dto/meeting.dto';
 import { MeetingsService } from '../meetings/meetings.service';
 import { AssignmentsService } from '../staff/assignments.service';
+import { ChildTeacherDto } from './dto/parent-teachers.dto';
 import { MobileAccessService } from './mobile-access.service';
+import { ParentTeachersService } from './parent-teachers.service';
 import { TEACHER_MODULE_TAGS } from './teacher-modules.catalog';
 import { PARENT_MODULE_TAGS } from './parent-modules.catalog';
 
@@ -55,7 +56,10 @@ export class MobileTeacherMeetingsController {
   async parents(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
     const schoolId = this.access.teacherSchool(user);
     await this.assignments.assertTeachesStudent(schoolId, user.id, id);
-    return this.meetings.parentsForStudent(schoolId, id);
+    return (await this.meetings.parentsForStudent(schoolId, id)).map((parent) => ({
+      ...parent,
+      is_me: parent.id === user.id,
+    }));
   }
 
   @Post('meetings')
@@ -221,6 +225,7 @@ export class MobileParentMeetingsController {
   constructor(
     private readonly meetings: MeetingsService,
     private readonly access: MobileAccessService,
+    private readonly parentTeachers: ParentTeachersService,
   ) {}
 
   @Get('meetings')
@@ -231,11 +236,15 @@ export class MobileParentMeetingsController {
   }
 
   @Get('children/:id/teachers')
-  @ApiOperation({ summary: 'Teachers of this child I can book a meeting with: class teacher first, with subjects' })
-  @ApiEnvelope(MeetingTeacherOptionDto, { isArray: true })
+  @ApiOperation({
+    summary: 'Teachers of this child: class teacher first, with subjects, designation, experience and photo',
+    description:
+      'Use id for the teacher profile (GET .../teachers/{teacherId}), to book a meeting (teacher_user_id) and to start a chat.',
+  })
+  @ApiEnvelope(ChildTeacherDto, { isArray: true })
   @ApiErrors(HttpStatus.NOT_FOUND)
   async teachers(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
-    return this.meetings.teachersForStudent(await this.access.childSchool(user.id, id), id);
+    return this.parentTeachers.teachers(await this.access.childSchool(user.id, id), id, user.id);
   }
 
   @Post('children/:id/meetings')

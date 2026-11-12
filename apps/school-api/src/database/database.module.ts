@@ -1,7 +1,9 @@
+import { join } from 'path';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CreatedBySubscriber } from '@app/common';
 import { dbConfig, DbConfig } from '../config/configuration';
+import { StartupSeed } from './startup-seed';
 
 @Module({
   imports: [
@@ -18,9 +20,11 @@ import { dbConfig, DbConfig } from '../config/configuration';
         extra: { max: db.poolSize },
         autoLoadEntities: true,
         synchronize: false,
+        migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
+        migrationsRun: db.migrateOnStart,
       }),
     }),
   ],
-  providers: [CreatedBySubscriber],
+  providers: [CreatedBySubscriber, StartupSeed],
 })
 export class DatabaseModule {}

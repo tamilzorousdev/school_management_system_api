@@ -83,6 +83,14 @@ export class EnvironmentVariables {
   @Min(1)
   DB_POOL_SIZE: number = 10;
 
+  @Transform(toBoolean)
+  @IsBoolean()
+  DB_MIGRATE_ON_START: boolean = false;
+
+  @Transform(toBoolean)
+  @IsBoolean()
+  SEED_ON_START: boolean = false;
+
   @IsUrl(
     { require_tld: false, require_protocol: true },
     { message: 'TELEMATICS_API_URL must be like http://localhost:3001/api/v1' },

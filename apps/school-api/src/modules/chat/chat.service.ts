@@ -7,6 +7,7 @@ import { appConfig, AppConfig } from '../../config/configuration';
 import { currentYearId, currentYearSql, onlyCurrentYear } from '../../shared/academic-year';
 import { addDays, holidaySet } from '../../shared/school-days';
 import { parentsOfStudent, teachersOfStudent } from '../../shared/student-contacts';
+import { withoutSelf } from '../meetings/meeting-people';
 import { FilesService } from '../files/files.service';
 import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -59,7 +60,9 @@ export class ChatService {
     await this.assignments.assertTeachesStudent(schoolId, actor.id, dto.student_id);
     const parents = await parentsOfStudent(this.dataSource.manager, schoolId, dto.student_id);
     if (!parents.length) throw AppException.conflict('No parent of this student has the app yet', 'NO_PARENT_ACCOUNT');
-    const parent = dto.parent_user_id ? parents.find((item) => item.id === dto.parent_user_id) : parents[0];
+    const parent = dto.parent_user_id
+      ? parents.find((item) => item.id === dto.parent_user_id)
+      : (withoutSelf(parents, actor.id)[0] ?? parents[0]);
     if (!parent) {
       throw AppException.validation([
         { field: 'parent_user_id', message: 'This person is not a parent of the student with the app' },

@@ -37,6 +37,7 @@ import { BannerService } from './banner.service';
 import { ParentPreviewController } from './parent-preview.controller';
 import { ParentPreviewService } from './parent-preview.service';
 import { TeacherAppService } from './teacher-app.service';
+import { ParentTeachersService } from './parent-teachers.service';
 import { TeacherInsightsService } from './teacher-insights.service';
 import { TeacherPreviewController } from './teacher-preview.controller';
 import { TeacherPreviewService } from './teacher-preview.service';
@@ -84,6 +85,7 @@ import { TeacherPreviewService } from './teacher-preview.service';
   ],
   providers: [
     MobileAccessService,
+    ParentTeachersService,
     TeacherAppService,
     TeacherInsightsService,
     BannerService,

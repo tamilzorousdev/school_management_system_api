@@ -18,6 +18,7 @@ import {
 import { Notification } from './entities/notification.entity';
 import { NotificationTemplate } from './entities/notification-template.entity';
 import { JOB_QUEUE, JobQueue } from './queue/job-queue';
+import { CallSide, devicesForSide } from './call-devices';
 import { PushResult, PushService } from './push.service';
 import { renderTemplate, TemplateData, toStringData } from './template.renderer';
 
@@ -248,8 +249,13 @@ export class NotificationsService implements OnModuleInit {
     });
   }
 
-  async sendCallPush(userId: number, data: Record<string, string>, ttlSeconds: number): Promise<PushResult> {
-    const devices = await this.devices.tokensFor(userId);
+  async sendCallPush(
+    userId: number,
+    side: CallSide,
+    data: Record<string, string>,
+    ttlSeconds: number,
+  ): Promise<PushResult> {
+    const devices = devicesForSide(await this.devices.tokensFor(userId), side);
     const result = await this.push.sendData({
       userId,
       tokens: devices.map((device) => device.fcm_token),
@@ -257,7 +263,9 @@ export class NotificationsService implements OnModuleInit {
       ttlSeconds,
     });
     await this.devices.removeTokens(result.invalidTokens);
-    this.logger.log(`call ${data.event} ${data.call_id} to user ${userId}: ${result.status} via ${result.provider}`);
+    this.logger.log(
+      `call ${data.event} ${data.call_id} to user ${userId} (${side} app, ${devices.length} device(s)): ${result.status} via ${result.provider}${result.error ? ` - ${result.error}` : ''}`,
+    );
     return result;
   }
 

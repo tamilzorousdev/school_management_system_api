@@ -473,4 +473,10 @@ export class MeetingParentOptionDto {
 
   @ApiProperty({ example: true })
   is_primary: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'This parent is the signed-in teacher. Hide for meetings (400 SAME_PERSON); chat is allowed.',
+  })
+  is_me?: boolean;
 }
