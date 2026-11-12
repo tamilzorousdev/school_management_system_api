@@ -54,11 +54,11 @@ export class AttendanceController {
   @ApiOperation({
     summary: 'Attendance of every section for one date and session (morning or afternoon), with totals',
     description:
-      'Attendance is taken twice a day: morning (1st period) and afternoon (5th period). Counts and marked are for the chosen session; each section also has morning_marked and afternoon_marked.',
+      'Session mode (school attendance_mode = session): attendance twice a day, morning (1st period) and afternoon (5th period); send session. Period mode: attendance in every teaching period; send period. Counts and marked are for the chosen session or period; each section also has morning_marked and afternoon_marked.',
   })
   @ApiEnvelope(AttendanceBoardDto)
-  board(@SchoolId() schoolId: number, @Query() query: SessionBoardQueryDto) {
-    return this.attendance.board(schoolId, query.date, query.session, query.status);
+  async board(@SchoolId() schoolId: number, @Query() query: SessionBoardQueryDto) {
+    return this.attendance.board(schoolId, query.date, await this.attendance.slotFor(schoolId, query), query.status);
   }
 
   @Get('sections/:id')
@@ -66,12 +66,12 @@ export class AttendanceController {
   @ApiOperation({
     summary: 'Section roster for a date and session, with saved marks or defaults',
     description:
-      'session=morning (1st period, default) or afternoon (5th period). Students on approved leave default to leave; the afternoon starts from the morning marks (absent stays absent), everyone else present. 400 PERIOD_NOT_ALLOWED for any other period.',
+      'Session mode: session=morning (1st period, default) or afternoon (5th period); 400 PERIOD_NOT_ALLOWED for any other period. Period mode: period=1..last teaching period. Students on approved leave default to leave; a later list starts from the marks of the period before (absent stays absent), everyone else present.',
   })
   @ApiEnvelope(RosterDto)
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
-  roster(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Query() query: RosterQueryDto) {
-    return this.attendance.roster(schoolId, id, query.date, this.attendance.sessionFor(query));
+  async roster(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Query() query: RosterQueryDto) {
+    return this.attendance.roster(schoolId, id, query.date, await this.attendance.slotFor(schoolId, query));
   }
 
   @Put('bulk')

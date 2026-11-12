@@ -3,10 +3,13 @@ import {
   afternoonDefault,
   dayStatus,
   latestStatus,
+  ordinal,
+  resolveSlot,
   resolveSession,
   SESSION_PERIOD,
   sessionOf,
   sessionState,
+  slotPeriods,
   windowMessage,
 } from './attendance-sessions';
 
@@ -82,5 +85,33 @@ describe('attendance sessions', () => {
       'Afternoon attendance opens at 12:45 (5th period, 12:45 to 13:30)',
     );
     expect(windowMessage('afternoon', afternoon, 'closed')).toMatch(/only during the 5th period .* Ask the office/);
+  });
+});
+
+describe('attendance mode', () => {
+  it('keeps session mode to the 1st and 5th period', () => {
+    expect(slotPeriods('session', 8)).toEqual([1, 5]);
+    expect(resolveSlot('session', 8, { session: 'afternoon' })).toEqual({ session: 'afternoon', period: 5 });
+    expect(() => resolveSlot('session', 8, { period: 3 })).toThrow(
+      expect.objectContaining({ response: expect.objectContaining({ code: 'PERIOD_NOT_ALLOWED' }) }),
+    );
+  });
+
+  it('opens every teaching period in period mode', () => {
+    expect(slotPeriods('period', 4)).toEqual([1, 2, 3, 4]);
+    expect(resolveSlot('period', 8, { period: 3 })).toEqual({ session: 'morning', period: 3 });
+    expect(resolveSlot('period', 8, { period: 6 })).toEqual({ session: 'afternoon', period: 6 });
+    expect(resolveSlot('period', 8, {})).toEqual({ session: 'morning', period: 1 });
+    expect(resolveSlot('period', 8, { session: 'afternoon' })).toEqual({ session: 'afternoon', period: 5 });
+    expect(() => resolveSlot('period', 8, { period: 9 })).toThrow(
+      expect.objectContaining({ response: expect.objectContaining({ code: 'PERIOD_NOT_ALLOWED' }) }),
+    );
+  });
+
+  it('names periods for messages', () => {
+    expect([1, 2, 3, 4, 11, 12].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th']);
+    expect(
+      windowMessage({ session: 'morning', period: 3 }, { opens_at: '10:45', closes_at: '11:45' }, 'not_open', 'period'),
+    ).toBe('3rd period attendance opens at 10:45 (10:45 to 11:45)');
   });
 });

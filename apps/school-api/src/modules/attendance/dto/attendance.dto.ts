@@ -21,7 +21,7 @@ import {
 import { ListQueryDto } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
-import { ATTENDANCE_SESSIONS, AttendanceSessionName } from '../attendance-sessions';
+import { ATTENDANCE_MODES, ATTENDANCE_SESSIONS, AttendanceMode, AttendanceSessionName } from '../attendance-sessions';
 import { ATTENDANCE_STATUSES, AttendanceStatus } from '../entities/attendance-record.entity';
 import { LEAVE_STATUSES, LeaveStatus } from '../entities/student-leave.entity';
 
@@ -35,16 +35,16 @@ export class RosterQueryDto {
   @ApiPropertyOptional({
     enum: ATTENDANCE_SESSIONS,
     default: 'morning',
-    description: 'morning = 1st period, afternoon = 5th period. Wins over period.',
+    description: 'morning = 1st period, afternoon = 5th period. Wins over period in session mode.',
   })
   @IsOptional()
   @IsIn(ATTENDANCE_SESSIONS)
   session?: AttendanceSessionName;
 
   @ApiPropertyOptional({
-    example: 1,
-    deprecated: true,
-    description: 'Old way: 0 or 1 = morning, 5 = afternoon. Any other period gives 400 PERIOD_NOT_ALLOWED.',
+    example: 3,
+    description:
+      'Period mode (school attendance_mode = period): the teaching period, 1 to the last period of the bell schedule. Session mode: 1 = morning, 5 = afternoon, other periods give 400 PERIOD_NOT_ALLOWED.',
   })
   @IsOptional()
   @Type(() => Number)
@@ -87,18 +87,19 @@ export class MarkAttendanceDto {
   @ApiPropertyOptional({
     enum: ATTENDANCE_SESSIONS,
     default: 'morning',
-    description: 'morning = 1st period, afternoon = 5th period. Wins over period.',
+    description: 'morning = 1st period, afternoon = 5th period. Wins over period in session mode.',
   })
   @IsOptional()
   @IsIn(ATTENDANCE_SESSIONS)
   session?: AttendanceSessionName;
 
   @ApiPropertyOptional({
-    example: 1,
-    deprecated: true,
-    description: 'Old way: 0 or 1 = morning, 5 = afternoon. Use session.',
+    example: 3,
+    description:
+      'Period mode (school attendance_mode = period): the teaching period, 1 to the last period of the bell schedule. Session mode: 1 = morning, 5 = afternoon, other periods give 400 PERIOD_NOT_ALLOWED.',
   })
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(0)
   @Max(12)
@@ -131,6 +132,18 @@ export class MarkSomeAttendanceDto {
   @IsOptional()
   @IsIn(ATTENDANCE_SESSIONS)
   session?: AttendanceSessionName;
+
+  @ApiPropertyOptional({
+    example: 3,
+    description:
+      'Period mode (school attendance_mode = period): the teaching period, 1 to the last period of the bell schedule. Session mode: 1 = morning, 5 = afternoon, other periods give 400 PERIOD_NOT_ALLOWED.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(12)
+  period?: number;
 
   @ApiProperty({
     type: [MarkItemDto],
@@ -171,11 +184,23 @@ export class SessionBoardQueryDto extends BoardQueryDto {
   @ApiPropertyOptional({
     enum: ATTENDANCE_SESSIONS,
     default: 'morning',
-    description: 'morning = 1st period, afternoon = 5th period. Wins over period.',
+    description: 'morning = 1st period, afternoon = 5th period. Wins over period in session mode.',
   })
   @IsOptional()
   @IsIn(ATTENDANCE_SESSIONS)
   session?: AttendanceSessionName;
+
+  @ApiPropertyOptional({
+    example: 3,
+    description:
+      'Period mode (school attendance_mode = period): the teaching period, 1 to the last period of the bell schedule. Session mode: 1 = morning, 5 = afternoon, other periods give 400 PERIOD_NOT_ALLOWED.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(12)
+  period?: number;
 }
 
 export class MonthQueryDto {
@@ -299,16 +324,23 @@ export class RosterDto {
   @ApiProperty({ example: '2026-11-05' })
   date: string;
 
-  @ApiProperty({ enum: ATTENDANCE_SESSIONS, example: 'morning' })
+  @ApiProperty({
+    enum: ATTENDANCE_MODES,
+    example: 'session',
+    description: 'session: morning and afternoon only. period: every teaching period.',
+  })
+  mode: AttendanceMode;
+
+  @ApiProperty({ enum: ATTENDANCE_SESSIONS, example: 'morning', description: 'Half of the day this period is in' })
   session: AttendanceSessionName;
 
-  @ApiProperty({ example: 1, description: '1 for morning, 5 for afternoon' })
+  @ApiProperty({ example: 1, description: 'Session mode: 1 for morning, 5 for afternoon. Period mode: the period' })
   period: number;
 
   @ApiProperty({
     example: true,
     description:
-      'For a teacher: true only today during the 1st period (morning) or 5th period (afternoon). The office can always save.',
+      'For a teacher: true only today during this period plus the grace minutes. The office can always save.',
   })
   open: boolean;
 
@@ -390,8 +422,18 @@ export class AttendanceBoardDto {
   @ApiProperty({ example: '2026-11-05' })
   date: string;
 
+  @ApiProperty({
+    enum: ATTENDANCE_MODES,
+    example: 'session',
+    description: 'session: morning and afternoon only. period: every teaching period.',
+  })
+  mode: AttendanceMode;
+
   @ApiProperty({ enum: ATTENDANCE_SESSIONS, example: 'morning', description: 'Counts and marked are for this session' })
   session: AttendanceSessionName;
+
+  @ApiProperty({ example: 1, description: 'Counts and marked are for this period' })
+  period: number;
 
   @ApiProperty()
   working_day: boolean;
@@ -591,11 +633,23 @@ export class BulkSectionMarkDto {
   @ApiPropertyOptional({
     enum: ATTENDANCE_SESSIONS,
     default: 'morning',
-    description: 'morning = 1st period, afternoon = 5th period. Wins over period.',
+    description: 'morning = 1st period, afternoon = 5th period. Wins over period in session mode.',
   })
   @IsOptional()
   @IsIn(ATTENDANCE_SESSIONS)
   session?: AttendanceSessionName;
+
+  @ApiPropertyOptional({
+    example: 3,
+    description:
+      'Period mode (school attendance_mode = period): the teaching period, 1 to the last period of the bell schedule. Session mode: 1 = morning, 5 = afternoon, other periods give 400 PERIOD_NOT_ALLOWED.',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(12)
+  period?: number;
 
   @ApiProperty({ enum: ATTENDANCE_STATUSES, example: 'present', description: 'Status for every student' })
   @IsIn(ATTENDANCE_STATUSES)
@@ -739,6 +793,9 @@ export class SectionDayDto {
   @ApiProperty({ example: false })
   afternoon_marked: boolean;
 
+  @ApiProperty({ type: [Number], example: [1, 2, 3], description: 'Periods saved for this day' })
+  marked_periods: number[];
+
   @ApiProperty({ type: AttendanceSummaryDto, description: 'Counts of the day status; percent over marked students' })
   summary: AttendanceSummaryDto;
 
@@ -847,6 +904,9 @@ export class MissedSessionDto {
 
   @ApiProperty({ enum: ATTENDANCE_SESSIONS, example: 'morning' })
   session: AttendanceSessionName;
+
+  @ApiProperty({ example: 1, description: 'Period that was missed (1 or 5 in session mode)' })
+  period: number;
 
   @ApiProperty({ example: 4 })
   section_id: number;

@@ -29,17 +29,26 @@ function stateAt(window: SessionWindow, now: string): SessionState {
   return 'open';
 }
 
+export function currentSlot<T extends { window: SessionWindow }>(
+  slots: T[],
+  now: string,
+): { slot: T; state: SessionState } {
+  const states = slots.map((slot) => ({ slot, state: stateAt(slot.window, now) }));
+  return (
+    states.find((item) => item.state === 'open') ??
+    states.find((item) => item.state === 'not_open') ?? { slot: slots[slots.length - 1], state: 'closed' }
+  );
+}
+
 export function currentSession(
   windows: Record<AttendanceSessionName, SessionWindow>,
   now: string,
 ): { session: AttendanceSessionName; state: SessionState } {
-  const morning = stateAt(windows.morning, now);
-  const afternoon = stateAt(windows.afternoon, now);
-  if (morning === 'open') return { session: 'morning', state: 'open' };
-  if (afternoon === 'open') return { session: 'afternoon', state: 'open' };
-  if (morning === 'not_open') return { session: 'morning', state: 'not_open' };
-  if (afternoon === 'not_open') return { session: 'afternoon', state: 'not_open' };
-  return { session: 'afternoon', state: 'closed' };
+  const picked = currentSlot(
+    (['morning', 'afternoon'] as const).map((session) => ({ session, window: windows[session] })),
+    now,
+  );
+  return { session: picked.slot.session, state: picked.state };
 }
 
 export function windowClosed(window: SessionWindow, date: string, today: string, now: string): boolean {

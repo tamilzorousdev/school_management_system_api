@@ -2,12 +2,20 @@ import 'reflect-metadata';
 import { AttendanceAlertsService } from './attendance-alerts.service';
 import { graceWindow } from './attendance-window';
 
-function setup() {
+const PERIOD_TIMES: Record<number, [string, string]> = {
+  1: ['09:00', '09:45'],
+  2: ['09:45', '10:30'],
+  3: ['10:45', '11:30'],
+  5: ['13:30', '14:15'],
+};
+
+function setup(mode: 'session' | 'period' = 'session') {
   const claimed = new Set<string>();
   const attendance = {
     isSchoolDay: jest.fn().mockResolvedValue(true),
-    window: jest.fn((_manager: unknown, _school: number, session: string) =>
-      Promise.resolve(session === 'morning' ? graceWindow('09:00', '09:45', 15) : graceWindow('13:30', '14:15', 15)),
+    modeOf: jest.fn().mockResolvedValue({ mode, teaching: 3 }),
+    window: jest.fn((_manager: unknown, _school: number, period: number) =>
+      Promise.resolve(graceWindow(PERIOD_TIMES[period][0], PERIOD_TIMES[period][1], 15)),
     ),
     unmarkedSections: jest.fn().mockResolvedValue([
       { section_id: 4, name: '6 - A', class_teacher_user_id: 31 },
@@ -22,6 +30,9 @@ function setup() {
         const fresh = ids.filter((id) => !claimed.has(`${id}:${date}:${period}:${kind}`));
         fresh.forEach((id) => claimed.add(`${id}:${date}:${period}:${kind}`));
         return Promise.resolve(fresh.map((section_id) => ({ section_id })));
+      }
+      if (sql.includes('FROM timetable_slots')) {
+        return Promise.resolve(params[0] === 4 ? [{ teacher_user_id: 52 }] : []);
       }
       if (sql.includes('FROM substitutions')) {
         return Promise.resolve(params[1] === 4 ? [{ substitute_user_id: 77 }] : []);
@@ -85,5 +96,20 @@ describe('attendance alerts', () => {
       'ATTENDANCE_REMINDER',
       'ATTENDANCE_MISSED',
     ]);
+  });
+
+  it('in period mode reminds the teacher of each period, not the class teacher', async () => {
+    const { service, notifications, attendance } = setup('period');
+    await service.checkSchool(1, '10:31');
+    expect(attendance.unmarkedSections).toHaveBeenCalledWith(1, expect.any(String), 2);
+    const reminders = notifications.dispatch.mock.calls.filter(
+      ([input]: [{ template: string }]) => input.template === 'ATTENDANCE_REMINDER',
+    );
+    expect(reminders[0][0]).toEqual(
+      expect.objectContaining({
+        audience: { user_ids: [52, 77] },
+        data: expect.objectContaining({ period: '2nd' }),
+      }),
+    );
   });
 });

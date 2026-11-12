@@ -413,6 +413,15 @@ Staff leave status moves `pending_hod` → `pending_principal` → `approved` (o
 
 Student attendance is taken in the **1st period (`session: "morning"`)** and the **5th period (`session: "afternoon"`)**; they are stored as periods 1 and 5. The old `period` field still works (0 or 1 = morning, 5 = afternoon); any other period gives `400 PERIOD_NOT_ALLOWED`.
 
+**Session-wise or period-wise.** The school picks it in School profile (`attendance_mode` on `PATCH /admin/school`):
+
+| `attendance_mode` | How attendance is taken | What the app sends |
+|---|---|---|
+| `session` (default) | Twice a day: 1st period (morning) and 5th period (afternoon) | `session`; other periods give `400 PERIOD_NOT_ALLOWED` |
+| `period` | Every teaching period of the bell schedule; the teacher of that period in the timetable (or the proxy) can mark it | `period` = 1 to the last period; beyond the bell schedule gives `400 PERIOD_NOT_ALLOWED` |
+
+Every roster and board answer has `mode`, `session` and `period`. The `/current` endpoints pick the period running now in either mode, so the Staff app needs no change if it uses them. In period mode a later period starts from the marks of the period before, the grace minutes apply after each period, reminders go to the teacher of that period, and the day status is the average of all periods (all present = present, all absent = absent, otherwise half day).
+
 - **The day** comes from both sessions: both present = `present` (`late` if either was late), absent in one = `half_day`, absent in both = `absent`, leave in both = `leave`. Reports, percentages, the parent calendar, today's badge, the report card and bus no-shows all use the day.
 - **Teachers** can save a session only **today during its period**: morning in the 1st period, afternoon in the 5th (bell times from the timetable). Before it: `400 SESSION_NOT_OPEN`; after it or on an earlier day: `400 SESSION_CLOSED`. The office (AO, admin) can save any session at any time, so a missed session is marked by the AO.
 - **Absent alert**: once per student per day. Absent in the morning → alert; present in the morning and absent in the afternoon → alert "(afternoon)".
@@ -580,6 +589,16 @@ Read with `fleet.view`, change with `fleet.manage`. `{id}` of a bus is the schoo
 | `GET /admin/fleet/trips/{id}/playback?max_points=1500` | Replay: `trip`, `school`, `path` (planned route), `points` `[{ at, lat, lng, speed, heading }]` oldest first (thinned evenly to `max_points`, `sampled` says so), `distance_km`, `duration_seconds`, `max_speed`, `avg_speed`, `stop_arrivals` and `safety_events`. 404 `TRACK_NOT_FOUND` |
 
 When the Telematics service reports a new engine fault code it sends `vehicle.fault` `{ id, type, at, device_id, fault: { code, description, severity }, odometer_km? }`. The bus with that tracker gets a maintenance ticket (`source: obd`, one open ticket per code; retries are stored once) and admins and the transport in-charge get `VEHICLE_FAULT` (push and in-app; `bus`, `code`, `fault`, `severity`).
+
+## Class performance and special classes
+
+| Call | What it gives |
+|---|---|
+| `GET /admin/performance/classes?exam_id=&class_id=` | Class-wise report: for each section `average_percent`, `pass_percent`, `fail_percent`, `attendance_percent` (this academic year) and `below_average`, plus school `totals`. Without `exam_id` every published exam of the year counts. A result fails when any subject is below its pass mark or absent |
+| `GET /admin/performance/sections/{id}/below-average?exam_id=&below=` | Students under the section average (or under `below` %), lowest first, with `gap`, `weak_subjects` (up to 3, against the section's subject average), `attendance_percent` and the `special_classes` they already attend |
+| `GET/POST /admin/special-classes`, `PATCH/DELETE /admin/special-classes/{id}` | A special class is one dedicated period every week (`day_of_week` 1–6, `period_no`) for chosen students of one section, with a teacher and optional subject. `409 TEACHER_CLASH` when the teacher is busy then, `409 SPECIAL_CLASS_CLASH` when the section already has one in that period, `409 TEACHER_OVER_LIMIT` above the weekly limit, `400 STUDENT_NOT_IN_SECTION`. Parents of added students get the `SPECIAL_CLASS_ADDED` notification |
+| `GET /mobile/teacher/special-classes` | Staff app: special classes I take |
+| `GET /mobile/parent/children/{id}/special-classes` | Parent app: special classes the child attends (`students` holds only this child) |
 
 ## Exams, marks and ranking
 
@@ -878,16 +897,16 @@ Notes are allowed before, during and after a meeting, but not on a cancelled one
 
 Server settings: `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` (tokens), `AGORA_TOKEN_TTL_SECONDS` (default 900), `AGORA_CUSTOMER_ID` and `AGORA_CUSTOMER_SECRET` (Agora console → RESTful API; needed to remove everyone when the host ends), `AGORA_REST_URL`, and `AGORA_WEBHOOK_SECRET` (Agora console → Notifications, pointed at `POST /api/v1/integrations/agora/events`; join and leave events 103–108 then fill the call log with what Agora saw, including network drops). Without the customer keys, ending still blocks new tokens, and anyone still connected drops when their 15-minute token runs out.
 
-## Digital diary
+## Homework (formerly Digital diary)
 
-Teachers post **homework**, **remarks**, **feedback** or **notes** to a whole class (only if they teach every section), a section, or chosen students (up to 60), with up to 5 files and, for homework, a due date. The school chooses in School setup → Diary and chat → Diary review (option A, B or C): `all` (option A: every post waits), `remarks` (option B, default: remarks and feedback wait for the office; homework and notes go out at once), or `none` (option C: no review, all posts go out at once). Published posts reach parents with a `DIARY_POSTED` push.
+Teachers post **homework**, **remarks**, **feedback** or **notes** to a whole class (only if they teach every section), a section, or chosen students (up to 60), with up to 5 files and, for homework, a due date. There is no office review: every post reaches parents at once (`diary_review_mode` is always `none` and can no longer be changed). The office can still hide a post. Shown as **Homework** in the admin web; the API routes keep the `diary` name. Published posts reach parents with a `DIARY_POSTED` push.
 
 | Call | Screen |
 |---|---|
 | `GET /mobile/teacher/diary?status=&type=&section_id=` | My posts this year with `seen_count` of `recipient_count` |
 | `POST /mobile/teacher/diary` | `{ "type": "homework", "scope": "section", "section_id": 4, "title": "Exercise 4.2", "body": "...", "subject_id": 7, "due_date": "2026-11-12", "file_ids": [41] }`; `scope: "students"` with `student_ids`, or `"class"` with `class_id` |
 | `GET /mobile/teacher/diary/{id}` | With every student and when their parent saw it |
-| `PATCH /mobile/teacher/diary/{id}` | Edit while `pending_review` or `rejected` (sent back); it goes for review again |
+| `PATCH /mobile/teacher/diary/{id}` | Edit a post the office sent back earlier (`rejected`); new posts are published at once, so delete and post again to change one |
 | `DELETE /mobile/teacher/diary/{id}` | Removes it from the feed |
 | `GET /mobile/parent/children/{id}/diary?type=` | Parent feed (published only) with `seen` |
 | `POST /mobile/parent/children/{id}/diary/{entryId}/seen` | Mark as seen |

@@ -8,12 +8,17 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AcademicYear } from '../setup/entities/academic-year.entity';
 import {
   afternoonDefault,
-  ATTENDANCE_SESSIONS,
+  AttendanceMode,
   AttendanceSessionName,
-  resolveSession,
+  AttendanceSlot,
+  halfOf,
+  ordinal,
+  resolveSlot,
   SESSION_PERIOD,
   SessionState,
   sessionState,
+  slotOfSession,
+  slotPeriods,
   windowMessage,
 } from './attendance-sessions';
 import {
@@ -38,7 +43,7 @@ import {
 import { AttendanceRecord, AttendanceStatus } from './entities/attendance-record.entity';
 import { AttendanceSession } from './entities/attendance-session.entity';
 import { clampRange, monthsBetween } from './attendance-reports.logic';
-import { currentSession, DEFAULT_GRACE_MINUTES, GraceWindow, graceWindow, windowClosed } from './attendance-window';
+import { currentSlot, DEFAULT_GRACE_MINUTES, GraceWindow, graceWindow, windowClosed } from './attendance-window';
 import { bulkPlan, mergeMarks } from './bulk-attendance.logic';
 import { yearClause, yearWhere } from '../../shared/year-context';
 
@@ -128,38 +133,57 @@ export class AttendanceService {
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
-  sessionFor(input: { session?: AttendanceSessionName; period?: number }): AttendanceSessionName {
-    return resolveSession(input);
+  async modeOf(schoolId: number): Promise<{ mode: AttendanceMode; teaching: number }> {
+    const [row] = await this.dataSource.query(
+      `SELECT s.attendance_mode AS mode,
+              (SELECT COUNT(*) FROM bell_periods b
+               WHERE b.school_id = s.id AND b.class_id IS NULL AND b.is_break = false) AS teaching
+       FROM schools s WHERE s.id = $1`,
+      [schoolId],
+    );
+    return { mode: row?.mode === 'period' ? 'period' : 'session', teaching: Number(row?.teaching ?? 0) };
+  }
+
+  async slotFor(
+    schoolId: number,
+    input: { session?: AttendanceSessionName; period?: number },
+  ): Promise<AttendanceSlot> {
+    const { mode, teaching } = await this.modeOf(schoolId);
+    return resolveSlot(mode, teaching, input);
   }
 
   async roster(
     schoolId: number,
     sectionId: number,
     date: string,
-    session: AttendanceSessionName = 'morning',
+    slot: AttendanceSlot = slotOfSession('morning'),
     options: MarkOptions = {},
   ): Promise<RosterDto> {
     const manager = this.dataSource.manager;
-    const period = SESSION_PERIOD[session];
+    const { period, session } = slot;
     const section = await this.section(manager, schoolId, sectionId);
-    const [students, saved, morning, holiday, leaves, window] = await Promise.all([
+    const [students, saved, earlier, holiday, leaves, window, { mode }] = await Promise.all([
       this.students(manager, sectionId),
       manager.findOne(AttendanceSession, {
         where: { section_id: sectionId, date, period },
         relations: { records: true },
       }),
-      session === 'afternoon'
-        ? manager.findOne(AttendanceSession, {
-            where: { section_id: sectionId, date, period: SESSION_PERIOD.morning },
-            relations: { records: true },
-          })
-        : Promise.resolve(null),
+      period > 1
+        ? (manager.query(
+            `SELECT DISTINCT ON (r.student_id) r.student_id, r.status
+             FROM attendance_records r JOIN attendance_sessions a ON a.id = r.session_id
+             WHERE a.section_id = $1 AND a.date = $2 AND a.period < $3
+             ORDER BY r.student_id, a.period DESC`,
+            [sectionId, date, period],
+          ) as Promise<{ student_id: number; status: AttendanceStatus }[]>)
+        : Promise.resolve([]),
       this.holidayName(manager, schoolId, date),
       this.leaveStudents(manager, schoolId, date, session),
-      this.window(manager, schoolId, session),
+      this.window(manager, schoolId, period),
+      this.modeOf(schoolId),
     ]);
     const records = new Map((saved?.records ?? []).map((record) => [record.student_id, record]));
-    const morningStatus = new Map((morning?.records ?? []).map((record) => [record.student_id, record.status]));
+    const morningStatus = new Map(earlier.map((record) => [Number(record.student_id), record.status]));
     const takenBy = saved?.taken_by
       ? await manager.query(`SELECT id, name FROM users WHERE id = $1`, [saved.taken_by])
       : [];
@@ -181,6 +205,7 @@ export class AttendanceService {
     return {
       section: { id: section.id, name: `${section.class_name} - ${section.name}` },
       date,
+      mode,
       session,
       period,
       open: !options.teacher || sessionState(window, date, today, this.nowTime()) === 'open',
@@ -205,16 +230,17 @@ export class AttendanceService {
     actor: AuthUser,
     options: MarkOptions = {},
   ): Promise<RosterDto> {
-    const session = resolveSession(dto);
-    const period = SESSION_PERIOD[session];
+    const { mode, teaching } = await this.modeOf(schoolId);
+    const slot = resolveSlot(mode, teaching, dto);
+    const { period } = slot;
     const today = todayIn(this.app.timeZone);
     if (dto.date > today) throw AppException.badRequest('Attendance cannot be taken for a future date', 'FUTURE_DATE');
     if (options.teacher) {
-      const window = await this.window(this.dataSource.manager, schoolId, session);
+      const window = await this.window(this.dataSource.manager, schoolId, period);
       const state = sessionState(window, dto.date, today, this.nowTime());
       if (state !== 'open') {
         throw AppException.badRequest(
-          windowMessage(session, window, state),
+          windowMessage(slot, window, state, mode),
           state === 'not_open' ? 'SESSION_NOT_OPEN' : 'SESSION_CLOSED',
         );
       }
@@ -299,8 +325,8 @@ export class AttendanceService {
       return absent.filter((id) => !already.has(id));
     });
 
-    if (absentees.length) await this.sendAbsentAlerts(schoolId, sectionId, dto.date, session, absentees);
-    return this.roster(schoolId, sectionId, dto.date, session, options);
+    if (absentees.length) await this.sendAbsentAlerts(schoolId, sectionId, dto.date, slot, mode, absentees);
+    return this.roster(schoolId, sectionId, dto.date, slot, options);
   }
 
   async markSome(
@@ -310,20 +336,20 @@ export class AttendanceService {
     actor: AuthUser,
     options: MarkOptions = {},
   ): Promise<RosterDto> {
-    const session = dto.session ?? 'morning';
-    const roster = await this.roster(schoolId, sectionId, dto.date, session, options);
+    const slot = await this.slotFor(schoolId, dto);
+    const roster = await this.roster(schoolId, sectionId, dto.date, slot, options);
     return this.mark(
       schoolId,
       sectionId,
-      { date: dto.date, session, items: mergeMarks(roster.students, dto.items) },
+      { date: dto.date, ...slot, items: mergeMarks(roster.students, dto.items) },
       actor,
       options,
     );
   }
 
   async bulkMark(schoolId: number, dto: BulkSectionMarkDto, actor: AuthUser): Promise<BulkSectionResultDto> {
-    const session = dto.session ?? 'morning';
-    const board = await this.board(schoolId, dto.date, session);
+    const slot = await this.slotFor(schoolId, dto);
+    const board = await this.board(schoolId, dto.date, slot);
     if (!board.working_day) {
       throw AppException.badRequest(
         board.holiday ? `${dto.date} is a holiday: ${board.holiday}` : 'Attendance is not taken on Sundays',
@@ -337,14 +363,14 @@ export class AttendanceService {
     let marked = 0;
     let students = 0;
     for (const section of plan.targets) {
-      const roster = await this.roster(schoolId, section.section_id, dto.date, session);
+      const roster = await this.roster(schoolId, section.section_id, dto.date, slot);
       try {
         await this.mark(
           schoolId,
           section.section_id,
           {
             date: dto.date,
-            session,
+            ...slot,
             items: roster.students.map((student) => ({
               student_id: student.student_id,
               status: student.on_leave ? 'leave' : dto.status,
@@ -365,13 +391,14 @@ export class AttendanceService {
   async board(
     schoolId: number,
     date: string,
-    session: AttendanceSessionName = 'morning',
+    slot: AttendanceSlot = slotOfSession('morning'),
     filter?: BoardFilter,
   ): Promise<AttendanceBoardDto> {
     const manager = this.dataSource.manager;
     const year = await manager.findOneBy(AcademicYear, yearWhere(schoolId));
     const holiday = await this.holidayName(manager, schoolId, date);
-    const window = await this.window(manager, schoolId, session);
+    const window = await this.window(manager, schoolId, slot.period);
+    const { mode } = await this.modeOf(schoolId);
     const workingDay = !holiday && !WEEKLY_OFF.includes(weekday(date));
     const closed = workingDay && windowClosed(window, date, todayIn(this.app.timeZone), this.nowTime());
     const rows: {
@@ -403,7 +430,7 @@ export class AttendanceService {
            LEFT JOIN users u ON u.id = a.taken_by
            WHERE sec.school_id = $1 AND sec.academic_year_id = $2 AND sec.deleted_at IS NULL
            ORDER BY c.grade_level, sec.name`,
-          [schoolId, year.id, date, SESSION_PERIOD[session], SESSION_PERIOD.morning, SESSION_PERIOD.afternoon],
+          [schoolId, year.id, date, slot.period, SESSION_PERIOD.morning, SESSION_PERIOD.afternoon],
         )
       : [];
     const sections = rows.map((row) => {
@@ -444,7 +471,9 @@ export class AttendanceService {
     );
     return {
       date,
-      session,
+      mode,
+      session: slot.session,
+      period: slot.period,
       working_day: workingDay,
       holiday,
       summary: summarise(allStatuses),
@@ -527,8 +556,8 @@ export class AttendanceService {
       ) as Promise<{ student_id: number; status: AttendanceStatus }[]>,
       manager.query(
         `SELECT COUNT(DISTINCT date) AS count FROM attendance_sessions
-         WHERE section_id = $1 AND period = ANY($2) AND date BETWEEN $3 AND $4`,
-        [sectionId, [SESSION_PERIOD.morning, SESSION_PERIOD.afternoon], range.from, to],
+         WHERE section_id = $1 AND date BETWEEN $2 AND $3`,
+        [sectionId, range.from, to],
       ),
     ]);
     return {
@@ -612,8 +641,8 @@ export class AttendanceService {
       this.students(manager, sectionId),
       this.holidayName(manager, schoolId, date),
       manager.query(
-        `SELECT DISTINCT period FROM attendance_sessions WHERE section_id = $1 AND date = $2 AND period = ANY($3)`,
-        [sectionId, date, [SESSION_PERIOD.morning, SESSION_PERIOD.afternoon]],
+        `SELECT DISTINCT period FROM attendance_sessions WHERE section_id = $1 AND date = $2 ORDER BY period`,
+        [sectionId, date],
       ) as Promise<{ period: number }[]>,
     ]);
     const records: DayRow[] = students.length
@@ -644,6 +673,7 @@ export class AttendanceService {
       holiday,
       morning_marked: periods.has(SESSION_PERIOD.morning),
       afternoon_marked: periods.has(SESSION_PERIOD.afternoon),
+      marked_periods: [...periods],
       summary: summarise(rows.map((row) => row.status).filter((status): status is AttendanceStatus => status !== null)),
       students: rows,
     };
@@ -750,7 +780,8 @@ export class AttendanceService {
     schoolId: number,
     sectionId: number,
     date: string,
-    session: AttendanceSessionName,
+    slot: AttendanceSlot,
+    mode: AttendanceMode,
     studentIds: number[],
   ): Promise<void> {
     const rows: {
@@ -779,7 +810,12 @@ export class AttendanceService {
       year: 'numeric',
       timeZone: 'UTC',
     }).format(new Date(`${date}T00:00:00Z`));
-    const when = session === 'morning' ? shown : `${shown} (afternoon)`;
+    const when =
+      mode === 'period'
+        ? `${shown} (${ordinal(slot.period)} period)`
+        : slot.session === 'morning'
+          ? shown
+          : `${shown} (afternoon)`;
     for (const row of rows) {
       if (row.user_ids.length) {
         await this.notifications
@@ -791,7 +827,8 @@ export class AttendanceService {
               class: `${row.class_name}-${row.section_name}`,
               date: when,
               student_id: String(row.student_id),
-              session,
+              session: slot.session,
+              period: String(slot.period),
             },
           })
           .catch((error: Error) =>
@@ -800,20 +837,20 @@ export class AttendanceService {
       }
       await this.dataSource
         .getRepository(AttendanceRecord)
-        .update({ student_id: Number(row.student_id), date, period: SESSION_PERIOD[session] }, { alert_sent: true });
+        .update({ student_id: Number(row.student_id), date, period: slot.period }, { alert_sent: true });
     }
   }
 
-  async window(manager: EntityManager, schoolId: number, session: AttendanceSessionName): Promise<GraceWindow> {
+  async window(manager: EntityManager, schoolId: number, period: number): Promise<GraceWindow> {
     const [row] = await manager.query(
       `SELECT b.start_time, b.end_time, s.attendance_grace_minutes AS grace
        FROM schools s
        LEFT JOIN LATERAL (
          SELECT start_time, end_time FROM bell_periods
-         WHERE school_id = s.id AND period_no = $2 ORDER BY start_time LIMIT 1
+         WHERE school_id = s.id AND period_no = $2 AND class_id IS NULL ORDER BY start_time LIMIT 1
        ) b ON true
        WHERE s.id = $1`,
-      [schoolId, SESSION_PERIOD[session]],
+      [schoolId, period],
     );
     return graceWindow(
       row?.start_time ?? null,
@@ -822,25 +859,37 @@ export class AttendanceService {
     );
   }
 
-  async current(
-    schoolId: number,
-  ): Promise<{ date: string; session: AttendanceSessionName; state: SessionState; window: GraceWindow }> {
+  async current(schoolId: number): Promise<{
+    date: string;
+    mode: AttendanceMode;
+    session: AttendanceSessionName;
+    period: number;
+    state: SessionState;
+    window: GraceWindow;
+  }> {
     const manager = this.dataSource.manager;
-    const [morning, afternoon] = await Promise.all([
-      this.window(manager, schoolId, 'morning'),
-      this.window(manager, schoolId, 'afternoon'),
-    ]);
-    const picked = currentSession({ morning, afternoon }, this.nowTime());
+    const { mode, teaching } = await this.modeOf(schoolId);
+    const slots = await Promise.all(
+      slotPeriods(mode, teaching).map(async (period) => ({
+        session: halfOf(period),
+        period,
+        window: await this.window(manager, schoolId, period),
+      })),
+    );
+    const picked = currentSlot(slots, this.nowTime());
     return {
       date: todayIn(this.app.timeZone),
-      ...picked,
-      window: picked.session === 'morning' ? morning : afternoon,
+      mode,
+      session: picked.slot.session,
+      period: picked.slot.period,
+      state: picked.state,
+      window: picked.slot.window,
     };
   }
 
   async rosterCurrent(schoolId: number, sectionId: number): Promise<RosterDto> {
     const now = await this.current(schoolId);
-    return this.roster(schoolId, sectionId, now.date, now.session, { teacher: true });
+    return this.roster(schoolId, sectionId, now.date, { session: now.session, period: now.period }, { teacher: true });
   }
 
   async markCurrent(schoolId: number, sectionId: number, dto: CurrentMarkDto, actor: AuthUser): Promise<RosterDto> {
@@ -848,7 +897,13 @@ export class AttendanceService {
     return this.mark(
       schoolId,
       sectionId,
-      { date: now.date, session: now.session, subject_id: dto.subject_id ?? null, items: dto.items },
+      {
+        date: now.date,
+        session: now.session,
+        period: now.period,
+        subject_id: dto.subject_id ?? null,
+        items: dto.items,
+      },
       actor,
       { teacher: true },
     );
@@ -861,9 +916,13 @@ export class AttendanceService {
     actor: AuthUser,
   ): Promise<RosterDto> {
     const now = await this.openSessionNow(schoolId);
-    return this.markSome(schoolId, sectionId, { date: now.date, session: now.session, items: dto.items }, actor, {
-      teacher: true,
-    });
+    return this.markSome(
+      schoolId,
+      sectionId,
+      { date: now.date, session: now.session, period: now.period, items: dto.items },
+      actor,
+      { teacher: true },
+    );
   }
 
   async isProxyFor(
@@ -871,13 +930,29 @@ export class AttendanceService {
     userId: number,
     sectionId: number,
     date: string,
-    session: AttendanceSessionName,
+    period: number,
   ): Promise<boolean> {
     const [row] = await this.dataSource.query(
       `SELECT 1 FROM substitutions
        WHERE school_id = $1 AND section_id = $2 AND date = $3 AND period_no = $4 AND substitute_user_id = $5
        LIMIT 1`,
-      [schoolId, sectionId, date, SESSION_PERIOD[session], userId],
+      [schoolId, sectionId, date, period, userId],
+    );
+    return Boolean(row);
+  }
+
+  async isPeriodTeacher(
+    schoolId: number,
+    userId: number,
+    sectionId: number,
+    date: string,
+    period: number,
+  ): Promise<boolean> {
+    const [row] = await this.dataSource.query(
+      `SELECT 1 FROM timetable_slots
+       WHERE school_id = $1 AND section_id = $2 AND day_of_week = $3 AND period_no = $4 AND teacher_user_id = $5
+       LIMIT 1`,
+      [schoolId, sectionId, weekday(date), period, userId],
     );
     return Boolean(row);
   }
@@ -890,7 +965,7 @@ export class AttendanceService {
   async unmarkedSections(
     schoolId: number,
     date: string,
-    session: AttendanceSessionName,
+    period: number,
   ): Promise<{ section_id: number; name: string; class_teacher_user_id: number | null }[]> {
     const rows: { id: number; class_name: string; name: string; class_teacher_user_id: number | null }[] =
       await this.dataSource.query(
@@ -904,7 +979,7 @@ export class AttendanceService {
            AND NOT EXISTS (SELECT 1 FROM attendance_sessions a
                            WHERE a.section_id = sec.id AND a.date = $2 AND a.period = $3)
          ORDER BY c.grade_level, sec.name`,
-        [schoolId, date, SESSION_PERIOD[session]],
+        [schoolId, date, period],
       );
     return rows.map((row) => ({
       section_id: Number(row.id),
@@ -919,13 +994,14 @@ export class AttendanceService {
     const now = this.nowTime();
     const range = monthRange(month);
     const to = range.to < today ? range.to : today;
-    const [morning, afternoon] = await Promise.all([
-      this.window(manager, schoolId, 'morning'),
-      this.window(manager, schoolId, 'afternoon'),
-    ]);
-    const windows = { morning, afternoon };
+    const { mode, teaching } = await this.modeOf(schoolId);
+    const periods = slotPeriods(mode, teaching);
+    const windows = new Map(
+      await Promise.all(periods.map(async (period) => [period, await this.window(manager, schoolId, period)] as const)),
+    );
+    const graceMinutes = windows.get(periods[0])?.grace_minutes ?? DEFAULT_GRACE_MINUTES;
     if (range.from > to) {
-      return { month, grace_minutes: morning.grace_minutes, total_missed: 0, teachers: [] };
+      return { month, grace_minutes: graceMinutes, total_missed: 0, teachers: [] };
     }
     const [holidays, sections, saved] = await Promise.all([
       holidaySet(manager, schoolId, range.from, to),
@@ -948,17 +1024,17 @@ export class AttendanceService {
                 to_char(created_at AT TIME ZONE $4, 'YYYY-MM-DD HH24:MI') AS saved_at
          FROM attendance_sessions
          WHERE school_id = $1 AND date BETWEEN $2 AND $3 AND period = ANY($5)`,
-        [schoolId, range.from, to, this.app.timeZone, [SESSION_PERIOD.morning, SESSION_PERIOD.afternoon]],
+        [schoolId, range.from, to, this.app.timeZone, periods],
       ) as Promise<{ section_id: number; date: string; period: number; saved_at: string }[]>,
     ]);
     const savedAt = new Map(saved.map((row) => [`${row.section_id}:${row.date}:${row.period}`, row.saved_at]));
     const byTeacher = new Map<string, MissedTeacherDto>();
     for (const date of workingDays(range.from, to, holidays)) {
-      for (const session of ATTENDANCE_SESSIONS) {
-        const window = windows[session];
+      for (const period of periods) {
+        const window = windows.get(period)!;
         if (!windowClosed(window, date, today, now)) continue;
         for (const section of sections) {
-          const at = savedAt.get(`${section.id}:${date}:${SESSION_PERIOD[session]}`);
+          const at = savedAt.get(`${section.id}:${date}:${period}`);
           if (at && (!window.closes_at || at <= `${date} ${window.closes_at}`)) continue;
           const teacherId = section.class_teacher_user_id === null ? null : Number(section.class_teacher_user_id);
           const key = String(teacherId ?? 'none');
@@ -971,7 +1047,8 @@ export class AttendanceService {
           entry.missed += 1;
           entry.sessions.push({
             date,
-            session,
+            session: halfOf(period),
+            period,
             section_id: Number(section.id),
             section: classSectionName(section),
             still_not_marked: !at,
@@ -983,7 +1060,7 @@ export class AttendanceService {
     const teachers = [...byTeacher.values()].sort((a, b) => b.missed - a.missed || a.teacher.localeCompare(b.teacher));
     return {
       month,
-      grace_minutes: morning.grace_minutes,
+      grace_minutes: graceMinutes,
       total_missed: teachers.reduce((sum, item) => sum + item.missed, 0),
       teachers,
     };
@@ -993,7 +1070,7 @@ export class AttendanceService {
     const now = await this.current(schoolId);
     if (now.state !== 'open') {
       throw AppException.badRequest(
-        windowMessage(now.session, now.window, now.state),
+        windowMessage({ session: now.session, period: now.period }, now.window, now.state, now.mode),
         now.state === 'not_open' ? 'SESSION_NOT_OPEN' : 'SESSION_CLOSED',
       );
     }

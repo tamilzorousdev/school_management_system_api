@@ -376,7 +376,7 @@ export class DiaryService {
 
   private async reviewMode(schoolId: number): Promise<DiaryReviewMode> {
     const [row] = await this.dataSource.query(`SELECT diary_review_mode FROM schools WHERE id = $1`, [schoolId]);
-    return (row?.diary_review_mode as DiaryReviewMode) ?? 'remarks';
+    return (row?.diary_review_mode as DiaryReviewMode) ?? 'none';
   }
 
   private async ownEntry(actor: AuthUser, id: number): Promise<DiaryEntry> {

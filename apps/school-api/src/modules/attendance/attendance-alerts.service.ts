@@ -6,15 +6,13 @@ import { todayIn } from '../../shared/dates';
 import { ROLES } from '../access/access.catalog';
 import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
-import { ATTENDANCE_SESSIONS, AttendanceSessionName, SESSION_PERIOD } from './attendance-sessions';
+import { AttendanceMode, AttendanceSlot, halfOf, ordinal, slotPeriods } from './attendance-sessions';
 import { AttendanceService } from './attendance.service';
 import { addToTime, GraceWindow, inReminderTime, listNames, windowClosed } from './attendance-window';
 
 export const MISSED_ALERT_WINDOW_MINUTES = 60;
 
 type AlertKind = 'reminder' | 'missed';
-
-const PERIOD_LABEL: Record<AttendanceSessionName, string> = { morning: '1st', afternoon: '5th' };
 
 @Injectable()
 export class AttendanceAlertsService {
@@ -40,10 +38,12 @@ export class AttendanceAlertsService {
   async checkSchool(schoolId: number, now = this.nowTime()): Promise<void> {
     const today = todayIn(this.app.timeZone);
     if (!(await this.attendance.isSchoolDay(schoolId, today))) return;
-    for (const session of ATTENDANCE_SESSIONS) {
-      const window = await this.attendance.window(this.dataSource.manager, schoolId, session);
-      if (inReminderTime(window, now)) await this.remind(schoolId, today, session, window);
-      else if (this.justClosed(window, today, now)) await this.reportMissed(schoolId, today, session, window);
+    const { mode, teaching } = await this.attendance.modeOf(schoolId);
+    for (const period of slotPeriods(mode, teaching)) {
+      const slot = { session: halfOf(period), period };
+      const window = await this.attendance.window(this.dataSource.manager, schoolId, period);
+      if (inReminderTime(window, now)) await this.remind(schoolId, today, slot, mode, window);
+      else if (this.justClosed(window, today, now)) await this.reportMissed(schoolId, today, slot, mode, window);
     }
   }
 
@@ -58,28 +58,40 @@ export class AttendanceAlertsService {
   private async remind(
     schoolId: number,
     date: string,
-    session: AttendanceSessionName,
+    slot: AttendanceSlot,
+    mode: AttendanceMode,
     window: GraceWindow,
   ): Promise<void> {
-    const sections = await this.attendance.unmarkedSections(schoolId, date, session);
+    const sections = await this.attendance.unmarkedSections(schoolId, date, slot.period);
     const claimed = await this.claim(
       schoolId,
       sections.map((section) => section.section_id),
       date,
-      session,
+      slot.period,
       'reminder',
     );
     for (const section of sections.filter((item) => claimed.has(item.section_id))) {
       const proxies: { substitute_user_id: number }[] = await this.dataSource.query(
         `SELECT DISTINCT substitute_user_id FROM substitutions
          WHERE school_id = $1 AND section_id = $2 AND date = $3 AND period_no = $4 AND substitute_user_id IS NOT NULL`,
-        [schoolId, section.section_id, date, SESSION_PERIOD[session]],
+        [schoolId, section.section_id, date, slot.period],
       );
+      const periodTeachers: { teacher_user_id: number }[] =
+        mode === 'period'
+          ? await this.dataSource.query(
+              `SELECT DISTINCT teacher_user_id FROM timetable_slots
+               WHERE section_id = $1 AND day_of_week = EXTRACT(ISODOW FROM $2::date) AND period_no = $3
+                 AND teacher_user_id IS NOT NULL`,
+              [section.section_id, date, slot.period],
+            )
+          : [];
       const userIds = [
         ...new Set(
-          [section.class_teacher_user_id, ...proxies.map((row) => Number(row.substitute_user_id))].filter(
-            (id): id is number => id !== null,
-          ),
+          [
+            ...(mode === 'period' && periodTeachers.length ? [] : [section.class_teacher_user_id]),
+            ...periodTeachers.map((row) => Number(row.teacher_user_id)),
+            ...proxies.map((row) => Number(row.substitute_user_id)),
+          ].filter((id): id is number => id !== null),
         ),
       ];
       if (!userIds.length) continue;
@@ -88,8 +100,8 @@ export class AttendanceAlertsService {
         { user_ids: userIds },
         {
           section: section.name,
-          session,
-          period: PERIOD_LABEL[session],
+          session: slot.session,
+          period: ordinal(slot.period),
           closes_at: window.closes_at ?? '',
           section_id: String(section.section_id),
           on_date: date,
@@ -101,15 +113,16 @@ export class AttendanceAlertsService {
   private async reportMissed(
     schoolId: number,
     date: string,
-    session: AttendanceSessionName,
+    slot: AttendanceSlot,
+    mode: AttendanceMode,
     window: GraceWindow,
   ): Promise<void> {
-    const sections = await this.attendance.unmarkedSections(schoolId, date, session);
+    const sections = await this.attendance.unmarkedSections(schoolId, date, slot.period);
     const claimed = await this.claim(
       schoolId,
       sections.map((section) => section.section_id),
       date,
-      session,
+      slot.period,
       'missed',
     );
     const missed = sections.filter((section) => claimed.has(section.section_id));
@@ -119,7 +132,7 @@ export class AttendanceAlertsService {
       { roles: [ROLES.AO, ROLES.ADMIN], school_id: schoolId },
       {
         count: missed.length === 1 ? '1 section' : `${missed.length} sections`,
-        session,
+        session: mode === 'period' ? `${ordinal(slot.period)} period` : slot.session,
         sections: listNames(missed.map((section) => section.name)),
         grace: String(window.grace_minutes),
         on_date: date,
@@ -131,7 +144,7 @@ export class AttendanceAlertsService {
     schoolId: number,
     sectionIds: number[],
     date: string,
-    session: AttendanceSessionName,
+    period: number,
     kind: AlertKind,
   ): Promise<Set<number>> {
     if (!sectionIds.length) return new Set();
@@ -140,7 +153,7 @@ export class AttendanceAlertsService {
        SELECT $1, unnest($2::int[]), $3, $4, $5
        ON CONFLICT ("section_id", "date", "period", "kind") DO NOTHING
        RETURNING section_id`,
-      [schoolId, sectionIds, date, SESSION_PERIOD[session], kind],
+      [schoolId, sectionIds, date, period, kind],
     );
     return new Set(rows.map((row) => Number(row.section_id)));
   }

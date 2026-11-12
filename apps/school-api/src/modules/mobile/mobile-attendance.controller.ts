@@ -19,7 +19,6 @@ import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { ROLES } from '../access/access.catalog';
 import { AttendanceService } from '../attendance/attendance.service';
-import { AttendanceSessionName } from '../attendance/attendance-sessions';
 import {
   AttendanceYearDto,
   CurrentMarkDto,
@@ -237,15 +236,15 @@ export class MobileTeacherAttendanceController {
   @ApiOperation({
     summary: 'Attendance roster of my section for a date and session (morning = 1st period, afternoon = 5th period)',
     description:
-      'session=morning (default) or afternoon. open is true only today during that period (opens_at to closes_at); otherwise show the list read-only. The afternoon list starts from the morning marks. Any other period gives 400 PERIOD_NOT_ALLOWED.',
+      'Session mode (school attendance_mode = session): session=morning (default) or afternoon; any other period gives 400 PERIOD_NOT_ALLOWED. Period mode: send period=1..last period; the teacher of that period in the timetable can mark it. open is true only today during that period (opens_at to closes_at); otherwise show the list read-only. A later list starts from the marks of the period before.',
   })
   @ApiEnvelope(RosterDto)
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   async roster(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: RosterQueryDto) {
     const schoolId = this.access.teacherSchool(user);
-    const session = this.attendance.sessionFor(query);
-    await this.assertCanMark(schoolId, user.id, id, query.date, session);
-    return this.attendance.roster(schoolId, id, query.date, session, { teacher: true });
+    const slot = await this.attendance.slotFor(schoolId, query);
+    await this.assertCanMark(schoolId, user.id, id, query.date, slot.period);
+    return this.attendance.roster(schoolId, id, query.date, slot, { teacher: true });
   }
 
   @Put('sections/:id/attendance')
@@ -260,7 +259,7 @@ export class MobileTeacherAttendanceController {
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   async mark(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: MarkAttendanceDto) {
     const schoolId = this.access.teacherSchool(user);
-    await this.assertCanMark(schoolId, user.id, id, dto.date, this.attendance.sessionFor(dto));
+    await this.assertCanMark(schoolId, user.id, id, dto.date, (await this.attendance.slotFor(schoolId, dto)).period);
     return this.attendance.mark(schoolId, id, dto, user, { teacher: true });
   }
 
@@ -280,7 +279,7 @@ export class MobileTeacherAttendanceController {
     @Body() dto: MarkSomeAttendanceDto,
   ) {
     const schoolId = this.access.teacherSchool(user);
-    await this.assertCanMark(schoolId, user.id, id, dto.date, dto.session ?? 'morning');
+    await this.assertCanMark(schoolId, user.id, id, dto.date, (await this.attendance.slotFor(schoolId, dto)).period);
     return this.attendance.markSome(schoolId, id, dto, user, { teacher: true });
   }
 
@@ -289,14 +288,14 @@ export class MobileTeacherAttendanceController {
   @ApiOperation({
     summary: 'Roster for the session open right now. The API picks today and morning or afternoon from its own clock.',
     description:
-      'No date or session to send. During the 1st period plus grace it is the morning list, during the 5th period plus grace the afternoon list. Outside those times open is false: show the list read-only with opens_at and closes_at (closes_at already includes grace_minutes). The proxy teacher of the 1st or 5th period can also use it.',
+      'No date, session or period to send. Session mode: during the 1st period plus grace it is the morning list, during the 5th period plus grace the afternoon list. Period mode: the period running now (mode and period are in the reply). Outside those times open is false: show the list read-only with opens_at and closes_at (closes_at already includes grace_minutes). The proxy teacher of that period can also use it.',
   })
   @ApiEnvelope(RosterDto)
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   async currentRoster(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
     const schoolId = this.access.teacherSchool(user);
     const now = await this.attendance.current(schoolId);
-    await this.assertCanMark(schoolId, user.id, id, now.date, now.session);
+    await this.assertCanMark(schoolId, user.id, id, now.date, now.period);
     return this.attendance.rosterCurrent(schoolId, id);
   }
 
@@ -313,7 +312,7 @@ export class MobileTeacherAttendanceController {
   async markCurrent(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: CurrentMarkDto) {
     const schoolId = this.access.teacherSchool(user);
     const now = await this.attendance.current(schoolId);
-    await this.assertCanMark(schoolId, user.id, id, now.date, now.session);
+    await this.assertCanMark(schoolId, user.id, id, now.date, now.period);
     return this.attendance.markCurrent(schoolId, id, dto, user);
   }
 
@@ -334,7 +333,7 @@ export class MobileTeacherAttendanceController {
   ) {
     const schoolId = this.access.teacherSchool(user);
     const now = await this.attendance.current(schoolId);
-    await this.assertCanMark(schoolId, user.id, id, now.date, now.session);
+    await this.assertCanMark(schoolId, user.id, id, now.date, now.period);
     return this.attendance.markSomeCurrent(schoolId, id, dto, user);
   }
 
@@ -343,9 +342,10 @@ export class MobileTeacherAttendanceController {
     userId: number,
     sectionId: number,
     date: string,
-    session: AttendanceSessionName,
+    period: number,
   ): Promise<void> {
-    if (await this.attendance.isProxyFor(schoolId, userId, sectionId, date, session)) return;
+    if (await this.attendance.isProxyFor(schoolId, userId, sectionId, date, period)) return;
+    if (await this.attendance.isPeriodTeacher(schoolId, userId, sectionId, date, period)) return;
     await this.assignments.assertTeachesSection(schoolId, userId, sectionId);
   }
 

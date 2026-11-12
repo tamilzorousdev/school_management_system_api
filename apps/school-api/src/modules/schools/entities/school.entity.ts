@@ -1,6 +1,7 @@
 import { TrackedEntity } from '@app/common';
 import { Column, Entity, Index } from 'typeorm';
 import type { IdCardLayout } from '../../../shared/id-card-layout';
+import type { AttendanceMode } from '../../attendance/attendance-sessions';
 
 export const SCHOOL_BOARDS = ['CBSE', 'STATE', 'ICSE', 'OTHER'] as const;
 export type SchoolBoard = (typeof SCHOOL_BOARDS)[number];
@@ -77,11 +78,14 @@ export class School extends TrackedEntity {
   @Column({ type: 'varchar', length: 5, default: '08:45' })
   staff_reporting_time: string;
 
-  @Column({ type: 'varchar', length: 10, default: 'remarks' })
+  @Column({ type: 'varchar', length: 10, default: 'none' })
   diary_review_mode: DiaryReviewMode;
 
   @Column({ type: 'smallint', default: 15 })
   attendance_grace_minutes: number;
+
+  @Column({ type: 'varchar', length: 10, default: 'session' })
+  attendance_mode: AttendanceMode;
 
   @Column({ type: 'varchar', length: 5, default: '08:00' })
   chat_office_start: string;

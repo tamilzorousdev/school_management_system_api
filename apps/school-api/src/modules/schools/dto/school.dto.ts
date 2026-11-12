@@ -20,6 +20,7 @@ import { ListQueryDto, toBoolean } from '@app/common';
 import { MOBILE_PATTERN, normalizeMobile } from '../../../shared/mobile';
 import { ID_CARD_DESIGNS } from '../../../shared/id-card-design';
 import type { IdCardLayout } from '../../../shared/id-card-layout';
+import { ATTENDANCE_MODES, AttendanceMode } from '../../attendance/attendance-sessions';
 import { DIARY_REVIEW_MODES, DiaryReviewMode, SCHOOL_BOARDS, SchoolBoard } from '../entities/school.entity';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -121,16 +122,6 @@ export class SchoolProfileDto {
   staff_reporting_time?: string;
 
   @ApiPropertyOptional({
-    enum: DIARY_REVIEW_MODES,
-    example: 'remarks',
-    description:
-      'all: the office reviews every diary post before parents see it. remarks: only remarks and feedback are reviewed; homework and notes go out at once. none: no review; all posts go out at once.',
-  })
-  @IsOptional()
-  @IsIn(DIARY_REVIEW_MODES)
-  diary_review_mode?: DiaryReviewMode;
-
-  @ApiPropertyOptional({
     example: 15,
     minimum: 0,
     maximum: 30,
@@ -142,6 +133,16 @@ export class SchoolProfileDto {
   @Min(0)
   @Max(30)
   attendance_grace_minutes?: number;
+
+  @ApiPropertyOptional({
+    enum: ATTENDANCE_MODES,
+    example: 'session',
+    description:
+      'session: attendance twice a day, in the 1st period (morning) and the 5th period (afternoon). period: attendance in every teaching period of the bell schedule, by the teacher of that period.',
+  })
+  @IsOptional()
+  @IsIn(ATTENDANCE_MODES)
+  attendance_mode?: AttendanceMode;
 
   @ApiPropertyOptional({
     example: '08:00',
@@ -327,11 +328,18 @@ export class SchoolDto {
   @ApiProperty({ example: '08:45' })
   staff_reporting_time: string;
 
-  @ApiProperty({ enum: DIARY_REVIEW_MODES, example: 'remarks' })
+  @ApiProperty({
+    enum: DIARY_REVIEW_MODES,
+    example: 'none',
+    description: 'Always none: homework, remarks and notes reach parents at once',
+  })
   diary_review_mode: DiaryReviewMode;
 
-  @ApiProperty({ example: 15, description: 'Extra minutes after the 1st and 5th period to take attendance' })
+  @ApiProperty({ example: 15, description: 'Extra minutes after the period ends to take attendance' })
   attendance_grace_minutes: number;
+
+  @ApiProperty({ enum: ATTENDANCE_MODES, example: 'session', description: 'session (morning and afternoon) or period' })
+  attendance_mode: AttendanceMode;
 
   @ApiProperty({ example: '08:00' })
   chat_office_start: string;

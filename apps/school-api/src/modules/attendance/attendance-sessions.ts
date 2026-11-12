@@ -20,6 +20,53 @@ const SESSION_VALUE: Record<AttendanceStatus, number | null> = {
   leave: null,
 };
 
+export const ATTENDANCE_MODES = ['session', 'period'] as const;
+export type AttendanceMode = (typeof ATTENDANCE_MODES)[number];
+
+export interface AttendanceSlot {
+  session: AttendanceSessionName;
+  period: number;
+}
+
+export const slotOfSession = (session: AttendanceSessionName): AttendanceSlot => ({
+  session,
+  period: SESSION_PERIOD[session],
+});
+
+export const halfOf = (period: number): AttendanceSessionName =>
+  period < SESSION_PERIOD.afternoon ? 'morning' : 'afternoon';
+
+export function slotPeriods(mode: AttendanceMode, teachingPeriods: number): number[] {
+  if (mode === 'session') return [...SESSION_PERIODS];
+  return Array.from({ length: Math.max(1, teachingPeriods) }, (_, index) => index + 1);
+}
+
+export function resolveSlot(
+  mode: AttendanceMode,
+  teachingPeriods: number,
+  input: { session?: AttendanceSessionName; period?: number },
+): AttendanceSlot {
+  if (mode === 'session') return slotOfSession(resolveSession(input));
+  if (input.period === undefined || input.period === 0) {
+    return input.session ? slotOfSession(input.session) : { session: 'morning', period: 1 };
+  }
+  if (input.period > teachingPeriods) {
+    throw AppException.badRequest(`The bell schedule has ${teachingPeriods} teaching periods`, 'PERIOD_NOT_ALLOWED');
+  }
+  return { session: halfOf(input.period), period: input.period };
+}
+
+export function ordinal(value: number): string {
+  const tens = value % 100;
+  if (tens >= 11 && tens <= 13) return `${value}th`;
+  return `${value}${{ 1: 'st', 2: 'nd', 3: 'rd' }[value % 10] ?? 'th'}`;
+}
+
+export function slotName(mode: AttendanceMode, slot: AttendanceSlot): string {
+  if (mode === 'period') return `${ordinal(slot.period)} period`;
+  return slot.session === 'morning' ? 'Morning' : 'Afternoon';
+}
+
 export function sessionOf(period: number): AttendanceSessionName | null {
   return ATTENDANCE_SESSIONS.find((name) => SESSION_PERIOD[name] === period) ?? null;
 }
@@ -80,18 +127,24 @@ export function sessionState(window: SessionWindow, date: string, today: string,
 }
 
 export function windowMessage(
-  session: AttendanceSessionName,
+  session: AttendanceSessionName | AttendanceSlot,
   window: SessionWindow & { period_ends_at?: string | null; grace_minutes?: number },
   state: SessionState,
+  mode: AttendanceMode = 'session',
 ): string {
-  const name = session === 'morning' ? 'Morning' : 'Afternoon';
-  const period = session === 'morning' ? '1st' : '5th';
+  const slot = typeof session === 'string' ? slotOfSession(session) : session;
+  const name = slotName(mode, slot);
+  const period = ordinal(slot.period);
   const grace =
     window.grace_minutes && window.period_ends_at
       ? `, period ends ${window.period_ends_at} plus ${window.grace_minutes} min`
       : '';
   const times =
-    window.opens_at && window.closes_at ? ` (${period} period, ${window.opens_at} to ${window.closes_at}${grace})` : '';
+    window.opens_at && window.closes_at
+      ? mode === 'period'
+        ? ` (${window.opens_at} to ${window.closes_at}${grace})`
+        : ` (${period} period, ${window.opens_at} to ${window.closes_at}${grace})`
+      : '';
   return state === 'not_open'
     ? `${name} attendance opens at ${window.opens_at ?? 'the start of the period'}${times}`
     : `${name} attendance can be taken only during the ${period} period${times}. Ask the office (AO) to mark it now.`;

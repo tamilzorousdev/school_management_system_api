@@ -42,6 +42,7 @@ export const TEMPLATES = {
   MEETING_DECLINED: 'MEETING_DECLINED',
   ATTENDANCE_REMINDER: 'ATTENDANCE_REMINDER',
   ATTENDANCE_MISSED: 'ATTENDANCE_MISSED',
+  SPECIAL_CLASS_ADDED: 'SPECIAL_CLASS_ADDED',
 } as const;
 
 interface TemplateText {
@@ -788,6 +789,25 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{bus}} பேருந்தில் என்ஜின் கோளாறு: {{code}}',
         body: '{{bus}} பேருந்தில் {{code}} ({{fault}}) கோளாறு கண்டறியப்பட்டது, தீவிரம்: {{severity}}. பராமரிப்பு பகுதியில் ஒரு டிக்கெட் திறக்கப்பட்டுள்ளது.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SPECIAL_CLASS_ADDED,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Special class for {{student}}',
+        body: '{{student}} will attend {{title}} with {{teacher}}, {{when}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}}-க்கு சிறப்பு வகுப்பு',
+        body: '{{student}} {{teacher}} அவர்களுடன் {{title}} வகுப்பில் கலந்துகொள்வார், {{when}}.',
         sms_body: null,
       },
     },
