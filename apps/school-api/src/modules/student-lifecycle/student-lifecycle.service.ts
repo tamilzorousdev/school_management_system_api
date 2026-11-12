@@ -26,6 +26,8 @@ import {
 } from './dto/lifecycle.dto';
 import { TransferCertificate } from './entities/transfer-certificate.entity';
 import { IdCardData, idCardPdf, idCardSheetPdf } from './pdf/id-card.pdf';
+import { UploadedIdCardDesign, uploadedIdCardPdf, uploadedIdCardSheetPdf } from './pdf/id-card-uploaded.pdf';
+import { parseIdCardLayout } from '../../shared/id-card-layout';
 import { tcPdf } from './pdf/tc.pdf';
 
 interface CardRow {
@@ -73,10 +75,14 @@ export class StudentLifecycleService {
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
-  async idCard(schoolId: number, studentId: number): Promise<{ name: string; pdf: Buffer }> {
+  async idCard(schoolId: number, studentId: number, requestedDesign?: string): Promise<{ name: string; pdf: Buffer }> {
     const [card] = await this.cards(schoolId, { studentIds: [studentId] });
     if (!card) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
-    return { name: card.admission_no, pdf: await idCardPdf(card) };
+    const school = await this.dataSource.getRepository(School).findOneBy({ id: schoolId });
+    const design = requestedDesign || school?.id_card_design || 'design2';
+    const uploaded = design === 'custom' && school ? await this.uploadedDesign(school) : null;
+    if (uploaded) return { name: card.admission_no, pdf: await uploadedIdCardPdf(uploaded, card) };
+    return { name: card.admission_no, pdf: await idCardPdf(card, design === 'custom' ? 'design2' : design) };
   }
 
   async idCardSheet(schoolId: number, query: IdCardQueryDto): Promise<{ name: string; pdf: Buffer }> {
@@ -91,8 +97,13 @@ export class StudentLifecycleService {
         'TOO_MANY_CARDS',
       );
     }
+    const school = await this.dataSource.getRepository(School).findOneBy({ id: schoolId });
+    const design = query.design || school?.id_card_design || 'design2';
+    const uploaded = design === 'custom' && school ? await this.uploadedDesign(school) : null;
     const label = cards[0].class_section ?? 'class';
-    return { name: `id-cards-${label.replace(/\s+/g, '')}`, pdf: await idCardSheetPdf(cards, `ID cards ${label}`) };
+    const name = `id-cards-${label.replace(/\s+/g, '')}`;
+    if (uploaded) return { name, pdf: await uploadedIdCardSheetPdf(uploaded, cards, `ID cards ${label}`) };
+    return { name, pdf: await idCardSheetPdf(cards, `ID cards ${label}`, design === 'custom' ? 'design2' : design) };
   }
 
   async digitalId(schoolId: number, studentId: number): Promise<DigitalIdDto> {
@@ -453,6 +464,14 @@ export class StudentLifecycleService {
     return rows.map((row) => ({ ...row, id: Number(row.id), card_version: Number(row.card_version) }));
   }
 
+  private async uploadedDesign(school: School): Promise<UploadedIdCardDesign | null> {
+    const [front, back] = await Promise.all([
+      this.files.readImage(school.id_card_front_file_id, { background: '#FFFFFF' }),
+      this.files.readImage(school.id_card_back_file_id, { background: '#FFFFFF' }),
+    ]);
+    return front ? { front, back, layout: parseIdCardLayout(school.id_card_layout) ?? { front: [], back: [] } } : null;
+  }
+
   private async cards(
     schoolId: number,
     filter: { studentIds?: number[]; classId?: number; sectionId?: number },
@@ -491,7 +510,7 @@ export class StudentLifecycleService {
           errorCorrectionLevel: 'M',
           margin: 1,
           width: 320,
-          color: { dark: '#C2410C', light: '#ffffff' },
+          color: { dark: '#E65100', light: '#ffffff' },
         }),
       });
     }

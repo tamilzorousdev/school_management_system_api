@@ -135,7 +135,7 @@ export class FilesService {
     return new Map(records.map((record) => [record.id, this.present(record)]));
   }
 
-  async readImage(id: number | null): Promise<Buffer | null> {
+  async readImage(id: number | null, options: { background?: string } = {}): Promise<Buffer | null> {
     if (!id) return null;
     const record = await this.files.findOneBy({ id });
     if (!record || !(record.mime_type in IMAGE_TYPES)) return null;
@@ -143,7 +143,9 @@ export class FilesService {
       const stream = await this.storage.read(record.storage_key);
       const chunks: Buffer[] = [];
       for await (const chunk of stream) chunks.push(Buffer.from(chunk as Buffer));
-      return await sharp(Buffer.concat(chunks)).jpeg({ quality: 85 }).toBuffer();
+      const image = sharp(Buffer.concat(chunks));
+      if (options.background) image.flatten({ background: options.background });
+      return await image.jpeg({ quality: 85 }).toBuffer();
     } catch {
       return null;
     }

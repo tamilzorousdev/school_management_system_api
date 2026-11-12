@@ -218,6 +218,16 @@ Every school user belongs to one school, and the API reads it from the token. Th
 
 The admin web sets it in School setup → School profile: `POST /files` (purpose `school_logo`, PNG/JPG/WEBP), then `PATCH /admin/school { "logo_file_id": <id> }`, or `null` to remove it. A file that is not an image returns `400 VALIDATION_FAILED` on `logo_file_id`. ID cards, fee receipts, payslips and TCs print the same logo.
 
+### Student ID card design
+
+`GET /admin/school` returns `id_card_design` (`design1`, `design2`, `design3` or `custom`), plus `id_card_front_file_id`, `id_card_front_url`, `id_card_back_file_id`, `id_card_back_url` and `id_card_layout` for the school's uploaded design.
+
+`custom` is the full ID card design made by the school's design team. The admin web uploads it in School setup → Student ID card: a PDF is turned into one PNG per page in the browser (page 1 front, page 2 back), and PNG or JPG files go as they are. Each image goes to `POST /files` with purpose `id_card_design`, then `PATCH /admin/school { "id_card_front_file_id": 51, "id_card_back_file_id": 52, "id_card_design": "custom" }`. Send `null` to remove a side. A file that is not an image of this school returns `400 VALIDATION_FAILED`, and choosing `custom` without a front side returns `400` on `id_card_front_file_id`.
+
+`id_card_layout` says where each student's details go on the design: `{ "front": [...], "back": [...] }`, each item `{ key, x, y, w, h, font_size, color, bold, align }`. `key` is one of `photo`, `qr`, `student_name`, `admission_no`, `class_section`, `roll_no`, `dob`, `blood_group`, `guardian_name`, `guardian_mobile`, `address`, `academic_year`, at most once per side. `x`, `y`, `w`, `h` are fractions (0 to 1) of the card width and height, `font_size` is in points (long values shrink to fit the box), `color` is `#RRGGBB`. The admin web sets a starting layout on the first upload and the admin drags the boxes into place. An unknown key or a bad colour returns `400 VALIDATION_FAILED` on `id_card_layout`.
+
+When `id_card_design` is `custom`, `GET /admin/students/{id}/id-card` and `GET /admin/id-cards` print the uploaded front and back at ID card size (54 × 85.6 mm, portrait or landscape from the image) with each student's photo, details and boarding QR in the layout positions. Transparent areas of the design print white. Pass `?design=custom` to print it before it is in use.
+
 ### Admin web roles
 
 | Role | Sees in the admin web |

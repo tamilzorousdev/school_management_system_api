@@ -7,6 +7,7 @@ import { PERMISSIONS } from '../access/access.catalog';
 import {
   DigitalIdDto,
   IdCardQueryDto,
+  SingleIdCardQueryDto,
   PromotionDto,
   PromotionPreviewDto,
   PromotionPreviewQueryDto,
@@ -31,8 +32,12 @@ export class StudentLifecycleController {
   @ApiOperation({ summary: 'ID card PDF (credit-card size) with the signed QR used for bus boarding' })
   @ApiPdf('ID card PDF')
   @ApiErrors(HttpStatus.NOT_FOUND)
-  async idCard(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
-    return pdfFile(await this.lifecycle.idCard(schoolId, id));
+  async idCard(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: SingleIdCardQueryDto,
+  ) {
+    return pdfFile(await this.lifecycle.idCard(schoolId, id, query.design));
   }
 
   @Get('id-cards')

@@ -13,6 +13,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { IsDateOnly } from '../../../shared/dates';
+import { ID_CARD_DESIGNS } from '../../../shared/id-card-design';
 import { RefDto } from '../../students/dto/student-response.dto';
 import { EXIT_TYPES, ExitType } from '../entities/transfer-certificate.entity';
 
@@ -74,6 +75,18 @@ export class IdCardQueryDto {
   @Type(() => Number)
   @IsInt()
   section_id?: number;
+
+  @ApiPropertyOptional({ example: 'design3', enum: ID_CARD_DESIGNS, description: 'Design template' })
+  @IsOptional()
+  @IsIn(ID_CARD_DESIGNS)
+  design?: string;
+}
+
+export class SingleIdCardQueryDto {
+  @ApiPropertyOptional({ example: 'design3', enum: ID_CARD_DESIGNS, description: 'Design template' })
+  @IsOptional()
+  @IsIn(ID_CARD_DESIGNS)
+  design?: string;
 }
 
 export class PromotionPreviewQueryDto {

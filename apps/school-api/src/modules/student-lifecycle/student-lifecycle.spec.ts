@@ -43,11 +43,14 @@ describe('PDFs', () => {
   jest.setTimeout(30000);
 
   it('draws one ID card and a sheet of cards', async () => {
-    const one = await idCardPdf(await card());
-    expect(one.subarray(0, 5).toString()).toBe('%PDF-');
-    const sheet = await idCardSheetPdf(await Promise.all(Array.from({ length: 12 }, card)), 'ID cards');
-    expect(sheet.subarray(0, 5).toString()).toBe('%PDF-');
-    expect((sheet.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length).toBe(4);
+    for (const design of ['design1', 'design2', 'design3']) {
+      const one = await idCardPdf(await card(), design);
+      expect(one.subarray(0, 5).toString()).toBe('%PDF-');
+      const sheet = await idCardSheetPdf(await Promise.all(Array.from({ length: 12 }, card)), 'ID cards', design);
+      expect(sheet.subarray(0, 5).toString()).toBe('%PDF-');
+      const expectedPages = design === 'design1' ? 3 : 4;
+      expect((sheet.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length).toBe(expectedPages);
+    }
   });
 
   it('draws a transfer certificate', async () => {
