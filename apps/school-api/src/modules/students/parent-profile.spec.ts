@@ -6,7 +6,13 @@ import { GuardiansService } from './guardians.service';
 
 function service(found: object | null) {
   const repo = { findOne: jest.fn().mockResolvedValue(found) };
-  const guardians = new GuardiansService(repo as never, {} as never, {} as never, {} as never);
+  const guardians = new GuardiansService(
+    repo as never,
+    {} as never,
+    { linkFor: () => null } as never,
+    {} as never,
+    {} as never,
+  );
   const get = jest.spyOn(guardians, 'get').mockResolvedValue({ id: 357 } as never);
   const update = jest.spyOn(guardians, 'update').mockResolvedValue({ id: 357 } as never);
   return { guardians, repo, get, update };

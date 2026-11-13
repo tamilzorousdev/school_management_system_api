@@ -1,5 +1,5 @@
 import { BaseEntity, SchoolScopedEntity } from '@app/common';
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 export const CHAT_PARTIES = ['teacher', 'parent'] as const;
 export type ChatParty = (typeof CHAT_PARTIES)[number];
@@ -10,7 +10,7 @@ export type ChatMessageKind = (typeof CHAT_MESSAGE_KINDS)[number];
 @Entity('chat_threads')
 @Index('UQ_chat_threads_pair', ['academic_year_id', 'teacher_user_id', 'parent_user_id', 'student_id'], {
   unique: true,
-  where: 'deleted_at IS NULL',
+  where: 'deleted_at IS NULL AND is_group = false',
 })
 export class ChatThread extends SchoolScopedEntity {
   @Index()
@@ -18,15 +18,24 @@ export class ChatThread extends SchoolScopedEntity {
   academic_year_id: number;
 
   @Index()
-  @Column({ type: 'int' })
-  teacher_user_id: number;
+  @Column({ type: 'int', nullable: true })
+  teacher_user_id: number | null;
 
   @Index()
-  @Column({ type: 'int' })
-  parent_user_id: number;
+  @Column({ type: 'int', nullable: true })
+  parent_user_id: number | null;
 
-  @Column({ type: 'int' })
-  student_id: number;
+  @Column({ type: 'int', nullable: true })
+  student_id: number | null;
+
+  @Column({ type: 'boolean', default: false })
+  is_group: boolean;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  title: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  created_by_user_id: number | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   last_message_at: Date | null;
@@ -54,6 +63,40 @@ export class ChatThread extends SchoolScopedEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   parent_cleared_at: Date | null;
+}
+
+@Entity('chat_group_members')
+@Index('IDX_chat_group_members_thread', ['thread_id'])
+@Index('IDX_chat_group_members_user', ['user_id'])
+@Index('UQ_chat_group_members_thread_user', ['thread_id', 'user_id'], { unique: true })
+export class ChatGroupMember {
+  @PrimaryGeneratedColumn()
+  id: number;
+
+  @Index()
+  @Column({ type: 'int' })
+  school_id: number;
+
+  @Column({ type: 'int' })
+  thread_id: number;
+
+  @Column({ type: 'int' })
+  user_id: number;
+
+  @Column({ type: 'varchar', length: 20, default: 'member' })
+  role: string;
+
+  @Column({ type: 'int', default: 0 })
+  unread_count: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  cleared_at: Date | null;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  created_at: Date;
+
+  @UpdateDateColumn({ type: 'timestamptz' })
+  updated_at: Date;
 }
 
 @Entity('chat_messages')
@@ -120,6 +163,9 @@ export class ChatMessage extends BaseEntity {
 
   @Column({ type: 'int', nullable: true })
   deleted_for_all_by: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  edited_at: Date | null;
 }
 
 @Entity('chat_message_hides')
@@ -149,6 +195,7 @@ export const CHAT_AUDIT_ACTIONS = [
   'undid_delete',
   'deleted_for_me',
   'cleared_chat',
+  'edited_message',
 ] as const;
 export type ChatAuditAction = (typeof CHAT_AUDIT_ACTIONS)[number];
 

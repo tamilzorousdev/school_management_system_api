@@ -3,9 +3,6 @@ import { RecordCountsDto } from '../../student-records/dto/records.dto';
 import { ParentChildDto } from '../../students/dto/student-response.dto';
 
 export class ChildCardDto extends ParentChildDto {
-  @ApiProperty({ nullable: true, type: String, description: 'Signed link, valid for an hour' })
-  photo_url: string | null;
-
   @ApiProperty({ nullable: true, type: String, example: 'B+' })
   blood_group: string | null;
 

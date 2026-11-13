@@ -130,6 +130,7 @@ describe('StudentsService placement rules', () => {
     {} as never,
     {} as never,
     {} as never,
+    { linkFor: () => null } as never,
     {} as never,
     { timeZone: 'Asia/Kolkata' } as AppConfig,
   );
@@ -170,6 +171,7 @@ describe('GuardiansService.ensureLogin', () => {
   const service = new GuardiansService(
     {} as never,
     {} as never,
+    { linkFor: () => null } as never,
     {} as never,
     { timeZone: 'Asia/Kolkata' } as AppConfig,
   );

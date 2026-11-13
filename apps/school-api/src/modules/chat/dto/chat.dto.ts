@@ -72,6 +72,15 @@ export class SendMessageDto {
   duration_seconds?: number;
 }
 
+export class EditMessageDto {
+  @ApiProperty({ example: 'Updated message text', maxLength: 2000 })
+  @Transform(trim)
+  @MaxLength(2000)
+  @IsString()
+  @IsNotEmpty({ message: 'Write a message' })
+  body: string;
+}
+
 export const DELETE_SCOPES = ['me', 'everyone'] as const;
 export type DeleteScope = (typeof DELETE_SCOPES)[number];
 
@@ -199,23 +208,90 @@ export class OfficeHoursDto {
   next_open_at: Date | null;
 }
 
+export class CreateGroupChatDto {
+  @ApiProperty({ example: 'Grade 6 Parents & Teachers', maxLength: 120 })
+  @Transform(trim)
+  @MaxLength(120)
+  @IsString()
+  @IsNotEmpty({ message: 'Enter a group name' })
+  name: string;
+
+  @ApiProperty({ example: [3, 4, 12], type: [Number], description: 'User IDs to add to the group' })
+  @Type(() => Number)
+  @IsInt({ each: true })
+  member_user_ids: number[];
+}
+
+export class AddGroupMembersDto {
+  @ApiProperty({ example: [15, 18], type: [Number] })
+  @Type(() => Number)
+  @IsInt({ each: true })
+  user_ids: number[];
+}
+
+export class ChatMemberDto {
+  @ApiProperty({ example: 1 })
+  id: number;
+
+  @ApiProperty({ example: 42 })
+  user_id: number;
+
+  @ApiProperty({ example: 'Priya Venkatesh' })
+  name: string;
+
+  @ApiProperty({ example: 'member' })
+  role: string;
+
+  @ApiProperty({ example: false })
+  is_creator: boolean;
+
+  @ApiProperty()
+  joined_at: Date;
+}
+
+export class ChatDirectoryUserDto {
+  @ApiProperty({ example: 42 })
+  id: number;
+
+  @ApiProperty({ example: 'Priya Venkatesh' })
+  name: string;
+
+  @ApiProperty({ example: 'teacher' })
+  role: string;
+
+  @ApiPropertyOptional({ example: 'Teacher' })
+  label?: string;
+}
+
 export class ChatThreadDto {
   @ApiProperty({ example: 3 })
   id: number;
 
-  @ApiProperty({ type: ChatPersonDto })
-  teacher: ChatPersonDto;
+  @ApiProperty({ example: false })
+  is_group: boolean;
 
-  @ApiProperty({ type: ChatPersonDto })
-  parent: ChatPersonDto;
+  @ApiPropertyOptional({ example: 'Grade 6 Parents & Teachers', nullable: true })
+  title: string | null;
 
-  @ApiProperty({ type: ChatPersonDto, description: 'The other person, from the caller’s side' })
-  other: ChatPersonDto;
+  @ApiPropertyOptional({ example: 8 })
+  member_count?: number;
 
-  @ApiProperty({ type: RefDto })
-  student: RefDto;
+  @ApiPropertyOptional({ type: [ChatMemberDto] })
+  members?: ChatMemberDto[];
 
-  @ApiProperty({ example: '6 - A', nullable: true, type: String })
+  @ApiPropertyOptional({ type: ChatPersonDto, nullable: true })
+  teacher: ChatPersonDto | null;
+
+  @ApiPropertyOptional({ type: ChatPersonDto, nullable: true })
+  parent: ChatPersonDto | null;
+
+  @ApiPropertyOptional({ type: ChatPersonDto, nullable: true, description: 'The other person, from the caller’s side' })
+  other: ChatPersonDto | null;
+
+  @ApiPropertyOptional({ type: RefDto, nullable: true })
+  student: RefDto | null;
+
+  @ApiPropertyOptional({ example: '6 - A', nullable: true, type: String })
   class_section: string | null;
 
   @ApiProperty({ nullable: true, type: Date })
@@ -233,8 +309,8 @@ export class ChatThreadDto {
   @ApiProperty({ example: 0, description: 'Flagged messages the office has not handled' })
   open_flags: number;
 
-  @ApiProperty({ type: OfficeHoursDto })
-  office_hours: OfficeHoursDto;
+  @ApiPropertyOptional({ type: OfficeHoursDto })
+  office_hours?: OfficeHoursDto;
 
   @ApiProperty({ type: RefDto })
   academic_year: RefDto;
@@ -285,6 +361,15 @@ export class ChatMessageDto {
 
   @ApiProperty({ example: 42, nullable: true, type: Number, description: 'Voice or video length in seconds' })
   duration_seconds: number | null;
+
+  @ApiProperty({ example: false })
+  edited: boolean;
+
+  @ApiProperty({ nullable: true, type: Date })
+  edited_at: Date | null;
+
+  @ApiProperty({ example: true, description: 'Your own message, not deleted, sent less than 24 hours ago' })
+  can_edit: boolean;
 
   @ApiProperty({
     example: false,

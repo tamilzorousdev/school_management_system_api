@@ -25,6 +25,7 @@ import { StudentEnrollment } from './entities/student-enrollment.entity';
 import { StudentGuardian } from './entities/student-guardian.entity';
 import { Guardian } from './entities/guardian.entity';
 import { Student } from './entities/student.entity';
+import { FilesService } from '../files/files.service';
 import { GuardiansService, Invite } from './guardians.service';
 import { viewingYearId, yearClause, yearWhere } from '../../shared/year-context';
 
@@ -41,6 +42,7 @@ export class StudentsService {
     @InjectRepository(AcademicYear) private readonly years: Repository<AcademicYear>,
     private readonly guardians: GuardiansService,
     private readonly sequences: SequencesService,
+    private readonly files: FilesService,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
@@ -560,6 +562,7 @@ export class StudentsService {
       section: student.current_section ? { id: student.current_section.id, name: student.current_section.name } : null,
       roll_no: student.current?.roll_no ?? null,
       photo_file_id: student.photo_file_id,
+      photo_url: this.files.linkFor(student.photo_file_id),
       guardians: links
         .sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
         .map((link) => ({

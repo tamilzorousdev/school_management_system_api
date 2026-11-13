@@ -75,11 +75,21 @@ export class RealtimeGateway implements OnGatewayInit {
     if (!user || !Number.isInteger(threadId)) {
       return { ok: false, error: 'VALIDATION_FAILED', message: 'Send { "thread_id": number }' };
     }
-    const [thread]: { teacher_user_id: number; parent_user_id: number }[] = await this.dataSource.query(
-      `SELECT teacher_user_id, parent_user_id FROM chat_threads WHERE id = $1 AND deleted_at IS NULL`,
-      [threadId],
-    );
-    const members = thread ? [Number(thread.teacher_user_id), Number(thread.parent_user_id)] : [];
+    const [thread]: { is_group: boolean; teacher_user_id: number | null; parent_user_id: number | null }[] =
+      await this.dataSource.query(
+        `SELECT is_group, teacher_user_id, parent_user_id FROM chat_threads WHERE id = $1 AND deleted_at IS NULL`,
+        [threadId],
+      );
+    let members: number[] = [];
+    if (thread?.is_group) {
+      const rows: { user_id: number }[] = await this.dataSource.query(
+        `SELECT user_id FROM chat_group_members WHERE thread_id = $1`,
+        [threadId],
+      );
+      members = rows.map((r) => Number(r.user_id));
+    } else if (thread) {
+      members = [Number(thread.teacher_user_id), Number(thread.parent_user_id)].filter(Boolean);
+    }
     if (!members.includes(user.id)) return { ok: false, error: 'FORBIDDEN', message: 'Not your conversation' };
     this.toUsers(
       members.filter((id) => id !== user.id),

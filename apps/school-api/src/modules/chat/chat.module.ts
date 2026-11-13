@@ -5,11 +5,11 @@ import { StaffModule } from '../staff/staff.module';
 import { ChatAuditController } from './chat.controller';
 import { ChatRetentionService } from './chat-retention.service';
 import { ChatService } from './chat.service';
-import { ChatAuditLog, ChatMessage, ChatMessageHide, ChatThread } from './entities/chat.entity';
+import { ChatAuditLog, ChatGroupMember, ChatMessage, ChatMessageHide, ChatThread } from './entities/chat.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ChatThread, ChatMessage, ChatAuditLog, ChatMessageHide]),
+    TypeOrmModule.forFeature([ChatThread, ChatMessage, ChatAuditLog, ChatMessageHide, ChatGroupMember]),
     StaffModule,
     RealtimeModule,
   ],

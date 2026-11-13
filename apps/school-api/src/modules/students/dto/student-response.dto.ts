@@ -78,6 +78,9 @@ export class StudentListItemDto {
   @ApiProperty({ example: null, nullable: true, type: Number })
   photo_file_id: number | null;
 
+  @ApiProperty({ nullable: true, type: String })
+  photo_url: string | null;
+
   @ApiProperty({ type: [StudentGuardianSummaryDto] })
   guardians: StudentGuardianSummaryDto[];
 
@@ -414,6 +417,9 @@ export class ParentChildDto {
 
   @ApiProperty({ nullable: true, type: Number })
   photo_file_id: number | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  photo_url: string | null;
 
   @ApiProperty({ example: '6', nullable: true, type: String })
   class_name: string | null;

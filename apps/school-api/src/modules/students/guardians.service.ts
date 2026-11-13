@@ -26,6 +26,7 @@ import {
 import { Guardian } from './entities/guardian.entity';
 import { StudentGuardian } from './entities/student-guardian.entity';
 import { yearClause } from '../../shared/year-context';
+import { FilesService } from '../files/files.service';
 
 export interface Invite {
   user_id: number;
@@ -50,6 +51,7 @@ export class GuardiansService {
   constructor(
     @InjectRepository(Guardian) private readonly guardians: Repository<Guardian>,
     private readonly notifications: NotificationsService,
+    private readonly files: FilesService,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
@@ -312,6 +314,7 @@ export class GuardiansService {
       gender: row.gender,
       dob: row.dob,
       photo_file_id: row.photo_file_id,
+      photo_url: this.files.linkFor(row.photo_file_id),
       class_name: row.class_name,
       section_name: row.section_name,
       roll_no: row.roll_no,

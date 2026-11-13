@@ -4,11 +4,16 @@ import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequireRoles, ResponseMe
 import { ROLES } from '../access/access.catalog';
 import { ChatService } from '../chat/chat.service';
 import {
+  AddGroupMembersDto,
+  ChatDirectoryUserDto,
+  ChatMemberDto,
   ChatMessageDto,
   ChatThreadDto,
   ClearChatResultDto,
+  CreateGroupChatDto,
   DeleteMessageDto,
   DeleteMessageResultDto,
+  EditMessageDto,
   FlagMessageDto,
   MessagesPageDto,
   MessagesQueryDto,
@@ -23,7 +28,7 @@ import { TEACHER_MODULE_TAGS } from './teacher-modules.catalog';
 import { PARENT_MODULE_TAGS } from './parent-modules.catalog';
 
 const REALTIME =
-  'Live updates on socket.io namespace /comm with { auth: { token } }: chat.message, chat.read, chat.updated, chat.deleted, chat.restored, chat.typing ' +
+  'Live updates on socket.io namespace /comm with { auth: { token } }: chat.message, chat.read, chat.updated, chat.deleted, chat.restored, chat.edited, chat.typing ' +
   '(send chat.typing { thread_id }).';
 
 @ApiTags(TEACHER_MODULE_TAGS.MODULE_6)
@@ -33,6 +38,41 @@ const REALTIME =
 @Controller('mobile/teacher/chat')
 export class MobileTeacherChatController {
   constructor(private readonly chat: ChatService) {}
+
+  @Get('directory')
+  @ApiOperation({ summary: 'Directory of teachers and parents to add to groups' })
+  @ApiEnvelope(ChatDirectoryUserDto, { isArray: true })
+  directory(@CurrentUser() user: AuthUser, @Query('search') search?: string) {
+    return this.chat.directory(user.school_id!, search);
+  }
+
+  @Post('groups')
+  @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Group created')
+  @ApiOperation({ summary: 'Create a group chat' })
+  @ApiEnvelope(ChatThreadDto, { status: HttpStatus.CREATED, message: 'Group created' })
+  @ApiErrors(HttpStatus.BAD_REQUEST)
+  createGroup(@CurrentUser() user: AuthUser, @Body() dto: CreateGroupChatDto) {
+    return this.chat.createGroup(user, dto);
+  }
+
+  @Post('groups/:id/members')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Members added')
+  @ApiOperation({ summary: 'Add members to a group chat' })
+  @ApiEnvelope(ChatMemberDto, { isArray: true, message: 'Members added' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN)
+  addMembers(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: AddGroupMembersDto) {
+    return this.chat.addGroupMembers(user, id, dto);
+  }
+
+  @Get('groups/:id/members')
+  @ApiOperation({ summary: 'List members of a group chat' })
+  @ApiEnvelope(ChatMemberDto, { isArray: true })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  members(@Param('id', ParseIntPipe) id: number) {
+    return this.chat.groupMembers(id);
+  }
 
   @Get('threads')
   @ApiOperation({
@@ -146,6 +186,25 @@ export class MobileTeacherChatController {
     return this.chat.undoDelete(user, 'teacher', id, messageId);
   }
 
+  @Post('threads/:id/messages/:messageId/edit')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Message edited')
+  @ApiOperation({
+    summary: 'Edit my message (within 24 hours)',
+    description:
+      'Edits the message text. Socket event chat.edited with the updated message. 403 NOT_YOUR_MESSAGE, 400 EDIT_WINDOW_PASSED, 409 ALREADY_DELETED.',
+  })
+  @ApiEnvelope(ChatMessageDto, { message: 'Message edited' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT, HttpStatus.FORBIDDEN)
+  editMessage(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('messageId', ParseIntPipe) messageId: number,
+    @Body() dto: EditMessageDto,
+  ) {
+    return this.chat.editMessage(user, 'teacher', id, messageId, dto);
+  }
+
   @Post('threads/:id/clear')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Chat cleared')
@@ -171,6 +230,43 @@ export class MobileParentChatController {
     private readonly chat: ChatService,
     private readonly access: MobileAccessService,
   ) {}
+
+  @Get('chat/directory')
+  @ApiOperation({ summary: 'Directory of teachers and parents to add to groups' })
+  @ApiEnvelope(ChatDirectoryUserDto, { isArray: true })
+  async parentDirectory(@CurrentUser() user: AuthUser, @Query('search') search?: string) {
+    const schoolId = await this.chat.resolveActorSchool(user);
+    return this.chat.directory(schoolId, search);
+  }
+
+  @Post('chat/groups')
+  @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Group created')
+  @ApiOperation({ summary: 'Create a group chat' })
+  @ApiEnvelope(ChatThreadDto, { status: HttpStatus.CREATED, message: 'Group created' })
+  @ApiErrors(HttpStatus.BAD_REQUEST)
+  async createGroup(@CurrentUser() user: AuthUser, @Body() dto: CreateGroupChatDto) {
+    const schoolId = await this.chat.resolveActorSchool(user);
+    return this.chat.createGroup(user, dto, schoolId);
+  }
+
+  @Post('chat/groups/:id/members')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Members added')
+  @ApiOperation({ summary: 'Add members to a group chat' })
+  @ApiEnvelope(ChatMemberDto, { isArray: true, message: 'Members added' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN)
+  addMembers(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: AddGroupMembersDto) {
+    return this.chat.addGroupMembers(user, id, dto);
+  }
+
+  @Get('chat/groups/:id/members')
+  @ApiOperation({ summary: 'List members of a group chat' })
+  @ApiEnvelope(ChatMemberDto, { isArray: true })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  members(@Param('id', ParseIntPipe) id: number) {
+    return this.chat.groupMembers(id);
+  }
 
   @Get('chat/threads')
   @ApiOperation({ summary: 'My conversations with teachers this academic year, every child', description: REALTIME })
@@ -279,6 +375,25 @@ export class MobileParentChatController {
     @Param('messageId', ParseIntPipe) messageId: number,
   ) {
     return this.chat.undoDelete(user, 'parent', id, messageId);
+  }
+
+  @Post('chat/threads/:id/messages/:messageId/edit')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Message edited')
+  @ApiOperation({
+    summary: 'Edit my message (within 24 hours)',
+    description:
+      'Edits the message text. Socket event chat.edited with the updated message. 403 NOT_YOUR_MESSAGE, 400 EDIT_WINDOW_PASSED, 409 ALREADY_DELETED.',
+  })
+  @ApiEnvelope(ChatMessageDto, { message: 'Message edited' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT, HttpStatus.FORBIDDEN)
+  editMessage(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('messageId', ParseIntPipe) messageId: number,
+    @Body() dto: EditMessageDto,
+  ) {
+    return this.chat.editMessage(user, 'parent', id, messageId, dto);
   }
 
   @Post('chat/threads/:id/clear')

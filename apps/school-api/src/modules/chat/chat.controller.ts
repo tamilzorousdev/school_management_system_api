@@ -5,11 +5,15 @@ import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS } from '../access/access.catalog';
 import { ChatService } from './chat.service';
 import {
+  AddGroupMembersDto,
   AuditMessageDto,
   AuditThreadDetailDto,
   AuditThreadsQueryDto,
+  ChatDirectoryUserDto,
   ChatInsightsDto,
+  ChatMemberDto,
   ChatThreadDto,
+  CreateGroupChatDto,
   FlaggedMessageDto,
   FlaggedQueryDto,
   HideMessageDto,
@@ -34,6 +38,38 @@ export class ChatAuditController {
   @ApiErrors(HttpStatus.BAD_REQUEST)
   threads(@SchoolId() schoolId: number, @Query() query: AuditThreadsQueryDto) {
     return this.chat.auditThreads(schoolId, query);
+  }
+
+  @Get('directory')
+  @ApiOperation({ summary: 'Searchable staff and parents to add to groups' })
+  @ApiEnvelope(ChatDirectoryUserDto, { isArray: true })
+  directory(@SchoolId() schoolId: number, @Query('search') search?: string) {
+    return this.chat.directory(schoolId, search);
+  }
+
+  @Post('groups')
+  @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Group created')
+  @ApiOperation({ summary: 'Create a group chat' })
+  @ApiEnvelope(ChatThreadDto, { status: HttpStatus.CREATED, message: 'Group created' })
+  createGroup(@SchoolId() schoolId: number, @Body() dto: CreateGroupChatDto, @CurrentUser() actor: AuthUser) {
+    return this.chat.createGroup(actor, dto, schoolId);
+  }
+
+  @Post('groups/:id/members')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Members added')
+  @ApiOperation({ summary: 'Add members to a group chat' })
+  @ApiEnvelope(ChatMemberDto, { isArray: true, message: 'Members added' })
+  addMembers(@Param('id', ParseIntPipe) id: number, @Body() dto: AddGroupMembersDto, @CurrentUser() actor: AuthUser) {
+    return this.chat.addGroupMembers(actor, id, dto);
+  }
+
+  @Get('groups/:id/members')
+  @ApiOperation({ summary: 'List members of a group chat' })
+  @ApiEnvelope(ChatMemberDto, { isArray: true })
+  members(@Param('id', ParseIntPipe) id: number) {
+    return this.chat.groupMembers(id);
   }
 
   @Get('insights')

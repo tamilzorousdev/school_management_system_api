@@ -85,6 +85,7 @@ export function officeStatus(
 }
 
 export const DELETE_WINDOW_HOURS = 24;
+export const EDIT_WINDOW_HOURS = 24;
 export const UNDO_SECONDS = 10;
 export const VIDEO_MAX_SECONDS = 120;
 
@@ -105,6 +106,10 @@ export function messageKind(mime: string | null | undefined): 'text' | 'image' |
 
 export function canDeleteForEveryone(sentAt: Date, now = new Date()): boolean {
   return now.getTime() - sentAt.getTime() <= DELETE_WINDOW_HOURS * 3600 * 1000;
+}
+
+export function canEditMessage(sentAt: Date, now = new Date()): boolean {
+  return now.getTime() - sentAt.getTime() <= EDIT_WINDOW_HOURS * 3600 * 1000;
 }
 
 export function undoUntil(deletedAt: Date | null): Date | null {

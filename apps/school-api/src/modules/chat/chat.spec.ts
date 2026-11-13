@@ -1,5 +1,6 @@
 import {
   canDeleteForEveryone,
+  canEditMessage,
   isWorkingDay,
   messageKind,
   messagePreview,
@@ -91,5 +92,11 @@ describe('chat delete and media', () => {
     expect(canDeleteForEveryone(new Date('2026-11-11T11:30:00Z'), now)).toBe(false);
     expect(undoUntil(now)?.toISOString()).toBe('2026-11-12T12:00:10.000Z');
     expect(undoUntil(null)).toBeNull();
+  });
+
+  it('allows edit within 24 hours', () => {
+    const now = new Date('2026-11-12T12:00:00Z');
+    expect(canEditMessage(new Date('2026-11-11T12:30:00Z'), now)).toBe(true);
+    expect(canEditMessage(new Date('2026-11-11T11:30:00Z'), now)).toBe(false);
   });
 });
