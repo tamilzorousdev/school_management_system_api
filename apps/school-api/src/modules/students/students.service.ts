@@ -109,6 +109,7 @@ export class StudentsService {
       manager.create(Student, {
         school_id: schoolId,
         admission_no: admissionNo,
+        emis_number: dto.emis_number ?? null,
         first_name: dto.first_name,
         last_name: dto.last_name ?? null,
         dob: dto.dob,
@@ -189,10 +190,11 @@ export class StudentsService {
 
     const ordered = query.sort ? query : { ...query, sort: 'name', order: 'asc' as const };
     const page = await listQuery(qb, ordered, {
-      searchable: ['s.first_name', 's.last_name', 's.admission_no', 'g.name', 'g.mobile'],
+      searchable: ['s.first_name', 's.last_name', 's.admission_no', 's.emis_number', 'g.name', 'g.mobile'],
       sortable: {
         name: 's.first_name',
         admission_no: 's.admission_no',
+        emis_number: 's.emis_number',
         admission_date: 's.admission_date',
         created_at: 's.created_at',
         roll_no: 'e.roll_no',
@@ -548,6 +550,7 @@ export class StudentsService {
     return {
       id: student.id,
       admission_no: student.admission_no,
+      emis_number: student.emis_number ?? null,
       first_name: student.first_name,
       last_name: student.last_name,
       full_name: [student.first_name, student.last_name].filter(Boolean).join(' '),

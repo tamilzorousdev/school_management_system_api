@@ -9,6 +9,9 @@ export type SchoolBoard = (typeof SCHOOL_BOARDS)[number];
 export const DIARY_REVIEW_MODES = ['all', 'remarks', 'none'] as const;
 export type DiaryReviewMode = (typeof DIARY_REVIEW_MODES)[number];
 
+export const CHAT_DELETE_WINDOWS = ['1_hour', '24_hours', 'anytime'] as const;
+export type ChatDeleteWindow = (typeof CHAT_DELETE_WINDOWS)[number];
+
 @Entity('schools')
 @Index('UQ_schools_code', ['code'], { unique: true, where: 'deleted_at IS NULL' })
 export class School extends TrackedEntity {
@@ -95,6 +98,9 @@ export class School extends TrackedEntity {
 
   @Column({ type: 'varchar', length: 5, default: '17:00' })
   chat_office_end: string;
+
+  @Column({ type: 'varchar', length: 20, default: '24_hours' })
+  chat_delete_window: ChatDeleteWindow;
 
   @Column({ type: 'boolean', default: true })
   is_active: boolean;

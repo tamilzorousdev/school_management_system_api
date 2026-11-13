@@ -116,7 +116,7 @@ export class StudentLifecycleController {
   @ApiEnvelope(PromotionPreviewDto)
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   preview(@SchoolId() schoolId: number, @Query() query: PromotionPreviewQueryDto) {
-    return this.lifecycle.promotionPreview(schoolId, query.class_id);
+    return this.lifecycle.promotionPreview(schoolId, query.class_id, query.section_id);
   }
 
   @Post('promotions')

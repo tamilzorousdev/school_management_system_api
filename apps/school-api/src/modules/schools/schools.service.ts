@@ -210,6 +210,7 @@ export class SchoolsService {
       attendance_mode: school.attendance_mode,
       chat_office_start: school.chat_office_start,
       chat_office_end: school.chat_office_end,
+      chat_delete_window: school.chat_delete_window ?? '24_hours',
       timezone: school.timezone,
       logo_file_id: school.logo_file_id,
       logo_url: this.files.linkFor(school.logo_file_id),

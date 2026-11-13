@@ -18,6 +18,7 @@ const SESSION_VALUE: Record<AttendanceStatus, number | null> = {
   half_day: 0.5,
   absent: 0,
   leave: null,
+  od: 1,
 };
 
 export const ATTENDANCE_MODES = ['session', 'period'] as const;
@@ -90,10 +91,11 @@ export function dayStatus(
 ): AttendanceStatus | null {
   const marked = [morning, afternoon].filter((status): status is AttendanceStatus => status !== null);
   if (!marked.length) return null;
+  if (marked.every((s) => s === 'od')) return 'od';
   const values = marked.map((status) => SESSION_VALUE[status]).filter((value): value is number => value !== null);
   if (!values.length) return 'leave';
   const value = values.reduce((sum, item) => sum + item, 0) / values.length;
-  if (value === 1) return marked.includes('late') ? 'late' : 'present';
+  if (value === 1) return marked.includes('od') ? 'od' : marked.includes('late') ? 'late' : 'present';
   if (value === 0) return 'absent';
   return 'half_day';
 }
@@ -105,9 +107,14 @@ export function latestStatus(
   return afternoon ?? morning;
 }
 
-export function afternoonDefault(morning: AttendanceStatus | null, onLeave: boolean): AttendanceStatus {
+export function afternoonDefault(
+  morning: AttendanceStatus | null,
+  onLeave: boolean,
+  onDuty: boolean = false,
+): AttendanceStatus {
+  if (onDuty) return 'od';
   if (onLeave) return 'leave';
-  if (morning === 'absent' || morning === 'leave') return morning;
+  if (morning === 'absent' || morning === 'leave' || morning === 'od') return morning;
   return 'present';
 }
 

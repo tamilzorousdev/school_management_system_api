@@ -104,8 +104,16 @@ export function messageKind(mime: string | null | undefined): 'text' | 'image' |
   return 'file';
 }
 
-export function canDeleteForEveryone(sentAt: Date, now = new Date()): boolean {
-  return now.getTime() - sentAt.getTime() <= DELETE_WINDOW_HOURS * 3600 * 1000;
+export function canDeleteForEveryone(
+  sentAt: Date,
+  windowOrNow: '1_hour' | '24_hours' | 'anytime' | string | Date = '24_hours',
+  maybeNow = new Date(),
+): boolean {
+  const window = typeof windowOrNow === 'string' ? windowOrNow : '24_hours';
+  const now = windowOrNow instanceof Date ? windowOrNow : maybeNow;
+  if (window === 'anytime') return true;
+  const hours = window === '1_hour' ? 1 : DELETE_WINDOW_HOURS;
+  return now.getTime() - sentAt.getTime() <= hours * 3600 * 1000;
 }
 
 export function canEditMessage(sentAt: Date, now = new Date()): boolean {

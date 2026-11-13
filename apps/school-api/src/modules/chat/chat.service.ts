@@ -16,7 +16,6 @@ import { AssignmentsService } from '../staff/assignments.service';
 import {
   canDeleteForEveryone,
   canEditMessage,
-  DELETE_WINDOW_HOURS,
   EDIT_WINDOW_HOURS,
   LOOKAHEAD_DAYS,
   messageKind,
@@ -339,9 +338,11 @@ export class ChatService {
       throw AppException.forbidden('You can delete only your own messages for everyone', 'NOT_YOUR_MESSAGE');
     }
     if (message.deleted_for_all_at) throw AppException.conflict('This message is already deleted', 'ALREADY_DELETED');
-    if (!canDeleteForEveryone(message.created_at)) {
+    const deleteWindow = await this.schoolChatDeleteWindow(thread.school_id);
+    if (!canDeleteForEveryone(message.created_at, deleteWindow)) {
+      const windowLabel = deleteWindow === '1_hour' ? '1 hour' : '24 hours';
       throw AppException.badRequest(
-        `Messages can be deleted for everyone within ${DELETE_WINDOW_HOURS} hours. You can still delete it for yourself.`,
+        `Messages can be deleted for everyone within ${windowLabel}. You can still delete it for yourself.`,
         'DELETE_WINDOW_PASSED',
       );
     }
@@ -886,6 +887,11 @@ export class ChatService {
     return { start: row?.start ?? '08:00', end: row?.end ?? '17:00' };
   }
 
+  private async schoolChatDeleteWindow(schoolId: number): Promise<string> {
+    const [row] = await this.dataSource.query(`SELECT chat_delete_window FROM schools WHERE id = $1`, [schoolId]);
+    return row?.chat_delete_window ?? '24_hours';
+  }
+
   private schoolOf(actor: AuthUser): number {
     if (!actor.school_id) throw AppException.forbidden('Your account is not linked to a school', 'NO_SCHOOL');
     return actor.school_id;
@@ -904,10 +910,23 @@ export class ChatService {
   private async presentMessages(rows: ChatMessage[], viewerId: number | null = null): Promise<ChatMessageDto[]> {
     if (!rows.length) return [];
     const gone = (row: ChatMessage) => Boolean(row.hidden_at || row.deleted_for_all_at);
-    const [people, files] = await Promise.all([
+    const schoolIds = [...new Set(rows.map((row) => row.school_id).filter(Boolean))];
+    const [people, files, schoolRows] = await Promise.all([
       this.users(rows.map((row) => row.sender_user_id)),
       this.files.presentMany(rows.map((row) => (gone(row) ? null : row.file_id))),
+      schoolIds.length
+        ? this.dataSource.query<{ id: number; chat_delete_window: string }[]>(
+            `SELECT id, chat_delete_window FROM schools WHERE id = ANY($1)`,
+            [schoolIds],
+          )
+        : Promise.resolve([]),
     ]);
+    const windows = new Map(
+      (schoolRows as { id: number; chat_delete_window: string }[]).map((s) => [
+        Number(s.id),
+        s.chat_delete_window ?? '24_hours',
+      ]),
+    );
     return rows.map((row) => ({
       id: row.id,
       thread_id: row.thread_id,
@@ -929,7 +948,9 @@ export class ChatService {
       deleted: Boolean(row.deleted_for_all_at),
       deleted_at: row.deleted_for_all_at ?? null,
       can_delete_for_everyone:
-        viewerId === row.sender_user_id && !row.deleted_for_all_at && canDeleteForEveryone(row.created_at),
+        viewerId === row.sender_user_id &&
+        !row.deleted_for_all_at &&
+        canDeleteForEveryone(row.created_at, windows.get(row.school_id) ?? '24_hours'),
       undo_until: viewerId !== null && row.deleted_for_all_by === viewerId ? undoUntil(row.deleted_for_all_at) : null,
     }));
   }

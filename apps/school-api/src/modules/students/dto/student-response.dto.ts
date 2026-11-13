@@ -36,6 +36,9 @@ export class StudentListItemDto {
   @ApiProperty({ example: 'TZMS-2026-0012' })
   admission_no: string;
 
+  @ApiProperty({ example: '33020100101', nullable: true, type: String })
+  emis_number: string | null;
+
   @ApiProperty({ example: 'Kavin' })
   first_name: string;
 
@@ -329,6 +332,9 @@ export class AdmissionDto {
 
   @ApiProperty({ example: 'APP-2026-0003' })
   application_no: string;
+
+  @ApiProperty({ example: '33020100101', nullable: true, type: String })
+  emis_number: string | null;
 
   @ApiProperty({ enum: ADMISSION_STATUSES })
   status: AdmissionStatus;

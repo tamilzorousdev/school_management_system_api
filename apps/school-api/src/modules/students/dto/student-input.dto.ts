@@ -223,6 +223,19 @@ export class StudentProfileDto {
   @IsOptional()
   @IsBoolean()
   is_adopted?: boolean;
+
+  @ApiPropertyOptional({
+    example: '33020100101',
+    nullable: true,
+    type: String,
+    description: 'Education Management Information System (EMIS) number',
+  })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(50)
+  emis_number?: string | null;
 }
 
 export class CreateStudentDto extends StudentProfileDto {
@@ -475,6 +488,19 @@ export class AdmissionInputDto {
   @IsString()
   @MaxLength(1000)
   notes?: string | null;
+
+  @ApiPropertyOptional({
+    example: '33020100101',
+    nullable: true,
+    type: String,
+    description: 'Education Management Information System (EMIS) number',
+  })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(50)
+  emis_number?: string | null;
 }
 
 export class UpdateAdmissionDto extends PartialType(OmitType(AdmissionInputDto, ['academic_year_id'] as const)) {}

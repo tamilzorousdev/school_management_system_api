@@ -254,7 +254,7 @@ export class StudentLifecycleService {
     return { name: tc.tc_no.replace(/\//g, '-'), pdf };
   }
 
-  async promotionPreview(schoolId: number, classId: number): Promise<PromotionPreviewDto> {
+  async promotionPreview(schoolId: number, classId: number, sectionId?: number): Promise<PromotionPreviewDto> {
     const { current, next } = await this.promotionYears(schoolId);
     const classes = await this.dataSource.getRepository(SchoolClass).find({
       where: { school_id: schoolId },
@@ -263,42 +263,110 @@ export class StudentLifecycleService {
     const fromClass = classes.find((item) => item.id === classId);
     if (!fromClass) throw AppException.notFound('Class not found', 'CLASS_NOT_FOUND');
     const suggested = classes.find((item) => item.grade_level > fromClass.grade_level) ?? null;
-    const [rows, sections] = await Promise.all([
+
+    const studentParams: (number | string)[] = [schoolId, current.id, next.id, classId];
+    let sectionWhere = '';
+    if (sectionId) {
+      studentParams.push(sectionId);
+      sectionWhere = `AND e.section_id = ${studentParams.length}`;
+    }
+
+    const markParams: number[] = [schoolId, current.id, classId];
+    let markSectionWhere = '';
+    if (sectionId) {
+      markParams.push(sectionId);
+      markSectionWhere = `AND e.section_id = ${markParams.length}`;
+    }
+
+    const [rows, fromSections, toSections, markRows] = await Promise.all([
       this.dataSource.query(
-        `SELECT s.id, s.first_name, s.last_name, s.admission_no, sec.name AS section_name, e.roll_no,
+        `SELECT s.id, s.first_name, s.last_name, s.admission_no, sec.id AS section_id, sec.name AS section_name, e.roll_no,
                 EXISTS (SELECT 1 FROM student_enrollments n WHERE n.student_id = s.id AND n.academic_year_id = $3) AS already_moved
          FROM student_enrollments e
          JOIN students s ON s.id = e.student_id AND s.deleted_at IS NULL AND s.status = 'active'
-         LEFT JOIN sections sec ON sec.id = e.section_id
-         WHERE e.school_id = $1 AND e.academic_year_id = $2 AND e.class_id = $4
+         LEFT JOIN sections sec ON sec.id = e.section_id AND sec.deleted_at IS NULL
+         WHERE e.school_id = $1 AND e.academic_year_id = $2 AND e.class_id = $4 ${sectionWhere}
          ORDER BY sec.name NULLS LAST, e.roll_no NULLS LAST, s.first_name`,
-        [schoolId, current.id, next.id, classId],
+        studentParams,
       ) as Promise<
         (Pick<CardRow, 'id' | 'first_name' | 'last_name' | 'admission_no' | 'section_name' | 'roll_no'> & {
+          section_id: number | null;
           already_moved: boolean;
         })[]
       >,
+      this.dataSource.getRepository(Section).find({
+        where: { school_id: schoolId, class_id: fromClass.id, academic_year_id: current.id },
+        order: { name: 'ASC' },
+      }),
       suggested
         ? this.dataSource.getRepository(Section).find({
             where: { school_id: schoolId, class_id: suggested.id, academic_year_id: next.id },
             order: { name: 'ASC' },
           })
         : Promise.resolve([] as Section[]),
+      this.dataSource.query(
+        `SELECT m.student_id, m.marks, m.is_absent, es.max_marks, es.pass_marks
+         FROM exam_marks m
+         JOIN exams x ON x.id = m.exam_id AND x.school_id = $1 AND x.academic_year_id = $2
+           AND x.status = 'published' AND x.deleted_at IS NULL
+         JOIN student_enrollments e ON e.student_id = m.student_id AND e.academic_year_id = $2 AND e.class_id = $3 ${markSectionWhere}
+         JOIN exam_subjects es ON es.exam_id = m.exam_id AND es.subject_id = m.subject_id AND es.class_id = e.class_id
+         WHERE (m.is_absent OR m.marks IS NOT NULL)`,
+        markParams,
+      ) as Promise<
+        { student_id: number; marks: number | null; is_absent: boolean; max_marks: number; pass_marks: number }[]
+      >,
     ]);
+
+    const byStudent = new Map<number, { got: number; max: number; failed: boolean }>();
+    for (const m of markRows) {
+      const got = m.is_absent ? 0 : Number(m.marks ?? 0);
+      const max = Number(m.max_marks);
+      const pass = Number(m.pass_marks);
+      const failed = m.is_absent || got < pass;
+      const entry = byStudent.get(Number(m.student_id)) ?? { got: 0, max: 0, failed: false };
+      entry.got += got;
+      entry.max += max;
+      entry.failed = entry.failed || failed;
+      byStudent.set(Number(m.student_id), entry);
+    }
+    let passCount = 0;
+    let totalPercent = 0;
+    const studentStats = new Map<number, { percent: number; passed: boolean }>();
+    for (const [sId, entry] of byStudent.entries()) {
+      const percent = entry.max > 0 ? Math.round((entry.got / entry.max) * 1000) / 10 : 0;
+      const passed = !entry.failed;
+      if (passed) passCount++;
+      totalPercent += percent;
+      studentStats.set(sId, { percent, passed });
+    }
+    const assessed = byStudent.size;
+    const passPercent = assessed > 0 ? Math.round((passCount / assessed) * 1000) / 10 : null;
+    const averagePercent = assessed > 0 ? Math.round((totalPercent / assessed) * 10) / 10 : null;
+
     return {
       from_year: { id: current.id, name: current.name },
       to_year: { id: next.id, name: next.name },
       from_class: { id: fromClass.id, name: fromClass.name },
+      from_sections: fromSections.map((s) => ({ id: s.id, name: s.name })),
+      pass_percent: passPercent,
+      average_percent: averagePercent,
       suggested_class: suggested ? { id: suggested.id, name: suggested.name } : null,
-      to_sections: sections.map((section) => ({ id: section.id, name: section.name })),
-      students: rows.map((row) => ({
-        student_id: Number(row.id),
-        full_name: fullName(row),
-        admission_no: row.admission_no,
-        section_name: row.section_name,
-        roll_no: row.roll_no,
-        already_moved: Boolean(row.already_moved),
-      })),
+      to_sections: toSections.map((section) => ({ id: section.id, name: section.name })),
+      students: rows.map((row) => {
+        const stat = studentStats.get(Number(row.id));
+        return {
+          student_id: Number(row.id),
+          full_name: fullName(row),
+          admission_no: row.admission_no,
+          section_id: row.section_id ? Number(row.section_id) : null,
+          section_name: row.section_name,
+          roll_no: row.roll_no,
+          already_moved: Boolean(row.already_moved),
+          result_percent: stat?.percent ?? null,
+          passed: stat !== undefined ? stat.passed : null,
+        };
+      }),
     };
   }
 
@@ -326,6 +394,7 @@ export class StudentLifecycleService {
           school_id: schoolId,
           academic_year_id: current.id,
           class_id: dto.from_class_id,
+          ...(dto.from_section_id ? { section_id: dto.from_section_id } : {}),
           status: Not('left'),
           ...(dto.student_ids?.length ? { student_id: In(dto.student_ids) } : {}),
         },

@@ -54,7 +54,7 @@ export class RosterQueryDto {
   period?: number;
 }
 
-const STATUS_LETTERS: Record<string, AttendanceStatus> = { P: 'present', A: 'absent', L: 'late' };
+const STATUS_LETTERS: Record<string, AttendanceStatus> = { P: 'present', A: 'absent', L: 'late', OD: 'od', O: 'od' };
 
 export class MarkItemDto {
   @ApiProperty({ example: 12 })
@@ -292,6 +292,12 @@ export class RosterStudentDto {
 
   @ApiProperty({ description: 'Approved leave covers this date' })
   on_leave: boolean;
+
+  @ApiPropertyOptional({ description: 'Active sports on-duty covers this date' })
+  on_duty?: boolean;
+
+  @ApiPropertyOptional({ nullable: true, type: String, description: 'Sports on-duty reason / event' })
+  od_reason?: string | null;
 }
 
 export class AttendanceSummaryDto {
@@ -312,6 +318,9 @@ export class AttendanceSummaryDto {
 
   @ApiProperty({ example: 0 })
   leave: number;
+
+  @ApiPropertyOptional({ example: 0 })
+  od?: number;
 
   @ApiProperty({ example: 94.7, nullable: true, type: Number })
   percent: number | null;
@@ -835,6 +844,9 @@ export class AttendanceMonthTotalDto {
 
   @ApiProperty({ example: 0 })
   leave: number;
+
+  @ApiPropertyOptional({ example: 0 })
+  od?: number;
 
   @ApiProperty({
     example: 97.4,

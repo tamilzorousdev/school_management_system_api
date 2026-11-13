@@ -1,7 +1,7 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { AttendanceSession } from './attendance-session.entity';
 
-export const ATTENDANCE_STATUSES = ['present', 'absent', 'late', 'half_day', 'leave'] as const;
+export const ATTENDANCE_STATUSES = ['present', 'absent', 'late', 'half_day', 'leave', 'od'] as const;
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
 
 @Entity('attendance_records')

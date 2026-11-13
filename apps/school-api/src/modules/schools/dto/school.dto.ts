@@ -21,7 +21,14 @@ import { MOBILE_PATTERN, normalizeMobile } from '../../../shared/mobile';
 import { ID_CARD_DESIGNS } from '../../../shared/id-card-design';
 import type { IdCardLayout } from '../../../shared/id-card-layout';
 import { ATTENDANCE_MODES, AttendanceMode } from '../../attendance/attendance-sessions';
-import { DIARY_REVIEW_MODES, DiaryReviewMode, SCHOOL_BOARDS, SchoolBoard } from '../entities/school.entity';
+import {
+  CHAT_DELETE_WINDOWS,
+  ChatDeleteWindow,
+  DIARY_REVIEW_MODES,
+  DiaryReviewMode,
+  SCHOOL_BOARDS,
+  SchoolBoard,
+} from '../entities/school.entity';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 const emptyToNull = ({ value }: { value: unknown }) =>
@@ -159,6 +166,15 @@ export class SchoolProfileDto {
   @IsOptional()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'chat_office_end must be HH:MM, for example 17:00' })
   chat_office_end?: string;
+
+  @ApiPropertyOptional({
+    enum: CHAT_DELETE_WINDOWS,
+    example: '24_hours',
+    description: 'How long sent messages can be deleted for everyone: 1_hour, 24_hours, or anytime.',
+  })
+  @IsOptional()
+  @IsIn(CHAT_DELETE_WINDOWS)
+  chat_delete_window?: ChatDeleteWindow;
 
   @ApiPropertyOptional({
     example: 41,
@@ -346,6 +362,13 @@ export class SchoolDto {
 
   @ApiProperty({ example: '17:00' })
   chat_office_end: string;
+
+  @ApiProperty({
+    enum: CHAT_DELETE_WINDOWS,
+    example: '24_hours',
+    description: 'How long sent messages can be deleted for everyone',
+  })
+  chat_delete_window: ChatDeleteWindow;
 
   @ApiProperty({ example: 'Asia/Kolkata' })
   timezone: string;

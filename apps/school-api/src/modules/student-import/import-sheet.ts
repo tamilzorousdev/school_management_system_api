@@ -10,6 +10,7 @@ export interface ImportColumn {
 
 export const IMPORT_COLUMNS: ImportColumn[] = [
   { key: 'admission_no', header: 'Admission no', width: 16, note: 'Leave empty to generate a new number' },
+  { key: 'emis_number', header: 'EMIS number', width: 16, note: 'Optional EMIS ID' },
   { key: 'first_name', header: 'First name', width: 16, required: true, note: 'Student first name' },
   { key: 'last_name', header: 'Last name', width: 16, note: 'Initial or family name' },
   { key: 'dob', header: 'Date of birth', width: 14, required: true, note: 'YYYY-MM-DD or DD-MM-YYYY' },

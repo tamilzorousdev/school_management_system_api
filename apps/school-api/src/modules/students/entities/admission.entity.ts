@@ -18,6 +18,9 @@ export class Admission extends SchoolScopedEntity {
   @Column({ type: 'varchar', length: 30 })
   application_no: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  emis_number: string | null;
+
   @Column({ type: 'int' })
   academic_year_id: number;
 

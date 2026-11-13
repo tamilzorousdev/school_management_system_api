@@ -94,6 +94,12 @@ export class PromotionPreviewQueryDto {
   @Type(() => Number)
   @IsInt()
   class_id: number;
+
+  @ApiPropertyOptional({ example: 21, description: 'Section being promoted' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  section_id?: number;
 }
 
 export class PromotionDto {
@@ -101,6 +107,12 @@ export class PromotionDto {
   @Type(() => Number)
   @IsInt()
   from_class_id: number;
+
+  @ApiPropertyOptional({ example: 3, description: 'Section in the current year' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  from_section_id?: number;
 
   @ApiProperty({ example: 8, description: 'Class for next year' })
   @Type(() => Number)
@@ -237,6 +249,9 @@ export class PromotionStudentDto {
   @ApiProperty({ example: 'TZMS-2026-0012' })
   admission_no: string;
 
+  @ApiPropertyOptional({ nullable: true, type: Number, example: 3 })
+  section_id: number | null;
+
   @ApiProperty({ nullable: true, type: String, example: 'A' })
   section_name: string | null;
 
@@ -245,6 +260,12 @@ export class PromotionStudentDto {
 
   @ApiProperty({ description: 'Already has a class in the next year' })
   already_moved: boolean;
+
+  @ApiPropertyOptional({ nullable: true, type: Number, example: 82.5 })
+  result_percent: number | null;
+
+  @ApiPropertyOptional({ nullable: true, type: Boolean, example: true })
+  passed: boolean | null;
 }
 
 export class PromotionPreviewDto {
@@ -256,6 +277,15 @@ export class PromotionPreviewDto {
 
   @ApiProperty({ type: RefDto })
   from_class: RefDto;
+
+  @ApiProperty({ type: [RefDto], description: 'Sections of the class in the current year' })
+  from_sections: RefDto[];
+
+  @ApiPropertyOptional({ nullable: true, type: Number, example: 87.5 })
+  pass_percent: number | null;
+
+  @ApiPropertyOptional({ nullable: true, type: Number, example: 74.2 })
+  average_percent: number | null;
 
   @ApiProperty({ type: RefDto, nullable: true, description: 'Next class by grade, if it exists' })
   suggested_class: RefDto | null;

@@ -80,6 +80,7 @@ export const PRESENT_WEIGHT: Record<AttendanceStatus, number> = {
   half_day: 0.5,
   absent: 0,
   leave: 0,
+  od: 1,
 };
 
 export function summarise(statuses: AttendanceStatus[]): AttendanceSummaryDto {
@@ -92,6 +93,7 @@ export function summarise(statuses: AttendanceStatus[]): AttendanceSummaryDto {
     late: count('late'),
     half_day: count('half_day'),
     leave: count('leave'),
+    od: count('od'),
     percent: percent(attended, statuses.length),
   };
 }
@@ -117,6 +119,7 @@ function monthTotal(month: string, workingDayCount: number, statuses: Attendance
     half_day: summary.half_day,
     absent: summary.absent,
     leave: summary.leave,
+    od: summary.od ?? 0,
     percent: summary.percent,
   };
 }
@@ -163,7 +166,7 @@ export class AttendanceService {
     const manager = this.dataSource.manager;
     const { period, session } = slot;
     const section = await this.section(manager, schoolId, sectionId);
-    const [students, saved, earlier, holiday, leaves, window, { mode }] = await Promise.all([
+    const [students, saved, earlier, holiday, leaves, odMap, window, { mode }] = await Promise.all([
       this.students(manager, sectionId),
       manager.findOne(AttendanceSession, {
         where: { section_id: sectionId, date, period },
@@ -180,6 +183,7 @@ export class AttendanceService {
         : Promise.resolve([]),
       this.holidayName(manager, schoolId, date, section.class_id),
       this.leaveStudents(manager, schoolId, date, session),
+      this.odStudents(manager, schoolId, date, session),
       this.window(manager, schoolId, period),
       this.modeOf(schoolId),
     ]);
@@ -192,14 +196,21 @@ export class AttendanceService {
       const id = Number(student.student_id);
       const record = records.get(id);
       const onLeave = leaves.has(id);
+      const od = odMap.get(id);
+      const onDuty = Boolean(od);
+      const initialStatus: AttendanceStatus = onDuty
+        ? 'od'
+        : (record?.status ?? afternoonDefault(morningStatus.get(id) ?? null, onLeave, onDuty));
       return {
         student_id: id,
         full_name: fullName(student),
         admission_no: student.admission_no,
         roll_no: student.roll_no,
-        status: record?.status ?? afternoonDefault(morningStatus.get(id) ?? null, onLeave),
-        remarks: record?.remarks ?? null,
+        status: initialStatus,
+        remarks: onDuty ? (record?.remarks ?? `On Duty: ${od?.title ?? od?.sport_name}`) : (record?.remarks ?? null),
         on_leave: onLeave,
+        on_duty: onDuty,
+        od_reason: od ? `${od.sport_name} · ${od.title}` : null,
       };
     });
     const today = todayIn(this.app.timeZone);
@@ -299,9 +310,21 @@ export class AttendanceService {
           }),
         );
       }
+      const odMap = await this.odStudents(manager, schoolId, dto.date, slot.session);
+      const markItems = dto.items.map((item) => {
+        const od = odMap.get(item.student_id);
+        if (od) {
+          return {
+            ...item,
+            status: 'od' as AttendanceStatus,
+            remarks: item.remarks || `On Duty: ${od.title}`,
+          };
+        }
+        return item;
+      });
       await manager.insert(
         AttendanceRecord,
-        dto.items.map((item) => ({
+        markItems.map((item) => ({
           session_id: saved!.id,
           school_id: schoolId,
           student_id: item.student_id,
@@ -313,8 +336,11 @@ export class AttendanceService {
         })),
       );
       if (dto.date !== today) return [];
-      const absent = dto.items
-        .filter((item) => item.status === 'absent' && !previous.get(item.student_id)?.alert_sent)
+      const absent = markItems
+        .filter(
+          (item) =>
+            item.status === 'absent' && !odMap.has(item.student_id) && !previous.get(item.student_id)?.alert_sent,
+        )
         .map((item) => item.student_id);
       if (!absent.length) return [];
       const alerted: { student_id: number }[] = await manager.query(
@@ -374,7 +400,7 @@ export class AttendanceService {
             ...slot,
             items: roster.students.map((student) => ({
               student_id: student.student_id,
-              status: student.on_leave ? 'leave' : dto.status,
+              status: (student as { on_duty?: boolean }).on_duty ? 'od' : student.on_leave ? 'leave' : dto.status,
               remarks: dto.remarks ?? null,
             })),
           },
@@ -1142,6 +1168,21 @@ export class AttendanceService {
        ORDER BY e.roll_no NULLS LAST, s.first_name`,
       [sectionId],
     );
+  }
+
+  private async odStudents(
+    manager: EntityManager,
+    schoolId: number,
+    date: string,
+    session?: AttendanceSessionName,
+  ): Promise<Map<number, { title: string; sport_name: string }>> {
+    const rows: { student_id: number; title: string; sport_name: string }[] = await manager.query(
+      `SELECT student_id, title, sport_name FROM sports_on_duty
+       WHERE school_id = $1 AND deleted_at IS NULL AND $2 BETWEEN from_date AND to_date
+       AND (session IS NULL OR session = $3)`,
+      [schoolId, date, session ?? 'morning'],
+    );
+    return new Map(rows.map((row) => [Number(row.student_id), { title: row.title, sport_name: row.sport_name }]));
   }
 
   private async leaveStudents(

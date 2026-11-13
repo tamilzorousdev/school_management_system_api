@@ -12,6 +12,6 @@ export default new DataSource({
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   ssl: process.env.DB_SSL === 'true',
-  entities: [join(root, '{apps,libs}', '**', 'entities', '*.entity{.ts,.js}')],
-  migrations: [join(__dirname, 'migrations', '*{.ts,.js}')],
+  entities: [join(root, '{apps,libs}', '**', 'entities', '*.entity{.ts,.js}').replace(/\\/g, '/')],
+  migrations: [join(__dirname, 'migrations', '*{.ts,.js}').replace(/\\/g, '/')],
 });

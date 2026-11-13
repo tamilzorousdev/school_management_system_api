@@ -19,6 +19,9 @@ export class Student extends SchoolScopedEntity {
   @Column({ type: 'varchar', length: 30 })
   admission_no: string;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  emis_number: string | null;
+
   @Column({ type: 'varchar', length: 60 })
   first_name: string;
 
