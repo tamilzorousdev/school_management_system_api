@@ -38,6 +38,9 @@ export class User extends TrackedEntity {
   @Column({ type: 'int', nullable: true })
   photo_file_id: number | null;
 
+  @Column({ type: 'int', nullable: true })
+  signature_file_id: number | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   last_login_at: Date | null;
 

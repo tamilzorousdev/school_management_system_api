@@ -563,6 +563,11 @@ export class UpdateGuardianDto extends PartialType(
   @ValidateIf(notNull)
   @Matches(/^\d{6}$/, { message: 'pincode must be 6 digits' })
   pincode?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  signature_file_id?: number | null;
 }
 
 export class UpdateMyParentProfileDto extends PickType(UpdateGuardianDto, [
@@ -574,4 +579,5 @@ export class UpdateMyParentProfileDto extends PickType(UpdateGuardianDto, [
   'address_line',
   'city',
   'pincode',
+  'signature_file_id',
 ] as const) {}

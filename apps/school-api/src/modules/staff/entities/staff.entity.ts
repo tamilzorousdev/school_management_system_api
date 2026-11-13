@@ -64,6 +64,9 @@ export class Staff extends SchoolScopedEntity {
   @Column({ type: 'date', nullable: true })
   left_on: string | null;
 
+  @Column({ type: 'int', nullable: true })
+  signature_file_id: number | null;
+
   @Column({ type: 'varchar', length: 120, nullable: true })
   bank_account_holder: string | null;
 

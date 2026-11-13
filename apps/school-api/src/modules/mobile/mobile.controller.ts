@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequireRoles, ResponseMessage } from '@app/common';
 import { ROLES } from '../access/access.catalog';
@@ -25,6 +25,7 @@ import { TeacherInsightsService } from './teacher-insights.service';
 import { BankDetailsDto, QualificationDto, StaffDocumentDto } from '../staff/dto/staff-response.dto';
 import { StaffService } from '../staff/staff.service';
 import { AppraisalsService } from '../staff/appraisals.service';
+import { SignatureResponseDto, UpdateSignatureDto } from '../exams/dto/report-card.dto';
 import { StaffAppraisalCommentDto, StaffAppraisalDto } from '../staff/dto/staff-appraisal.dto';
 import { HolidaysService } from '../setup/holidays.service';
 import { HolidayQueryDto, MobileHolidayOverviewDto } from '../setup/dto/setup.dto';
@@ -173,6 +174,14 @@ export class MobileTeacherController {
   @ApiEnvelope(MyClassDto, { isArray: true })
   classes(@CurrentUser() user: AuthUser) {
     return this.insights.myClasses(this.access.teacherSchool(user), user.id);
+  }
+
+  @Put('signature')
+  @ApiTags(TEACHER_MODULE_TAGS.MODULE_1)
+  @ApiOperation({ summary: 'Update or clear my teacher signature' })
+  @ApiEnvelope(SignatureResponseDto)
+  async updateSignature(@CurrentUser() user: AuthUser, @Body() dto: UpdateSignatureDto) {
+    return this.staff.updateSignature(this.access.teacherSchool(user), user.id, dto.signature_file_id ?? null);
   }
 
   @Get('profile')

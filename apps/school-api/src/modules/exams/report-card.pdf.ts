@@ -6,6 +6,8 @@ export interface ReportCardPdfData {
   card: ReportCardDto;
   logo: Buffer | null;
   signature?: Buffer | null;
+  teacher_signature?: Buffer | null;
+  parent_signature?: Buffer | null;
   seal?: Buffer | null;
   photo: Buffer | null;
   generated_on: string;
@@ -712,7 +714,7 @@ function gradingTable(doc: Pdf, card: ReportCardDto, layout: Layout, summaryBott
 }
 
 function signatures(doc: Pdf, data: ReportCardPdfData, layout: Layout, gradingBottom: number): void {
-  const { card, signature, seal } = data;
+  const { card, signature, seal, teacher_signature, parent_signature } = data;
   const { left, width, pageHeight } = layout;
   const sigY = Math.max(gradingBottom + 20, pageHeight - 110);
   const boxWidth = 92;
@@ -720,10 +722,15 @@ function signatures(doc: Pdf, data: ReportCardPdfData, layout: Layout, gradingBo
 
   const principalName = card.school.principal_name || 'Meenakshi Sundaram';
   const cols = [
-    { type: 'sig' as const, label: 'Class Teacher', name: card.student.class_teacher || '' },
-    { type: 'sig' as const, label: 'Parents', name: card.student.parent_name || '' },
-    { type: 'seal' as const, label: 'School Seal' },
-    { type: 'sig' as const, label: 'Principal', name: principalName, isPrincipal: true },
+    {
+      type: 'sig' as const,
+      label: 'Class Teacher',
+      name: card.student.class_teacher || '',
+      signature: teacher_signature,
+    },
+    { type: 'sig' as const, label: 'Parents', name: card.student.parent_name || '', signature: parent_signature },
+    { type: 'seal' as const, label: 'School Seal', signature: null },
+    { type: 'sig' as const, label: 'Principal', name: principalName, isPrincipal: true, signature },
   ];
 
   const colSlot = width / cols.length;
@@ -750,9 +757,9 @@ function signatures(doc: Pdf, data: ReportCardPdfData, layout: Layout, gradingBo
         .strokeColor('#000000')
         .stroke();
 
-      if (col.isPrincipal && signature) {
+      if (col.signature) {
         try {
-          doc.image(signature, boxX + 4, sigY + 12, {
+          doc.image(col.signature, boxX + 4, sigY + 12, {
             fit: [boxWidth - 8, boxHeight - 2],
             align: 'center',
             valign: 'center',

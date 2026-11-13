@@ -14,7 +14,15 @@ import {
   Version,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequireRoles, ResponseMessage } from '@app/common';
+import {
+  ApiEnvelope,
+  ApiErrors,
+  AppException,
+  AuthUser,
+  CurrentUser,
+  RequireRoles,
+  ResponseMessage,
+} from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { ROLES } from '../access/access.catalog';
@@ -37,6 +45,7 @@ import {
   StudentLeaveInputDto,
   StudentLeaveQueryDto,
 } from '../attendance/dto/attendance.dto';
+import { ordinal } from '../attendance/attendance-sessions';
 import { StudentLeaveService } from '../attendance/student-leave.service';
 import { AssignmentsService } from '../staff/assignments.service';
 import { CheckInStatusDto, LocationDto, StaffMonthDto } from '../staff-attendance/dto/staff-attendance.dto';
@@ -239,7 +248,7 @@ export class MobileTeacherAttendanceController {
       'Session mode (school attendance_mode = session): session=morning (default) or afternoon; any other period gives 400 PERIOD_NOT_ALLOWED. Period mode: send period=1..last period; the teacher of that period in the timetable can mark it. open is true only today during that period (opens_at to closes_at); otherwise show the list read-only. A later list starts from the marks of the period before.',
   })
   @ApiEnvelope(RosterDto)
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN, HttpStatus.NOT_FOUND)
   async roster(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: RosterQueryDto) {
     const schoolId = this.access.teacherSchool(user);
     const slot = await this.attendance.slotFor(schoolId, query);
@@ -256,7 +265,7 @@ export class MobileTeacherAttendanceController {
       'Body: { date, session: "morning" | "afternoon", items: [{ student_id, status, remarks }] } with every student once. Teachers can save a session only today during its period (1st period for morning, 5th for afternoon): 400 SESSION_NOT_OPEN before, 400 SESSION_CLOSED after (the office marks it then), 400 PERIOD_NOT_ALLOWED for other periods. Parents of absent students get an alert once per day (a child present in the morning and absent in the afternoon is alerted for the afternoon).',
   })
   @ApiEnvelope(RosterDto, { message: 'Attendance saved' })
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN, HttpStatus.NOT_FOUND)
   async mark(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: MarkAttendanceDto) {
     const schoolId = this.access.teacherSchool(user);
     await this.assertCanMark(schoolId, user.id, id, dto.date, (await this.attendance.slotFor(schoolId, dto)).period);
@@ -272,7 +281,7 @@ export class MobileTeacherAttendanceController {
       'Body: { date, session, items: [{ student_id, status, remarks }] } with only the students to change. Everyone else keeps the saved status, or the default when the session is not saved yet (present; leave for approved leave; the afternoon starts from the morning). Same rules as PUT: only during the 1st or 5th period (SESSION_NOT_OPEN / SESSION_CLOSED), parents of newly absent students get the alert. 400 STUDENT_NOT_IN_SECTION, DUPLICATE_STUDENT.',
   })
   @ApiEnvelope(RosterDto, { message: 'Attendance saved' })
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN, HttpStatus.NOT_FOUND)
   async markSome(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
@@ -291,7 +300,7 @@ export class MobileTeacherAttendanceController {
       'No date, session or period to send. Session mode: during the 1st period plus grace it is the morning list, during the 5th period plus grace the afternoon list. Period mode: the period running now (mode and period are in the reply). Outside those times open is false: show the list read-only with opens_at and closes_at (closes_at already includes grace_minutes). The proxy teacher of that period can also use it.',
   })
   @ApiEnvelope(RosterDto)
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN, HttpStatus.NOT_FOUND)
   async currentRoster(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
     const schoolId = this.access.teacherSchool(user);
     const now = await this.attendance.current(schoolId);
@@ -308,7 +317,7 @@ export class MobileTeacherAttendanceController {
       'Body: { items: [{ student_id, status, remarks }] } with every student once; status P, A, L or the full word. The phone time is never used. 400 SESSION_NOT_OPEN before the 1st or 5th period starts, 400 SESSION_CLOSED after the period plus grace (the office marks it then).',
   })
   @ApiEnvelope(RosterDto, { message: 'Attendance saved' })
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN, HttpStatus.NOT_FOUND)
   async markCurrent(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: CurrentMarkDto) {
     const schoolId = this.access.teacherSchool(user);
     const now = await this.attendance.current(schoolId);
@@ -325,7 +334,7 @@ export class MobileTeacherAttendanceController {
       'Body: { items: [{ student_id, status, remarks }] } with only the students to change; everyone else keeps the saved status or the default. Same time rules as PUT .../current.',
   })
   @ApiEnvelope(RosterDto, { message: 'Attendance saved' })
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN, HttpStatus.NOT_FOUND)
   async markSomeCurrent(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
@@ -346,7 +355,21 @@ export class MobileTeacherAttendanceController {
   ): Promise<void> {
     if (await this.attendance.isProxyFor(schoolId, userId, sectionId, date, period)) return;
     if (await this.attendance.isPeriodTeacher(schoolId, userId, sectionId, date, period)) return;
+    const { mode } = await this.attendance.modeOf(schoolId);
+    if (mode === 'session') {
+      const classTeacherSections = await this.access.classTeacherSections(schoolId, userId);
+      if (classTeacherSections.includes(sectionId)) return;
+      await this.assignments.assertTeachesSection(schoolId, userId, sectionId);
+      throw AppException.forbidden(
+        `Only the class teacher or the teacher assigned to ${period === 1 ? '1st period (morning)' : '5th period (afternoon)'} can take attendance for this section`,
+        'NOT_PERIOD_TEACHER',
+      );
+    }
     await this.assignments.assertTeachesSection(schoolId, userId, sectionId);
+    throw AppException.forbidden(
+      `You are not scheduled to teach ${ordinal(period)} period for this section`,
+      'NOT_PERIOD_TEACHER',
+    );
   }
 
   @Get('sections/:id/attendance/day')

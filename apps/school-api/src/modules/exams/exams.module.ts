@@ -4,6 +4,7 @@ import { StaffModule } from '../staff/staff.module';
 import { ExamMark } from './entities/exam-mark.entity';
 import { ExamSubject } from './entities/exam-subject.entity';
 import { Exam } from './entities/exam.entity';
+import { ReportCardSignature } from './entities/report-card-signature.entity';
 import { ExamsController, StudentResultsController } from './exams.controller';
 import { ExamsService } from './exams.service';
 import { MobileParentExamsController, MobileTeacherExamsController } from './mobile-exams.controller';
@@ -15,7 +16,7 @@ import {
 import { ReportCardsService } from './report-cards.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Exam, ExamSubject, ExamMark]), StaffModule],
+  imports: [TypeOrmModule.forFeature([Exam, ExamSubject, ExamMark, ReportCardSignature]), StaffModule],
   controllers: [
     ExamsController,
     StudentResultsController,

@@ -1,10 +1,10 @@
-import { Controller, Get, HttpStatus, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequirePermissions, RequireRoles } from '@app/common';
 import { ApiPdf, pdfFile } from '../../shared/pdf-response';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS, ROLES } from '../access/access.catalog';
-import { ReportCardDto, ReportCardQueryDto, SectionReportCardQueryDto } from './dto/report-card.dto';
+import { ReportCardDto, ReportCardQueryDto, SectionReportCardQueryDto, SignReportCardDto } from './dto/report-card.dto';
 import { ReportCardsService } from './report-cards.service';
 import { PARENT_MODULE_TAGS } from '../mobile/parent-modules.catalog';
 
@@ -94,5 +94,12 @@ export class MobileParentReportCardController {
   @ApiErrors(HttpStatus.BAD_REQUEST)
   async pdf(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: ReportCardQueryDto) {
     return pdfFile(await this.cards.childPdf(user.id, id, query), true);
+  }
+
+  @Post('report-card/sign')
+  @ApiOperation({ summary: "Sign my child's report card using my uploaded signature" })
+  @ApiEnvelope(ReportCardDto)
+  sign(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: SignReportCardDto) {
+    return this.cards.signChildCard(user.id, id, dto, `/api/v1/mobile/parent/children/${id}/report-card/pdf`);
   }
 }

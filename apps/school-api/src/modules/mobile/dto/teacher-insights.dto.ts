@@ -203,4 +203,10 @@ export class TeacherProfileDto {
     description: 'Ready-made line for the profile header',
   })
   headline: string;
+
+  @ApiProperty({ nullable: true, type: Number })
+  signature_file_id: number | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  signature_url: string | null;
 }

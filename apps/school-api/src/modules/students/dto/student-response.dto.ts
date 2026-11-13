@@ -301,6 +301,12 @@ export class GuardianDetailDto extends GuardianListItemDto {
 
   @ApiProperty({ type: [CoGuardianDto], description: 'Spouse or other guardians of the same children' })
   co_guardians: CoGuardianDto[];
+
+  @ApiProperty({ nullable: true, type: Number })
+  signature_file_id: number | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  signature_url: string | null;
 }
 
 export class GuardianInsightsDto {

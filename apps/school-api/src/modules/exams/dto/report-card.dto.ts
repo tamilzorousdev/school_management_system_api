@@ -116,6 +116,24 @@ export class ReportCardStudentDto {
 
   @ApiProperty({ example: '/api/v1/files/9/content?expires=…&signature=…', nullable: true, type: String })
   photo_url: string | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String })
+  class_teacher_signature_url?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String })
+  parent_signature_url?: string | null;
+
+  @ApiPropertyOptional({ example: false })
+  parent_signed?: boolean;
+
+  @ApiPropertyOptional({ nullable: true, type: Date })
+  parent_signed_at?: Date | null;
+
+  @ApiPropertyOptional({ example: false })
+  teacher_signed?: boolean;
+
+  @ApiPropertyOptional({ nullable: true, type: Date })
+  teacher_signed_at?: Date | null;
 }
 
 export class ReportCardScopeDto {
@@ -332,4 +350,96 @@ export class ReportCardDto {
 
   @ApiProperty({ example: '2026-11-05T10:30:00.000+05:30' })
   generated_at: Date;
+}
+
+export class UpdateSignatureDto {
+  @ApiPropertyOptional({ example: 140, nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  signature_file_id?: number | null;
+}
+
+export class SignatureResponseDto {
+  @ApiProperty({ example: 140, nullable: true, type: Number })
+  signature_file_id: number | null;
+
+  @ApiProperty({ example: 'https://...', nullable: true, type: String })
+  signature_url: string | null;
+}
+
+export class SignReportCardDto {
+  @ApiPropertyOptional({ example: 1, nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  academic_year_id?: number;
+
+  @ApiPropertyOptional({ example: 2, nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  term_id?: number;
+
+  @ApiPropertyOptional({ example: 5, nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  exam_id?: number;
+}
+
+export class SectionSignaturesSummaryDto {
+  @ApiProperty({ example: 32 })
+  total: number;
+
+  @ApiProperty({ example: 32 })
+  teacher_signed: number;
+
+  @ApiProperty({ example: 28 })
+  parent_signed: number;
+
+  @ApiProperty({ example: 4 })
+  parent_pending: number;
+}
+
+export class SectionStudentSignatureItemDto {
+  @ApiProperty({ example: 12 })
+  student_id: number;
+
+  @ApiProperty({ example: 'TZMS-2026-0012' })
+  admission_no: string;
+
+  @ApiProperty({ example: 'Kavin Narayanan' })
+  full_name: string;
+
+  @ApiProperty({ example: 12, nullable: true, type: Number })
+  roll_no: number | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  photo_url: string | null;
+
+  @ApiProperty({ example: 'Narayanan K', nullable: true, type: String })
+  parent_name: string | null;
+
+  @ApiProperty({ example: '9000000005', nullable: true, type: String })
+  parent_mobile: string | null;
+
+  @ApiProperty({ example: true })
+  teacher_signed: boolean;
+
+  @ApiProperty({ nullable: true, type: Date })
+  teacher_signed_at: Date | null;
+
+  @ApiProperty({ example: false })
+  parent_signed: boolean;
+
+  @ApiProperty({ nullable: true, type: Date })
+  parent_signed_at: Date | null;
+
+  @ApiProperty({ example: 'pending_parent' })
+  status: 'signed' | 'pending_parent' | 'pending_teacher';
+}
+
+export class SectionSignaturesStatusDto {
+  @ApiProperty({ type: SectionSignaturesSummaryDto })
+  summary: SectionSignaturesSummaryDto;
+
+  @ApiProperty({ type: [SectionStudentSignatureItemDto] })
+  students: SectionStudentSignatureItemDto[];
 }

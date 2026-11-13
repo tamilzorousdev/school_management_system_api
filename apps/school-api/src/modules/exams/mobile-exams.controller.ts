@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpStatus, Param, ParseIntPipe, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ApiEnvelope,
@@ -21,6 +21,13 @@ import {
   TeacherExamDto,
 } from './dto/exams.dto';
 import { ExamsService } from './exams.service';
+import { ReportCardsService } from './report-cards.service';
+import {
+  ReportCardDto,
+  SectionReportCardQueryDto,
+  SectionSignaturesStatusDto,
+  SignReportCardDto,
+} from './dto/report-card.dto';
 import { TEACHER_MODULE_TAGS } from '../mobile/teacher-modules.catalog';
 import { PARENT_MODULE_TAGS } from '../mobile/parent-modules.catalog';
 
@@ -38,6 +45,7 @@ export class MobileTeacherExamsController {
   constructor(
     private readonly exams: ExamsService,
     private readonly assignments: AssignmentsService,
+    private readonly cards: ReportCardsService,
   ) {}
 
   @Get('exams')
@@ -97,6 +105,39 @@ export class MobileTeacherExamsController {
     const schoolId = teacherSchool(user);
     await this.assignments.assertTeachesSection(schoolId, user.id, id);
     return this.exams.sectionRanking(schoolId, id, query.exam_id);
+  }
+
+  @Post('sections/:id/report-cards/sign')
+  @ApiOperation({ summary: 'Sign report cards for all students in my section' })
+  @ApiEnvelope(SectionSignaturesStatusDto)
+  signSection(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) sectionId: number,
+    @Body() dto: SignReportCardDto,
+  ) {
+    return this.cards.signSection(teacherSchool(user), user.id, sectionId, dto);
+  }
+
+  @Post('students/:id/report-card/sign')
+  @ApiOperation({ summary: "Sign a specific student's report card" })
+  @ApiEnvelope(ReportCardDto)
+  signStudent(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) studentId: number,
+    @Body() dto: SignReportCardDto,
+  ) {
+    return this.cards.signStudent(teacherSchool(user), user.id, studentId, dto);
+  }
+
+  @Get('sections/:id/report-cards/signatures')
+  @ApiOperation({ summary: 'View signed and non-signed (pending) report card status of my section' })
+  @ApiEnvelope(SectionSignaturesStatusDto)
+  signaturesStatus(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) sectionId: number,
+    @Query() query: SectionReportCardQueryDto,
+  ) {
+    return this.cards.sectionSignaturesStatus(teacherSchool(user), user.id, sectionId, query);
   }
 }
 

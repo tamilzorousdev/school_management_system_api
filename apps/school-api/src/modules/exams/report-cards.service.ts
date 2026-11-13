@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, In, IsNull } from 'typeorm';
 import { AppException } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
@@ -12,9 +12,15 @@ import {
   ReportCardScopeDto,
   ReportCardStudentDto,
   SectionReportCardQueryDto,
+  SignReportCardDto,
+  SectionSignaturesStatusDto,
+  SectionStudentSignatureItemDto,
 } from './dto/report-card.dto';
 import { StudentExamResultDto } from './dto/exams.dto';
 import { Exam } from './entities/exam.entity';
+import { ReportCardSignature } from './entities/report-card-signature.entity';
+import { Staff } from '../staff/entities/staff.entity';
+import { Guardian } from '../students/entities/guardian.entity';
 import { ExamsService } from './exams.service';
 import { reportCardsPdf, ReportCardPdfData } from './report-card.pdf';
 import { attendanceSummary, buildReportCard, CardExamInput, gradeScale } from './report-card.logic';
@@ -36,6 +42,10 @@ interface Enrollment {
   roll_no: number | null;
   class_teacher: string | null;
   parent_name: string | null;
+  class_teacher_user_id: number | null;
+  class_teacher_signature_file_id: number | null;
+  parent_mobile: string | null;
+  parent_signature_file_id: number | null;
 }
 
 interface YearExam {
@@ -78,14 +88,21 @@ const ENROLLMENT_SQL = `
          to_char(y.start_date, 'YYYY-MM-DD') AS year_start, to_char(y.end_date, 'YYYY-MM-DD') AS year_end,
          c.id AS class_id, c.name AS class_name, e.section_id, coalesce(sec.name, '') AS section_name, e.roll_no,
          u.name AS class_teacher,
+         sec.class_teacher_user_id,
+         st.signature_file_id AS class_teacher_signature_file_id,
          (SELECT g.name FROM student_guardians sg JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
-          WHERE sg.student_id = s.id ORDER BY sg.is_primary DESC, sg.id LIMIT 1) AS parent_name
+          WHERE sg.student_id = s.id ORDER BY sg.is_primary DESC, sg.id LIMIT 1) AS parent_name,
+         (SELECT g.mobile FROM student_guardians sg JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
+          WHERE sg.student_id = s.id ORDER BY sg.is_primary DESC, sg.id LIMIT 1) AS parent_mobile,
+         (SELECT g.signature_file_id FROM student_guardians sg JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
+          WHERE sg.student_id = s.id ORDER BY sg.is_primary DESC, sg.id LIMIT 1) AS parent_signature_file_id
   FROM student_enrollments e
   JOIN students s ON s.id = e.student_id AND s.deleted_at IS NULL
   JOIN academic_years y ON y.id = e.academic_year_id
   JOIN classes c ON c.id = e.class_id
   LEFT JOIN sections sec ON sec.id = e.section_id
-  LEFT JOIN users u ON u.id = sec.class_teacher_user_id`;
+  LEFT JOIN users u ON u.id = sec.class_teacher_user_id
+  LEFT JOIN staff st ON st.user_id = sec.class_teacher_user_id AND st.deleted_at IS NULL`;
 
 @Injectable()
 export class ReportCardsService {
@@ -179,7 +196,7 @@ export class ReportCardsService {
         signature_url: this.files.linkFor(school.signature_file_id),
         seal_url: this.files.linkFor(school.seal_file_id),
       },
-      student: this.studentDto(enrollment),
+      student: await this.studentDto(schoolId, enrollment, scope),
       scope: {
         kind: scope.kind,
         title: this.title(scope),
@@ -198,7 +215,22 @@ export class ReportCardsService {
     };
   }
 
-  private studentDto(enrollment: Enrollment): ReportCardStudentDto {
+  private async studentDto(schoolId: number, enrollment: Enrollment, scope: Scope): Promise<ReportCardStudentDto> {
+    const sigRepo = this.dataSource.getRepository(ReportCardSignature);
+    const sig = await sigRepo.findOne({
+      where: {
+        school_id: schoolId,
+        student_id: enrollment.student_id,
+        academic_year_id: enrollment.academic_year_id,
+        term_id: scope.term?.id ?? IsNull(),
+        exam_id: scope.exam?.id ?? IsNull(),
+      },
+    });
+    const teacherSigned = !!(sig?.teacher_signed_at || enrollment.class_teacher_signature_file_id);
+    const parentSigned = !!sig?.parent_signed_at;
+    const teacherSigFileId = sig?.teacher_signature_file_id ?? enrollment.class_teacher_signature_file_id;
+    const parentSigFileId =
+      sig?.parent_signature_file_id ?? (parentSigned ? enrollment.parent_signature_file_id : null);
     return {
       id: enrollment.student_id,
       full_name: enrollment.full_name,
@@ -210,6 +242,12 @@ export class ReportCardsService {
       parent_name: enrollment.parent_name,
       class_teacher: enrollment.class_teacher,
       photo_url: this.files.linkFor(enrollment.photo_file_id),
+      class_teacher_signature_url: teacherSigned ? this.files.linkFor(teacherSigFileId) : null,
+      parent_signature_url: parentSigned ? this.files.linkFor(parentSigFileId) : null,
+      parent_signed: parentSigned,
+      parent_signed_at: sig?.parent_signed_at ?? null,
+      teacher_signed: teacherSigned,
+      teacher_signed_at: sig?.teacher_signed_at ?? null,
     };
   }
 
@@ -365,6 +403,11 @@ export class ReportCardsService {
       roll_no: row.roll_no === null ? null : Number(row.roll_no),
       class_teacher: (row.class_teacher as string | null) ?? null,
       parent_name: (row.parent_name as string | null) ?? null,
+      class_teacher_user_id: row.class_teacher_user_id === null ? null : Number(row.class_teacher_user_id),
+      class_teacher_signature_file_id:
+        row.class_teacher_signature_file_id === null ? null : Number(row.class_teacher_signature_file_id),
+      parent_mobile: (row.parent_mobile as string | null) ?? null,
+      parent_signature_file_id: row.parent_signature_file_id === null ? null : Number(row.parent_signature_file_id),
     };
   }
 
@@ -462,12 +505,38 @@ export class ReportCardsService {
     const [student] = await this.dataSource.query(`SELECT photo_file_id FROM students WHERE id = $1`, [
       card.student.id,
     ]);
+    const sigRepo = this.dataSource.getRepository(ReportCardSignature);
+    const sig = await sigRepo.findOne({
+      where: {
+        school_id: schoolId,
+        student_id: card.student.id,
+        academic_year_id: card.scope.academic_year.id,
+        term_id: card.scope.term?.id ?? IsNull(),
+        exam_id: card.scope.exam?.id ?? IsNull(),
+      },
+    });
+    const [enr] = await this.dataSource.query(
+      `SELECT se.section_id, s.signature_file_id AS class_teacher_signature_file_id,
+              g.signature_file_id AS parent_signature_file_id
+       FROM student_enrollments se
+       LEFT JOIN sections sec ON sec.id = se.section_id AND sec.deleted_at IS NULL
+       LEFT JOIN staff s ON s.user_id = sec.class_teacher_user_id AND s.deleted_at IS NULL
+       LEFT JOIN student_guardians sg ON sg.student_id = se.student_id AND sg.is_primary = true
+       LEFT JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
+       WHERE se.student_id = $1 AND se.academic_year_id = $2 LIMIT 1`,
+      [card.student.id, card.scope.academic_year.id],
+    );
+    const teacherSigFileId = sig?.teacher_signature_file_id ?? enr?.class_teacher_signature_file_id;
+    const parentSigFileId =
+      sig?.parent_signature_file_id ?? (sig?.parent_signed_at ? enr?.parent_signature_file_id : null);
     return {
       card,
       logo: await this.files.readImage(school?.logo_file_id ?? null),
       signature: await this.files.readImage(school?.signature_file_id ?? null),
       seal: await this.files.readImage(school?.seal_file_id ?? null),
       photo: await this.files.readImage(student?.photo_file_id ?? null),
+      teacher_signature: await this.files.readImage(teacherSigFileId ?? null),
+      parent_signature: await this.files.readImage(parentSigFileId ?? null),
       generated_on: todayIn(this.app.timeZone),
     };
   }
@@ -509,5 +578,176 @@ export class ReportCardsService {
 
   private noResults() {
     return AppException.notFound('No published results to print yet', 'NO_PUBLISHED_RESULTS');
+  }
+
+  async signChildCard(
+    userId: number,
+    studentId: number,
+    dto: SignReportCardDto,
+    pdfBase: string,
+  ): Promise<ReportCardDto> {
+    const schoolId = await this.childSchool(userId, studentId);
+    const guardian = await this.dataSource.getRepository(Guardian).findOne({
+      where: { user_id: userId, school_id: schoolId },
+    });
+    if (!guardian?.signature_file_id) {
+      throw AppException.badRequest('Please upload your signature first', 'NO_SIGNATURE_UPLOADED');
+    }
+    const enrollment = await this.enrollment(schoolId, studentId, dto.academic_year_id);
+    const sigRepo = this.dataSource.getRepository(ReportCardSignature);
+    let sig = await sigRepo.findOne({
+      where: {
+        student_id: studentId,
+        academic_year_id: enrollment.academic_year_id,
+        term_id: dto.term_id ?? IsNull(),
+        exam_id: dto.exam_id ?? IsNull(),
+      },
+    });
+    if (!sig) {
+      sig = sigRepo.create({
+        school_id: schoolId,
+        student_id: studentId,
+        academic_year_id: enrollment.academic_year_id,
+        term_id: dto.term_id ?? null,
+        exam_id: dto.exam_id ?? null,
+      });
+    }
+    sig.parent_user_id = userId;
+    sig.parent_signature_file_id = guardian.signature_file_id;
+    sig.parent_signed_at = new Date();
+    await sigRepo.save(sig);
+    return this.card(schoolId, studentId, dto, pdfBase);
+  }
+
+  async signSection(
+    schoolId: number,
+    teacherUserId: number,
+    sectionId: number,
+    dto: SignReportCardDto,
+  ): Promise<SectionSignaturesStatusDto> {
+    const staff = await this.dataSource.getRepository(Staff).findOne({
+      where: { user_id: teacherUserId, school_id: schoolId },
+    });
+    if (!staff?.signature_file_id) {
+      throw AppException.badRequest('Please upload your signature first', 'NO_SIGNATURE_UPLOADED');
+    }
+    const roster = await this.sectionRoster(schoolId, sectionId);
+    const sigRepo = this.dataSource.getRepository(ReportCardSignature);
+    const now = new Date();
+    for (const student of roster) {
+      let sig = await sigRepo.findOne({
+        where: {
+          student_id: student.student_id,
+          academic_year_id: student.academic_year_id,
+          term_id: dto.term_id ?? IsNull(),
+          exam_id: dto.exam_id ?? IsNull(),
+        },
+      });
+      if (!sig) {
+        sig = sigRepo.create({
+          school_id: schoolId,
+          student_id: student.student_id,
+          academic_year_id: student.academic_year_id,
+          term_id: dto.term_id ?? null,
+          exam_id: dto.exam_id ?? null,
+        });
+      }
+      sig.teacher_user_id = teacherUserId;
+      sig.teacher_signature_file_id = staff.signature_file_id;
+      sig.teacher_signed_at = now;
+      await sigRepo.save(sig);
+    }
+    return this.sectionSignaturesStatus(schoolId, teacherUserId, sectionId, dto);
+  }
+
+  async signStudent(
+    schoolId: number,
+    teacherUserId: number,
+    studentId: number,
+    dto: SignReportCardDto,
+  ): Promise<ReportCardDto> {
+    const staff = await this.dataSource.getRepository(Staff).findOne({
+      where: { user_id: teacherUserId, school_id: schoolId },
+    });
+    if (!staff?.signature_file_id) {
+      throw AppException.badRequest('Please upload your signature first', 'NO_SIGNATURE_UPLOADED');
+    }
+    const enrollment = await this.enrollment(schoolId, studentId, dto.academic_year_id);
+    const sigRepo = this.dataSource.getRepository(ReportCardSignature);
+    let sig = await sigRepo.findOne({
+      where: {
+        student_id: studentId,
+        academic_year_id: enrollment.academic_year_id,
+        term_id: dto.term_id ?? IsNull(),
+        exam_id: dto.exam_id ?? IsNull(),
+      },
+    });
+    if (!sig) {
+      sig = sigRepo.create({
+        school_id: schoolId,
+        student_id: studentId,
+        academic_year_id: enrollment.academic_year_id,
+        term_id: dto.term_id ?? null,
+        exam_id: dto.exam_id ?? null,
+      });
+    }
+    sig.teacher_user_id = teacherUserId;
+    sig.teacher_signature_file_id = staff.signature_file_id;
+    sig.teacher_signed_at = new Date();
+    await sigRepo.save(sig);
+    return this.card(schoolId, studentId, dto, `/api/v1/admin/students/${studentId}/report-card/pdf`);
+  }
+
+  async sectionSignaturesStatus(
+    schoolId: number,
+    teacherUserId: number,
+    sectionId: number,
+    query: SectionReportCardQueryDto,
+  ): Promise<SectionSignaturesStatusDto> {
+    const roster = await this.sectionRoster(schoolId, sectionId);
+    const studentIds = roster.map((r) => r.student_id);
+    const sigRepo = this.dataSource.getRepository(ReportCardSignature);
+    const sigs = await sigRepo.find({
+      where: {
+        school_id: schoolId,
+        student_id: In(studentIds),
+        term_id: query.term_id ?? IsNull(),
+        exam_id: query.exam_id ?? IsNull(),
+      },
+    });
+    const sigMap = new Map(sigs.map((item) => [item.student_id, item]));
+
+    const students: SectionStudentSignatureItemDto[] = roster.map((r) => {
+      const sig = sigMap.get(r.student_id);
+      const teacherSigned = !!(sig?.teacher_signed_at ?? r.class_teacher_signature_file_id);
+      const parentSigned = !!sig?.parent_signed_at;
+      return {
+        student_id: r.student_id,
+        admission_no: r.admission_no,
+        full_name: r.full_name,
+        roll_no: r.roll_no,
+        photo_url: this.files.linkFor(r.photo_file_id),
+        parent_name: r.parent_name,
+        parent_mobile: r.parent_mobile,
+        teacher_signed: teacherSigned,
+        teacher_signed_at: sig?.teacher_signed_at ?? null,
+        parent_signed: parentSigned,
+        parent_signed_at: sig?.parent_signed_at ?? null,
+        status: parentSigned ? 'signed' : 'pending_parent',
+      };
+    });
+
+    const teacherSignedCount = students.filter((item) => item.teacher_signed).length;
+    const parentSignedCount = students.filter((item) => item.parent_signed).length;
+
+    return {
+      summary: {
+        total: students.length,
+        teacher_signed: teacherSignedCount,
+        parent_signed: parentSignedCount,
+        parent_pending: students.length - parentSignedCount,
+      },
+      students,
+    };
   }
 }

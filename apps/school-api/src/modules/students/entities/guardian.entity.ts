@@ -36,6 +36,9 @@ export class Guardian extends SchoolScopedEntity {
   @Column({ type: 'int', nullable: true })
   photo_file_id: number | null;
 
+  @Column({ type: 'int', nullable: true })
+  signature_file_id: number | null;
+
   @Index()
   @Column({ type: 'int', nullable: true })
   user_id: number | null;

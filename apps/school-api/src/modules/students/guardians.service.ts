@@ -221,6 +221,8 @@ export class GuardiansService {
       address_line: guardian.address_line,
       city: guardian.city,
       pincode: guardian.pincode,
+      signature_file_id: guardian.signature_file_id ?? null,
+      signature_url: this.files.linkFor(guardian.signature_file_id),
       co_guardians: coGuardians.map((row) => ({ ...row, id: Number(row.id) })),
     };
   }
@@ -388,6 +390,24 @@ export class GuardiansService {
       last_login_at: guardian.user?.last_login_at ?? null,
       children_count: children.length,
       children,
+    };
+  }
+  async updateSignatureForUser(
+    userId: number,
+    fileId: number | null,
+  ): Promise<{ signature_file_id: number | null; signature_url: string | null }> {
+    const guardian = await this.ownGuardian(userId);
+    if (fileId !== null && fileId !== undefined) {
+      await this.files.assertAttachable(fileId, guardian.school_id, 'signature_file_id');
+    }
+    guardian.signature_file_id = fileId ?? null;
+    await this.guardians.save(guardian);
+    if (guardian.user_id) {
+      await this.dataSource.getRepository(User).update(guardian.user_id, { signature_file_id: fileId ?? null });
+    }
+    return {
+      signature_file_id: guardian.signature_file_id,
+      signature_url: this.files.linkFor(guardian.signature_file_id),
     };
   }
 }

@@ -846,4 +846,22 @@ export class StaffService {
       created_at: row.created_at,
     }));
   }
+  async updateSignature(
+    schoolId: number,
+    userId: number,
+    fileId: number | null,
+  ): Promise<{ signature_file_id: number | null; signature_url: string | null }> {
+    if (fileId !== null && fileId !== undefined) {
+      await this.files.assertAttachable(fileId, schoolId, 'signature_file_id');
+    }
+    const staff = await this.staff.findOneBy({ user_id: userId, school_id: schoolId });
+    if (!staff) throw AppException.notFound('Staff record not found', 'STAFF_NOT_FOUND');
+    staff.signature_file_id = fileId ?? null;
+    await this.staff.save(staff);
+    await this.dataSource.getRepository(User).update(userId, { signature_file_id: fileId ?? null });
+    return {
+      signature_file_id: staff.signature_file_id,
+      signature_url: this.files.linkFor(staff.signature_file_id),
+    };
+  }
 }

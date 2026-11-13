@@ -57,6 +57,7 @@ import {
 import { GuardiansService } from './guardians.service';
 import { StudentsService } from './students.service';
 import { PARENT_MODULE_TAGS } from '../mobile/parent-modules.catalog';
+import { SignatureResponseDto, UpdateSignatureDto } from '../exams/dto/report-card.dto';
 
 @ApiTags('Admin · Students')
 @ApiBearerAuth()
@@ -405,6 +406,13 @@ export class MobileParentController {
   @ApiErrors(HttpStatus.NOT_FOUND)
   profile(@CurrentUser() user: AuthUser) {
     return this.guardians.profileForUser(user.id);
+  }
+
+  @Put('signature')
+  @ApiOperation({ summary: 'Update or clear my parent signature' })
+  @ApiEnvelope(SignatureResponseDto)
+  async updateSignature(@CurrentUser() user: AuthUser, @Body() dto: UpdateSignatureDto) {
+    return this.guardians.updateSignatureForUser(user.id, dto.signature_file_id ?? null);
   }
 
   @Patch('profile')
