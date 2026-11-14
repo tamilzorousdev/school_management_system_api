@@ -11,6 +11,7 @@ import { DiaryEntryDto, TeacherDiaryQueryDto } from '../diary/dto/diary.dto';
 import { MeetingDto, MobileMeetingQueryDto } from '../meetings/dto/meeting.dto';
 import { MeetingsService } from '../meetings/meetings.service';
 import { AssignmentsService } from '../staff/assignments.service';
+import { FilesService } from '../files/files.service';
 import { PreviewTeacherDto, TeacherPreviewDto } from './dto/teacher-preview.dto';
 import { viewAs } from './preview-user';
 import { TeacherAppService } from './teacher-app.service';
@@ -29,6 +30,7 @@ export class TeacherPreviewService {
     private readonly meetingsService: MeetingsService,
     private readonly chatService: ChatService,
     private readonly announcementsService: AnnouncementsService,
+    private readonly files: FilesService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -88,7 +90,7 @@ export class TeacherPreviewService {
 
   private async teacher(schoolId: number, staffId: number): Promise<PreviewTeacher> {
     const [row] = await this.dataSource.query(
-      `SELECT st.id, st.user_id, st.staff_type, st.designation, st.employee_no, u.name, u.status
+      `SELECT st.id, st.user_id, st.staff_type, st.designation, st.employee_no, u.name, u.status, u.photo_file_id
          FROM staff st JOIN users u ON u.id = st.user_id
         WHERE st.id = $1 AND st.school_id = $2 AND st.deleted_at IS NULL AND u.deleted_at IS NULL`,
       [staffId, schoolId],
@@ -106,6 +108,8 @@ export class TeacherPreviewService {
         designation: row.designation,
         employee_no: row.employee_no,
         can_sign_in: row.status === 'active',
+        photo_file_id: row.photo_file_id ? Number(row.photo_file_id) : null,
+        photo_url: this.files.linkFor(row.photo_file_id ? Number(row.photo_file_id) : null),
       },
       user: viewAs(userId, row.name, schoolId, ROLES.TEACHER),
     };

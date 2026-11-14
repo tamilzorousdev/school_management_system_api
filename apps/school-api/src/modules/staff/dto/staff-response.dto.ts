@@ -47,6 +47,9 @@ export class StaffListItemDto {
   @ApiProperty({ nullable: true, type: Number })
   photo_file_id: number | null;
 
+  @ApiProperty({ nullable: true, type: String })
+  photo_url: string | null;
+
   @ApiProperty({ type: [RoleRefDto] })
   roles: RoleRefDto[];
 

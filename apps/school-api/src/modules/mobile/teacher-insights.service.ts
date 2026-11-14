@@ -10,6 +10,7 @@ import { AssignmentsService } from '../staff/assignments.service';
 import { Staff } from '../staff/entities/staff.entity';
 import { StaffLeaveService } from '../staff-leave/staff-leave.service';
 import { TimetableService } from '../timetable/timetable.service';
+import { FilesService } from '../files/files.service';
 import {
   ClassTeacherSummaryDto,
   LeavePreviewDto,
@@ -18,7 +19,6 @@ import {
   StaffLeaveApprovalDto,
   TeacherProfileDto,
 } from './dto/teacher-insights.dto';
-import { FilesService } from '../files/files.service';
 import { affectedPeriods, balanceAfter, impactSummary, SlotRow, sectionsOf } from './teacher-insights.logic';
 
 @Injectable()
@@ -184,7 +184,7 @@ export class TeacherInsightsService {
     if (!staff) throw AppException.notFound('Staff record not found', 'STAFF_NOT_FOUND');
     const [classes, [person], [load]] = await Promise.all([
       this.assignments.teacherClasses(schoolId, user.id),
-      this.dataSource.query(`SELECT name, mobile FROM users WHERE id = $1`, [user.id]),
+      this.dataSource.query(`SELECT name, mobile, photo_file_id FROM users WHERE id = $1`, [user.id]),
       this.dataSource.query(
         `SELECT COUNT(*) AS count FROM timetable_slots t JOIN academic_years y ON y.id = t.academic_year_id AND y.is_current
          WHERE t.teacher_user_id = $1`,
@@ -206,6 +206,8 @@ export class TeacherInsightsService {
       user_id: user.id,
       name: person?.name ?? '',
       mobile: person?.mobile ?? '',
+      photo_file_id: person?.photo_file_id ? Number(person.photo_file_id) : null,
+      photo_url: this.files.linkFor(person?.photo_file_id ? Number(person.photo_file_id) : null),
       employee_no: staff.employee_no,
       designation: staff.designation,
       department: staff.department,

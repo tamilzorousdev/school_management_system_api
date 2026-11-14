@@ -323,6 +323,7 @@ export class StaffService {
             email: dto.email ?? null,
             status: 'active',
             language: dto.language ?? 'en',
+            photo_file_id: dto.photo_file_id ?? null,
           }),
         );
         invited = true;
@@ -333,6 +334,7 @@ export class StaffService {
           status: 'active',
           ...(dto.email !== undefined ? { email: dto.email } : {}),
           ...(dto.language ? { language: dto.language } : {}),
+          ...(dto.photo_file_id !== undefined ? { photo_file_id: dto.photo_file_id } : {}),
         });
       }
       const existing = await manager.findBy(UserRole, { user_id: user.id });
@@ -411,6 +413,7 @@ export class StaffService {
         ...(dto.email !== undefined ? { email: dto.email } : {}),
         ...(dto.language ? { language: dto.language } : {}),
         ...(dto.status ? { status: dto.status === 'resigned' ? ('inactive' as const) : ('active' as const) } : {}),
+        ...(dto.photo_file_id !== undefined ? { photo_file_id: dto.photo_file_id } : {}),
       };
       if (Object.keys(userFields).length) await manager.update(User, user.id, userFields);
       if ((dto.mobile && dto.mobile !== user.mobile) || dto.status === 'resigned') {
@@ -419,7 +422,7 @@ export class StaffService {
       }
       if (roles) await this.replaceStaffRoles(manager, user.id, roles);
 
-      const userKeys = ['name', 'mobile', 'email', 'language', 'role_codes'];
+      const userKeys = ['name', 'mobile', 'email', 'language', 'role_codes', 'photo_file_id'];
       const staffFields: Partial<Staff> = Object.fromEntries(
         Object.entries(dto).filter(([key]) => !userKeys.includes(key)),
       );
@@ -807,6 +810,7 @@ export class StaffService {
       mobile: row.user.mobile,
       email: row.user.email,
       photo_file_id: row.user.photo_file_id,
+      photo_url: this.files.linkFor(row.user.photo_file_id),
       roles,
       staff_type: row.staff_type,
       designation: row.designation,

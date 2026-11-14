@@ -161,6 +161,12 @@ export class TeacherProfileDto {
   @ApiProperty({ example: '9000000004' })
   mobile: string;
 
+  @ApiProperty({ example: 42, nullable: true, type: Number })
+  photo_file_id: number | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  photo_url: string | null;
+
   @ApiProperty({ example: 'TZMS-EMP-0004' })
   employee_no: string;
 
