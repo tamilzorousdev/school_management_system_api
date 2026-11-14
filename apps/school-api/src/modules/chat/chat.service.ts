@@ -764,25 +764,33 @@ export class ChatService {
   }
 
   async directory(schoolId: number, query?: string): Promise<ChatDirectoryUserDto[]> {
-    const qb = this.dataSource
-      .createQueryBuilder()
-      .select('DISTINCT u.id', 'id')
-      .addSelect('u.name', 'name')
-      .addSelect('u.role', 'role')
-      .from('users', 'u')
-      .leftJoin('guardians', 'g', 'g.user_id = u.id AND g.school_id = :schoolId', { schoolId })
-      .where('u.deleted_at IS NULL AND u.status = :status', { status: 'active' })
-      .andWhere('(u.school_id = :schoolId OR g.school_id = :schoolId)', { schoolId });
-    if (query && query.trim()) {
-      qb.andWhere('(u.name ILIKE :q OR u.phone ILIKE :q OR u.email ILIKE :q)', { q: `%${query.trim()}%` });
-    }
-    qb.orderBy('u.name', 'ASC').limit(50);
-    const rows = await qb.getRawMany();
-    return rows.map((r) => ({
-      id: Number(r.id),
-      name: r.name,
-      role: r.role,
-      label: r.role === 'teacher' ? 'Teacher' : r.role === 'parent' ? 'Parent' : r.role,
+    const params: (number | string)[] = [schoolId];
+    const words = (query ?? '').trim().split(/\s+/).filter(Boolean);
+    const search = words.map((word) => {
+      const index = params.push(`%${word.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
+      return `AND (u.name ILIKE $${index} OR u.mobile ILIKE $${index} OR u.email ILIKE $${index})`;
+    });
+    const rows: { id: number; name: string; is_teacher: boolean; is_parent: boolean }[] = await this.dataSource.query(
+      `SELECT u.id, u.name,
+              bool_or(r.code IN ('TEACHER', 'HOD', 'PRINCIPAL')) AS is_teacher,
+              bool_or(r.code = 'PARENT') AS is_parent
+       FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id
+       JOIN roles r ON r.id = ur.role_id AND r.code IN ('TEACHER', 'HOD', 'PRINCIPAL', 'PARENT')
+       WHERE u.deleted_at IS NULL AND u.status = 'active'
+         AND (u.school_id = $1 OR EXISTS (
+           SELECT 1 FROM guardians g WHERE g.user_id = u.id AND g.school_id = $1 AND g.deleted_at IS NULL))
+         ${search.join(' ')}
+       GROUP BY u.id, u.name
+       ORDER BY u.name
+       LIMIT 50`,
+      params,
+    );
+    return rows.map((row) => ({
+      id: Number(row.id),
+      name: row.name,
+      role: row.is_teacher ? 'teacher' : 'parent',
+      label: row.is_teacher && row.is_parent ? 'Teacher, parent' : row.is_teacher ? 'Teacher' : 'Parent',
     }));
   }
 
