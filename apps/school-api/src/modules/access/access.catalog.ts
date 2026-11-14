@@ -25,6 +25,8 @@ export const PERMISSIONS = {
   FEES_MANAGE: 'fees.manage',
   EXAMS_VIEW: 'exams.view',
   EXAMS_MANAGE: 'exams.manage',
+  FEEDBACK_VIEW: 'feedback.view',
+  FEEDBACK_MANAGE: 'feedback.manage',
   NOTIFICATIONS_VIEW: 'notifications.view',
   NOTIFICATIONS_SEND: 'notifications.send',
   MEETINGS_VIEW: 'meetings.view',
@@ -72,6 +74,16 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { code: PERMISSIONS.FEES_MANAGE, name: 'Set fee plans, raise invoices and record payments', group: 'Fees' },
   { code: PERMISSIONS.EXAMS_VIEW, name: 'See exams, marks, results and rank holders', group: 'Exams' },
   { code: PERMISSIONS.EXAMS_MANAGE, name: 'Create exams, enter marks and publish results', group: 'Exams' },
+  {
+    code: PERMISSIONS.FEEDBACK_VIEW,
+    name: 'See parent ratings of teachers with the parent names, teacher ranking, teacher-wise results and teacher feedback on students',
+    group: 'Feedback',
+  },
+  {
+    code: PERMISSIONS.FEEDBACK_MANAGE,
+    name: 'Turn parent ratings and student feedback on or off and choose how often parents can rate',
+    group: 'Feedback',
+  },
   { code: PERMISSIONS.NOTIFICATIONS_VIEW, name: 'View sent notifications and the SMS outbox', group: 'Communication' },
   { code: PERMISSIONS.NOTIFICATIONS_SEND, name: 'Send notifications and test messages', group: 'Communication' },
   {
@@ -161,6 +173,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.PAYROLL_VIEW,
       PERMISSIONS.FEES_VIEW,
       PERMISSIONS.EXAMS_VIEW,
+      PERMISSIONS.FEEDBACK_VIEW,
       PERMISSIONS.NOTIFICATIONS_VIEW,
       PERMISSIONS.NOTIFICATIONS_SEND,
       PERMISSIONS.MEETINGS_VIEW,

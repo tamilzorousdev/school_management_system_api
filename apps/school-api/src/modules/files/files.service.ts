@@ -2,6 +2,13 @@ import { Inject, Injectable, Logger, StreamableFile } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { extname } from 'path';
+import {
+  isDrawnSignaturePurpose,
+  isSignaturePurpose,
+  SignatureNotFoundError,
+  signatureFromDrawing,
+  signatureFromPhoto,
+} from './signature-image';
 import sharp from 'sharp';
 import { In, Repository } from 'typeorm';
 import { AppException, AuthUser } from '@app/common';
@@ -71,7 +78,10 @@ export class FilesService {
     if (!input?.buffer?.length) throw AppException.badRequest('Choose a file to upload', 'FILE_MISSING');
     const isImage = input.mimetype in IMAGE_TYPES;
     const isMedia = input.mimetype in AUDIO_TYPES || input.mimetype in VIDEO_TYPES;
+    const asSignature = isImage && (isSignaturePurpose(purpose) || isDrawnSignaturePurpose(purpose));
+    const mimeType = asSignature ? 'image/png' : input.mimetype;
     const extension =
+      (asSignature ? '.png' : undefined) ??
       IMAGE_TYPES[input.mimetype] ??
       DOCUMENT_TYPES[input.mimetype] ??
       AUDIO_TYPES[input.mimetype] ??
@@ -96,7 +106,9 @@ export class FilesService {
     let thumbnailKey: string | null = null;
 
     if (isImage) {
-      const image = await this.processImage(input.buffer, input.mimetype, purpose);
+      const image = asSignature
+        ? await this.signatureImage(input.buffer, isDrawnSignaturePurpose(purpose))
+        : await this.processImage(input.buffer, input.mimetype, purpose);
       content = image.content;
       width = image.width;
       height = image.height;
@@ -111,7 +123,7 @@ export class FilesService {
         storage_key: storageKey,
         thumbnail_key: thumbnailKey,
         original_name: this.safeName(input.originalname, extension),
-        mime_type: input.mimetype,
+        mime_type: mimeType,
         size_bytes: content.length,
         width,
         height,
@@ -213,10 +225,30 @@ export class FilesService {
     return `${this.app.publicUrl}/api/v1/files/${id}/content?${params.toString()}`;
   }
 
+  private async signatureImage(buffer: Buffer, drawn: boolean) {
+    try {
+      return drawn ? await signatureFromDrawing(buffer) : await signatureFromPhoto(buffer);
+    } catch (error) {
+      if (error instanceof SignatureNotFoundError) {
+        throw AppException.badRequest(
+          drawn
+            ? 'The signature pad is empty. Sign inside the box and save again.'
+            : 'No signature found in this photo. Sign with a dark pen on plain white paper, fill the photo with the signature and try again.',
+          'SIGNATURE_NOT_FOUND',
+        );
+      }
+      this.logger.warn(`Signature image rejected: ${(error as Error).message}`);
+      throw AppException.badRequest(
+        'This image could not be read. Upload a valid JPG, PNG or WebP file.',
+        'IMAGE_INVALID',
+      );
+    }
+  }
+
   private async processImage(buffer: Buffer, mimetype: string, purpose?: string) {
     try {
       let pipeline = sharp(buffer, { failOn: 'error' }).rotate();
-      if (purpose === 'school_signature' || purpose === 'school_seal') {
+      if (purpose === 'school_seal') {
         pipeline = pipeline.trim();
       }
       const resized = pipeline

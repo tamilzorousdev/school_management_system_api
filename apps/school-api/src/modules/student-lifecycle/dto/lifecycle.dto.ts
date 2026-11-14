@@ -268,6 +268,23 @@ export class PromotionStudentDto {
   passed: boolean | null;
 }
 
+export class ResultSummaryDto {
+  @ApiProperty({ example: 7 })
+  id: number;
+
+  @ApiProperty({ example: '7' })
+  name: string;
+
+  @ApiProperty({ example: 38, description: 'Students with published exam marks this year' })
+  assessed: number;
+
+  @ApiProperty({ nullable: true, type: Number, example: 89.5 })
+  pass_percent: number | null;
+
+  @ApiProperty({ nullable: true, type: Number, example: 71.2 })
+  average_percent: number | null;
+}
+
 export class PromotionPreviewDto {
   @ApiProperty({ type: RefDto })
   from_year: RefDto;
@@ -286,6 +303,15 @@ export class PromotionPreviewDto {
 
   @ApiPropertyOptional({ nullable: true, type: Number, example: 74.2 })
   average_percent: number | null;
+
+  @ApiProperty({
+    type: [ResultSummaryDto],
+    description: 'Pass percentage of every class (grade) this year, lowest grade first',
+  })
+  class_results: ResultSummaryDto[];
+
+  @ApiProperty({ type: [ResultSummaryDto], description: 'Pass percentage of each section of the chosen class' })
+  section_results: ResultSummaryDto[];
 
   @ApiProperty({ type: RefDto, nullable: true, description: 'Next class by grade, if it exists' })
   suggested_class: RefDto | null;

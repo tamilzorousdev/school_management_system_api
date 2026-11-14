@@ -93,6 +93,15 @@ export class School extends TrackedEntity {
   @Column({ type: 'int', array: true, nullable: true })
   special_class_class_ids: number[] | null;
 
+  @Column({ type: 'boolean', default: false })
+  teacher_rating_enabled: boolean;
+
+  @Column({ type: 'smallint', default: 3 })
+  teacher_rating_months: number;
+
+  @Column({ type: 'boolean', default: false })
+  student_feedback_enabled: boolean;
+
   @Column({ type: 'varchar', length: 5, default: '08:00' })
   chat_office_start: string;
 

@@ -158,6 +158,13 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 | `TEACHER_CLASH`, `ROOM_CLASH` | 409 | Timetable: the teacher or room is busy in that period |
 | `TEACHER_OVER_LIMIT` | 409 | Teacher assignments or the timetable would give a teacher more periods a week than their `max_periods_per_week`. Changes that bring an old overload down are still allowed |
 | `LIMIT_BELOW_LOAD` | 409 | Staff edit: the weekly limit cannot go below the periods a week the teacher already has |
+| `SIGNATURE_NOT_FOUND` | 400 | Signature upload: no ink found in the photo, or the signature pad is empty |
+| `RATING_CLOSED` | 403 | Parent rating: the school has teacher ratings off, or today is outside the academic year |
+| `NOT_CHILD_TEACHER` | 400 | Parent rating: the teacher does not teach this child |
+| `ALREADY_RATED` | 409 | Parent rating: already rated this teacher in this window; the message says when the next window opens |
+| `FEEDBACK_CLOSED` | 403 | Student feedback: the school has it off |
+| `NO_TERM_NOW` | 400 | Student feedback: today is not inside any term |
+| `FEEDBACK_ALREADY_GIVEN` | 409 | Student feedback: this teacher already gave this student feedback this term |
 | `BELL_INVALID`, `PERIOD_IN_USE` | 400/409 | Bell schedule overlaps, or removes a period the timetable uses |
 | `TEACHER_NOT_ABSENT`, `SUBSTITUTE_BUSY` | 409 | Substitutes: the period's teacher is in, or the chosen teacher is not free |
 | `RUN_FINALIZED`, `RUN_EMPTY` | 409/400 | Payroll month is already final, or has no payslips |
@@ -409,6 +416,33 @@ Sign in as 9000000004 (Priya, class teacher of 6-A) to try it.
 
 Staff leave status moves `pending_hod` → `pending_principal` → `approved` (or `rejected` at any step). With no HOD in the department it starts at `pending_principal`.
 
+### Digital signature (sign on screen or photo)
+
+Teachers, parents and the school have two ways to sign. Both are saved as a clean transparent PNG (`mime_type: image/png`, up to 900 px wide, cropped tight to the ink), so report cards, receipts and payslips look the same either way.
+
+1. **Sign here (signature pad in the app).** The app shows a white pad; the person signs with a finger or stylus. Export the pad as a PNG (transparent or white background, dark ink) and upload it with `POST /files` (multipart `file`, `purpose: "signature_pad"`). The API keeps the strokes, removes the background and crops it. An empty pad gives `400 SIGNATURE_NOT_FOUND` ("The signature pad is empty").
+2. **Upload photo (signed on paper).** Sign with a dark pen on white paper and take a photo; upload with `purpose: "signature"` (`teacher_signature`, `parent_signature` and `school_signature` work too). The API fixes the rotation and removes shadows, the paper and ruled lines, keeping only the ink in the pen's colour. A photo without ink gives `400 SIGNATURE_NOT_FOUND`.
+
+Then save the file id with `PUT /mobile/teacher/signature` or `PUT /mobile/parent/signature` `{ "signature_file_id": 42 }` (school: `PATCH /admin/school` `{ signature_file_id }`). Other upload purposes keep their format.
+
+### Teacher feedback
+
+**Settings (admin web).** `GET`/`PUT /admin/feedback/settings` `{ teacher_rating_enabled, teacher_rating_months: 1|2|3|6|12, student_feedback_enabled }` (permission `feedback.manage` to save, `feedback.view` to read). Rating windows start on the first day of the academic year and last `teacher_rating_months`; `cycle` is today's window and `term` is today's term (id 0 = the whole year when the school has no terms).
+
+**Parent rates a teacher (Parent app).** `GET /mobile/parent/children/{id}/teacher-ratings` lists the child's class teacher and subject teachers with `rated` and `my_rating` for this window, plus `enabled`, `months` and `cycle` (hide the Rate button when `enabled` is false or `rated` is true). `POST` the same path `{ teacher_user_id, stars: 1-5, behaviour: "good"|"bad", remark? }` saves it and tells the school admin at once (`TEACHER_RATED`). One rating per parent, child and teacher per window.
+
+**Teacher sees own ratings (Staff app).** `GET /mobile/teacher/ratings` returns `summary` (this year), `this_cycle`, `cycle` and `remarks` (stars, label, behaviour, remark and the window only). It never names the parent or child and never gives the exact time.
+
+**Teacher gives student feedback (Staff app).** `GET /mobile/teacher/feedback/sections/{sectionId}` lists the section's students with the feedback I gave this term (`enabled`, `term`, `total`, `given`). `POST /mobile/teacher/feedback/students/{studentId}` `{ studies: 1-5, behaviour: 1-5, sports?: 1-5, remark? }`: once per student per term; the parents get `STUDENT_FEEDBACK`. Stars come back with labels: 5 Excellent, 4 Very good, 3 Good, 2 Average, 1 Needs improvement.
+
+**Parent sees feedback (Parent app).** `GET /mobile/parent/children/{id}/feedback`: every teacher's feedback on the child this year, newest first.
+
+**Admin web.** `GET /admin/feedback/ratings` (paged; parent and child shown; `teacher_user_id`, `behaviour`, `max_stars`, `search`, `sort=created_at|stars`), `DELETE /admin/feedback/ratings/{id}` (the parent can rate again), `GET /admin/feedback/ranking` (average stars, then % good, then number of ratings; unrated teachers last with `rank: null`), `GET /admin/feedback/student-feedback` (paged; `section_id`, `teacher_user_id`, `term_id`), `DELETE /admin/feedback/student-feedback/{id}`, and `GET /admin/feedback/teacher-report?exam_id=&teacher_user_id=`: each teacher with every class and subject they take (from teacher assignments), `students`, `papers` (one student in one subject of one exam), `pass_percent`, `fail_percent`, `average_percent`, an `overall` line, their parent `rating` summary and the latest 5 remarks.
+
+### Promotion (admin web)
+
+`GET /admin/promotions/preview?class_id=&section_id=` lists the students of a class or section with each one's `result_percent` and `passed` from this year's published exams, and the selection's `pass_percent` and `average_percent`. `class_results` gives every class (grade) this year with `assessed`, `pass_percent` and `average_percent`, lowest grade first; `section_results` gives the same for each section of the chosen class. The web ticks every student by default; `POST /admin/promotions` takes the unticked ones in `detained_ids` (they repeat the class) and skips students already in next year.
+
 ### Two attendance sessions a day
 
 Student attendance is taken in the **1st period (`session: "morning"`)** and the **5th period (`session: "afternoon"`)**; they are stored as periods 1 and 5. The old `period` field still works (0 or 1 = morning, 5 = afternoon); any other period gives `400 PERIOD_NOT_ALLOWED`.
@@ -488,6 +522,7 @@ Teachers mark the **morning** session in the 1st period and the **afternoon** se
 | Call | What it gives |
 |---|---|
 | `GET /admin/attendance/board?date=&session=&status=missed` | Each section has `missed` and `class_teacher_id`; the board has `sections_missed`, `opens_at`, `closes_at`, `grace_minutes`. `status` = `marked`, `not_marked` or `missed` filters the list |
+| `GET /admin/attendance/board?date=&session=` (On Duty) | `on_duty`: students on Sports OD for that date and session, marked or not (`student_id`, `name`, `admission_no`, `section_id`, `section`, `title`, `sport_name`, `session`: null = full day). Each section's `od` is the saved OD count once marked, else the students on OD who will be marked OD. OD counts as present |
 | `GET /admin/attendance/missed?month=2026-11` | Per class teacher: `missed` count and `sessions[]` (`date`, `session`, `section`, `still_not_marked`), most missed first |
 
 Alerts (every minute, once per section and session):
@@ -999,6 +1034,8 @@ Every push (OneSignal `additionalData`) has `category`, `template` and `notifica
 | `diary` | DIARY_POSTED, DIARY_REJECTED | `entry_id` where present | diary |
 | `fees` | FEE_DUE, FEE_OVERDUE | `student_id` | fees |
 | `system` | RESULT_PUBLISHED (`exam_id`), ACHIEVEMENT_ADDED (`achievement_id`) | `student_id` | results / achievements |
+| `system` | STUDENT_FEEDBACK (`feedback_id`) to the parents | `student_id` | the child's feedback |
+| `system` | TEACHER_RATED (`rating_id`, `teacher_user_id`) to the school admin | `student_id` | admin web, Teacher feedback |
 | `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips | `trip_id`, `alert_id`, `announcement_id` where present | the matching screen |
 
 ## Payslips (every staff app)

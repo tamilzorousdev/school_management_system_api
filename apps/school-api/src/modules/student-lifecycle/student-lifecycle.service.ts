@@ -28,6 +28,7 @@ import { TransferCertificate } from './entities/transfer-certificate.entity';
 import { IdCardData, idCardPdf, idCardSheetPdf } from './pdf/id-card.pdf';
 import { UploadedIdCardDesign, uploadedIdCardPdf, uploadedIdCardSheetPdf } from './pdf/id-card-uploaded.pdf';
 import { parseIdCardLayout } from '../../shared/id-card-layout';
+import { GroupResult, groupResults, studentResults } from './promotion-results';
 import { tcPdf } from './pdf/tc.pdf';
 import { yearClause, yearWhere } from '../../shared/year-context';
 
@@ -271,13 +272,6 @@ export class StudentLifecycleService {
       sectionWhere = `AND e.section_id = ${studentParams.length}`;
     }
 
-    const markParams: number[] = [schoolId, current.id, classId];
-    let markSectionWhere = '';
-    if (sectionId) {
-      markParams.push(sectionId);
-      markSectionWhere = `AND e.section_id = ${markParams.length}`;
-    }
-
     const [rows, fromSections, toSections, markRows] = await Promise.all([
       this.dataSource.query(
         `SELECT s.id, s.first_name, s.last_name, s.admission_no, sec.id AS section_id, sec.name AS section_name, e.roll_no,
@@ -305,52 +299,62 @@ export class StudentLifecycleService {
           })
         : Promise.resolve([] as Section[]),
       this.dataSource.query(
-        `SELECT m.student_id, m.marks, m.is_absent, es.max_marks, es.pass_marks
+        `SELECT m.student_id, e.class_id, e.section_id, m.marks, m.is_absent, es.max_marks, es.pass_marks
          FROM exam_marks m
          JOIN exams x ON x.id = m.exam_id AND x.school_id = $1 AND x.academic_year_id = $2
            AND x.status = 'published' AND x.deleted_at IS NULL
-         JOIN student_enrollments e ON e.student_id = m.student_id AND e.academic_year_id = $2 AND e.class_id = $3 ${markSectionWhere}
+         JOIN student_enrollments e ON e.student_id = m.student_id AND e.academic_year_id = $2
          JOIN exam_subjects es ON es.exam_id = m.exam_id AND es.subject_id = m.subject_id AND es.class_id = e.class_id
          WHERE (m.is_absent OR m.marks IS NOT NULL)`,
-        markParams,
+        [schoolId, current.id],
       ) as Promise<
-        { student_id: number; marks: number | null; is_absent: boolean; max_marks: number; pass_marks: number }[]
+        {
+          student_id: number;
+          class_id: number;
+          section_id: number | null;
+          marks: number | null;
+          is_absent: boolean;
+          max_marks: number;
+          pass_marks: number;
+        }[]
       >,
     ]);
 
-    const byStudent = new Map<number, { got: number; max: number; failed: boolean }>();
-    for (const m of markRows) {
-      const got = m.is_absent ? 0 : Number(m.marks ?? 0);
-      const max = Number(m.max_marks);
-      const pass = Number(m.pass_marks);
-      const failed = m.is_absent || got < pass;
-      const entry = byStudent.get(Number(m.student_id)) ?? { got: 0, max: 0, failed: false };
-      entry.got += got;
-      entry.max += max;
-      entry.failed = entry.failed || failed;
-      byStudent.set(Number(m.student_id), entry);
-    }
-    let passCount = 0;
-    let totalPercent = 0;
-    const studentStats = new Map<number, { percent: number; passed: boolean }>();
-    for (const [sId, entry] of byStudent.entries()) {
-      const percent = entry.max > 0 ? Math.round((entry.got / entry.max) * 1000) / 10 : 0;
-      const passed = !entry.failed;
-      if (passed) passCount++;
-      totalPercent += percent;
-      studentStats.set(sId, { percent, passed });
-    }
-    const assessed = byStudent.size;
-    const passPercent = assessed > 0 ? Math.round((passCount / assessed) * 1000) / 10 : null;
-    const averagePercent = assessed > 0 ? Math.round((totalPercent / assessed) * 10) / 10 : null;
+    const marks = markRows.map((row) => ({
+      ...row,
+      student_id: Number(row.student_id),
+      group_id: Number(row.class_id),
+    }));
+    const studentStats = studentResults(marks);
+    const byClass = groupResults(studentStats);
+    const bySection = groupResults(
+      studentResults(
+        marks
+          .filter((row) => row.group_id === classId && row.section_id !== null)
+          .map((row) => ({ ...row, group_id: Number(row.section_id) })),
+      ),
+    );
+    const listed = new Set(rows.map((row) => Number(row.id)));
+    const selection = groupResults(
+      new Map([...studentStats].filter(([id]) => listed.has(id)).map(([id, stat]) => [id, { ...stat, group_id: 0 }])),
+    ).get(0);
+    const resultOf = (group: { id: number; name: string }, result?: GroupResult) => ({
+      id: group.id,
+      name: group.name,
+      assessed: result?.assessed ?? 0,
+      pass_percent: result?.pass_percent ?? null,
+      average_percent: result?.average_percent ?? null,
+    });
 
     return {
       from_year: { id: current.id, name: current.name },
       to_year: { id: next.id, name: next.name },
       from_class: { id: fromClass.id, name: fromClass.name },
       from_sections: fromSections.map((s) => ({ id: s.id, name: s.name })),
-      pass_percent: passPercent,
-      average_percent: averagePercent,
+      pass_percent: selection?.pass_percent ?? null,
+      average_percent: selection?.average_percent ?? null,
+      class_results: classes.map((item) => resultOf(item, byClass.get(item.id))),
+      section_results: fromSections.map((item) => resultOf(item, bySection.get(item.id))),
       suggested_class: suggested ? { id: suggested.id, name: suggested.name } : null,
       to_sections: toSections.map((section) => ({ id: section.id, name: section.name })),
       students: rows.map((row) => {

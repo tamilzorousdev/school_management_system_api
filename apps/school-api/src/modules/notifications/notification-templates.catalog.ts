@@ -47,6 +47,8 @@ export const TEMPLATES = {
   SPECIAL_CLASS_CHANGED: 'SPECIAL_CLASS_CHANGED',
   SPECIAL_CLASS_CANCELLED: 'SPECIAL_CLASS_CANCELLED',
   SPECIAL_CLASS_ABSENT: 'SPECIAL_CLASS_ABSENT',
+  TEACHER_RATED: 'TEACHER_RATED',
+  STUDENT_FEEDBACK: 'STUDENT_FEEDBACK',
 } as const;
 
 interface TemplateText {
@@ -65,6 +67,44 @@ export interface TemplateDefinition {
 }
 
 export const TEMPLATE_CATALOG: TemplateDefinition[] = [
+  {
+    code: TEMPLATES.TEACHER_RATED,
+    category: 'system',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Parent rating for {{teacher}}',
+        body: '{{parent}} ({{student}}, {{class}}) rated {{teacher}} {{stars}} stars, behaviour {{behaviour}}.{{remark}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{teacher}} அவர்களுக்குப் பெற்றோர் மதிப்பீடு',
+        body: '{{parent}} ({{student}}, {{class}}) {{teacher}} அவர்களுக்கு {{stars}} நட்சத்திரங்கள், நடத்தை {{behaviour}} என மதிப்பிட்டார்.{{remark}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.STUDENT_FEEDBACK,
+    category: 'system',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Feedback on {{student}} from {{teacher}}',
+        body: '{{term}}: {{summary}}.{{remark}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{teacher}} அவர்களிடமிருந்து {{student}} பற்றிய கருத்து',
+        body: '{{term}}: {{summary}}.{{remark}}',
+        sms_body: null,
+      },
+    },
+  },
   {
     code: TEMPLATES.SYSTEM_TEST,
     category: 'system',

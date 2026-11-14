@@ -435,6 +435,37 @@ export class BoardSectionDto extends AttendanceSummaryDto {
   holiday: string | null;
 }
 
+export class BoardOnDutyDto {
+  @ApiProperty({ example: 41 })
+  student_id: number;
+
+  @ApiProperty({ example: 'Kavin Raj' })
+  name: string;
+
+  @ApiProperty({ example: 'TZMS-2026-0012', nullable: true, type: String })
+  admission_no: string | null;
+
+  @ApiProperty({ example: 12 })
+  section_id: number;
+
+  @ApiProperty({ example: '6 - A' })
+  section: string;
+
+  @ApiProperty({ example: 'Zonal football meet' })
+  title: string;
+
+  @ApiProperty({ example: 'Football' })
+  sport_name: string;
+
+  @ApiProperty({
+    enum: ['morning', 'afternoon'],
+    nullable: true,
+    example: null,
+    description: 'null = full day',
+  })
+  session: AttendanceSessionName | null;
+}
+
 export class AttendanceBoardDto {
   @ApiProperty({ example: '2026-11-05' })
   date: string;
@@ -484,6 +515,12 @@ export class AttendanceBoardDto {
 
   @ApiProperty({ example: 2, description: 'Student leave requests waiting' })
   leave_pending: number;
+
+  @ApiProperty({
+    type: [BoardOnDutyDto],
+    description: 'Students on Sports On Duty for this date and session, marked or not; they count as present',
+  })
+  on_duty: BoardOnDutyDto[];
 
   @ApiProperty({ type: [BoardSectionDto] })
   sections: BoardSectionDto[];

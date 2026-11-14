@@ -6,6 +6,7 @@ import { validate } from './config/env.validation';
 import { YearContextInterceptor } from './shared/year-context.interceptor';
 import { DatabaseModule } from './database/database.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
 import { PerformanceModule } from './modules/performance/performance.module';
 import { AccessModule } from './modules/access/access.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
@@ -72,6 +73,7 @@ import { UsersModule } from './modules/users/users.module';
     TrackingModule,
     DashboardModule,
     PerformanceModule,
+    FeedbackModule,
     AchievementsModule,
     AppBannersModule,
     MeetingsModule,

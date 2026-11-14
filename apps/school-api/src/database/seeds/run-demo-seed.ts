@@ -6,9 +6,13 @@ import { seedDemoAchievements } from './demo-achievements';
 import { seedDemoDay4 } from './demo-day4';
 import { seedDemoDay5 } from './demo-day5';
 import { seedDemoExams } from './demo-exams';
+import { seedDemoFeedback } from './demo-feedback';
 import { seedDemoFees } from './demo-fees';
 import { seedDemoFinal } from './demo-final';
+import { seedDemoSpecialClasses } from './demo-special-classes';
+import { seedDemoSportsOnDuty } from './demo-sports-on-duty';
 import { seedDemoStaff } from './demo-staff';
+import { seedDemoTimetable } from './demo-timetable';
 import { runSeed, seedCatalog, upsertUser } from './seed-helpers';
 
 if (process.env.NODE_ENV === 'production') {
@@ -41,4 +45,8 @@ runSeed('Demo seed', async (manager) => {
   await seedDemoExams(manager, school);
   await seedDemoFees(manager, school);
   await seedDemoAchievements(manager, school);
+  await seedDemoSportsOnDuty(manager, school);
+  await seedDemoTimetable(manager, school);
+  await seedDemoSpecialClasses(manager, school);
+  await seedDemoFeedback(manager, school);
 });

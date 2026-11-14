@@ -23,6 +23,7 @@ import {
 } from './attendance-sessions';
 import {
   AttendanceBoardDto,
+  BoardOnDutyDto,
   AttendanceSummaryDto,
   BulkSectionMarkDto,
   BulkSectionResultDto,
@@ -462,15 +463,20 @@ export class AttendanceService {
           [schoolId, year.id, date, slot.period, SESSION_PERIOD.morning, SESSION_PERIOD.afternoon],
         )
       : [];
+    const onDuty = year && workingDay ? await this.boardOnDuty(manager, schoolId, year.id, date, slot.session) : [];
     const sections = rows.map((row) => {
       const statuses = row.statuses ?? [];
       const classHoliday = classOff.get(Number(row.class_id)) ?? null;
+      const summary = summarise(statuses);
       return {
         section_id: Number(row.section_id),
         name: `${row.class_name} - ${row.section_name}`,
         class_teacher: row.class_teacher,
         class_teacher_id: row.class_teacher_id === null ? null : Number(row.class_teacher_id),
-        ...summarise(statuses),
+        ...summary,
+        od: row.taken_at
+          ? summary.od
+          : onDuty.filter((student) => student.section_id === Number(row.section_id)).length,
         total: statuses.length || Number(row.total),
         marked: Boolean(row.taken_at),
         missed: closed && !row.taken_at && !classHoliday,
@@ -518,8 +524,55 @@ export class AttendanceService {
       grace_minutes: window.grace_minutes,
       below_75: below,
       leave_pending: Number(pending[0]?.count ?? 0),
+      on_duty: onDuty,
       sections: shown,
     };
+  }
+
+  private async boardOnDuty(
+    manager: EntityManager,
+    schoolId: number,
+    yearId: number,
+    date: string,
+    session: AttendanceSessionName,
+  ): Promise<BoardOnDutyDto[]> {
+    const rows: {
+      student_id: number;
+      first_name: string;
+      last_name: string | null;
+      admission_no: string | null;
+      section_id: number;
+      class_name: string;
+      section_name: string;
+      title: string;
+      sport_name: string;
+      session: AttendanceSessionName | null;
+    }[] = await manager.query(
+      `SELECT DISTINCT ON (s.id) s.id AS student_id, s.first_name, s.last_name, s.admission_no,
+              sec.id AS section_id, c.name AS class_name, sec.name AS section_name,
+              o.title, o.sport_name, o.session
+       FROM sports_on_duty o
+       JOIN students s ON s.id = o.student_id AND s.deleted_at IS NULL AND s.status = 'active'
+       JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = $2
+       JOIN sections sec ON sec.id = e.section_id AND sec.deleted_at IS NULL
+       JOIN classes c ON c.id = sec.class_id
+       WHERE o.school_id = $1 AND o.deleted_at IS NULL AND $3 BETWEEN o.from_date AND o.to_date
+         AND (o.session IS NULL OR o.session = $4)
+       ORDER BY s.id, o.session NULLS FIRST`,
+      [schoolId, yearId, date, session],
+    );
+    return rows
+      .map((row) => ({
+        student_id: Number(row.student_id),
+        name: fullName(row),
+        admission_no: row.admission_no,
+        section_id: Number(row.section_id),
+        section: `${row.class_name} - ${row.section_name}`,
+        title: row.title,
+        sport_name: row.sport_name,
+        session: row.session,
+      }))
+      .sort((a, b) => a.section.localeCompare(b.section, undefined, { numeric: true }) || a.name.localeCompare(b.name));
   }
 
   async monthly(schoolId: number, studentId: number, month: string): Promise<MonthlyAttendanceDto> {
