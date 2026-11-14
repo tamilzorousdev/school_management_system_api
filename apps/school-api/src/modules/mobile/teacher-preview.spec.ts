@@ -1,4 +1,5 @@
 import { DataSource } from 'typeorm';
+import { FilesService } from '../files/files.service';
 import { AnnouncementsService } from '../announcements/announcements.service';
 import { ChatService } from '../chat/chat.service';
 import { DiaryService } from '../diary/diary.service';
@@ -32,6 +33,9 @@ const build = (rows: unknown[]) => {
     unreadCount: jest.fn().mockResolvedValue({ unread: 1 }),
     mine: jest.fn().mockResolvedValue({ items: [], total: 0 }),
   };
+  const files = {
+    linkFor: jest.fn().mockReturnValue(null),
+  };
   const service = new TeacherPreviewService(
     teacherApp as unknown as TeacherAppService,
     assignments as unknown as AssignmentsService,
@@ -39,6 +43,7 @@ const build = (rows: unknown[]) => {
     meetings as unknown as MeetingsService,
     chat as unknown as ChatService,
     announcements as unknown as AnnouncementsService,
+    files as unknown as FilesService,
     { query } as unknown as DataSource,
   );
   return { service, teacherApp, diary, meetings, chat };
@@ -55,6 +60,8 @@ describe('TeacherPreviewService', () => {
       designation: 'TGT Mathematics',
       employee_no: 'EMP-014',
       can_sign_in: true,
+      photo_file_id: null,
+      photo_url: null,
     });
     expect(home.counts).toEqual({ diary_pending: 2, meetings_upcoming: 3, chat_unread: 4, announcements_unread: 1 });
     expect(home.classes).toEqual([{ section_id: 4 }]);

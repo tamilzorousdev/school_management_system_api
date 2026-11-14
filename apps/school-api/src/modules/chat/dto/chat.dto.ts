@@ -192,6 +192,9 @@ export class ChatPersonDto {
 
   @ApiProperty({ example: 'mother', nullable: true, type: String })
   label: string | null;
+
+  @ApiPropertyOptional({ nullable: true, type: String })
+  photo_url?: string | null;
 }
 
 export class OfficeHoursDto {

@@ -908,14 +908,16 @@ export class ChatService {
     return actor.school_id;
   }
 
-  private async users(ids: (number | null)[]): Promise<Map<number, string>> {
+  private async users(ids: (number | null)[]): Promise<Map<number, { name: string; photo_url: string | null }>> {
     const unique = [...new Set(ids.filter((id): id is number => Boolean(id)))];
     if (!unique.length) return new Map();
-    const rows: { id: number; name: string }[] = await this.dataSource.query(
-      `SELECT id, name FROM users WHERE id = ANY($1)`,
+    const rows: { id: number; name: string; photo_file_id: number | null }[] = await this.dataSource.query(
+      `SELECT id, name, photo_file_id FROM users WHERE id = ANY($1)`,
       [unique],
     );
-    return new Map(rows.map((row) => [Number(row.id), row.name]));
+    return new Map(
+      rows.map((row) => [Number(row.id), { name: row.name, photo_url: this.files.linkFor(row.photo_file_id) }]),
+    );
   }
 
   private async presentMessages(rows: ChatMessage[], viewerId: number | null = null): Promise<ChatMessageDto[]> {
@@ -941,7 +943,7 @@ export class ChatService {
     return rows.map((row) => ({
       id: row.id,
       thread_id: row.thread_id,
-      sender: { id: row.sender_user_id, name: people.get(row.sender_user_id) ?? '' },
+      sender: { id: row.sender_user_id, name: people.get(row.sender_user_id)?.name ?? '' },
       sender_party: row.sender_party,
       body: gone(row) ? null : row.body,
       file: gone(row) || !row.file_id ? null : (files.get(row.file_id) ?? null),
@@ -985,7 +987,7 @@ export class ChatService {
       ]),
       this.files.presentMany(rows.map((row) => row.file_id)),
     ]);
-    const ref = (id: number | null) => (id ? { id, name: people.get(id) ?? '' } : null);
+    const ref = (id: number | null) => (id ? { id, name: people.get(id)?.name ?? '' } : null);
     return rows.map((row, index) => ({
       ...base[index]!,
       file: row.file_id ? (files.get(row.file_id) ?? null) : null,
@@ -1107,20 +1109,24 @@ export class ChatService {
         };
       }
       const student = row.student_id ? studentMap.get(row.student_id) : null;
+      const teacherPerson = row.teacher_user_id ? people.get(row.teacher_user_id) : null;
       const teacher = row.teacher_user_id
         ? {
             id: row.teacher_user_id,
-            name: people.get(row.teacher_user_id) ?? '',
+            name: teacherPerson?.name ?? '',
             role: 'teacher' as const,
             label: 'Teacher',
+            photo_url: teacherPerson?.photo_url ?? null,
           }
         : null;
+      const parentPerson = row.parent_user_id ? people.get(row.parent_user_id) : null;
       const parent = row.parent_user_id
         ? {
             id: row.parent_user_id,
-            name: people.get(row.parent_user_id) ?? '',
+            name: parentPerson?.name ?? '',
             role: 'parent' as const,
             label: relationMap.get(`${row.student_id}:${row.parent_user_id}`) ?? 'Parent',
+            photo_url: parentPerson?.photo_url ?? null,
           }
         : null;
       const viewerIsTeacher = viewerId === row.teacher_user_id;

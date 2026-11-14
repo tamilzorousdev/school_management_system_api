@@ -20,6 +20,12 @@ export class PreviewTeacherDto {
 
   @ApiProperty({ example: true, description: 'false when the login is switched off; the app would not open' })
   can_sign_in: boolean;
+
+  @ApiProperty({ example: 42, nullable: true, type: Number })
+  photo_file_id: number | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  photo_url: string | null;
 }
 
 export class TeacherPreviewCountsDto {

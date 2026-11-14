@@ -171,6 +171,11 @@ export class StaffProfileDto {
   @ValidateIf(notNull)
   @Matches(MOBILE_PATTERN, { message: 'emergency_contact_mobile must be a valid 10-digit Indian mobile number' })
   emergency_contact_mobile?: string | null;
+
+  @ApiPropertyOptional({ example: 42, nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  photo_file_id?: number | null;
 }
 
 export class CreateStaffDto extends StaffProfileDto {
