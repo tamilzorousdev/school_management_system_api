@@ -413,6 +413,17 @@ export class ClearChatResultDto {
   cleared_at: Date;
 }
 
+export class EarlierVersionDto {
+  @ApiProperty({ nullable: true, type: String, example: 'Can we meet on Monday?' })
+  body: string | null;
+
+  @ApiProperty({ description: 'When this text was replaced by an edit' })
+  replaced_at: Date;
+
+  @ApiProperty({ type: RefDto })
+  edited_by: RefDto;
+}
+
 export class AuditMessageDto extends ChatMessageDto {
   @ApiProperty({ nullable: true, type: String, description: 'Original text, also when hidden' })
   original_body: string | null;
@@ -440,6 +451,9 @@ export class AuditMessageDto extends ChatMessageDto {
 
   @ApiProperty({ type: [RefDto], description: 'People who deleted it for themselves' })
   deleted_for_me_by: RefDto[];
+
+  @ApiProperty({ type: [EarlierVersionDto], description: 'Text before each edit, oldest first' })
+  earlier_versions: EarlierVersionDto[];
 }
 
 export class MessagesPageDto {

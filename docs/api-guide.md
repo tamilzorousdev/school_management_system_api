@@ -967,7 +967,7 @@ Office hours (School setup, default 08:00–17:00, Monday to Saturday, not on ho
 A message the school hides comes back with `hidden: true` and `body: null`. Office audit: `GET /admin/chat/threads?flagged=true`, `/insights`, `/flagged`, `GET /admin/chat/threads/{id}` (whole transcript; the visit is logged), `POST /admin/chat/messages/{id}/hide { "reason" }`, `/unhide` and `/dismiss-flag`. Permission `chat.audit`.
 
 
-### Deleting, clearing, voice and video
+### Deleting, editing, clearing, voice and video
 
 Same paths for both apps: teacher under `/mobile/teacher/chat/threads/{id}/…`, parent under `/mobile/parent/chat/threads/{id}/…`.
 
@@ -977,8 +977,9 @@ Same paths for both apps: teacher under `/mobile/teacher/chat/threads/{id}/…`,
 | `POST …/messages/{messageId}/delete` `{ "for": "everyone" }` | My own message, within 24 hours (`400 DELETE_WINDOW_PASSED` after, `403 NOT_YOUR_MESSAGE`, `409 ALREADY_DELETED`). Both sides get `deleted: true` with `body` and `file` null: show "This message was deleted". `undo_until` = 10 seconds |
 | `POST …/messages/{messageId}/undo-delete` | Brings it back for both within 10 seconds (`400 UNDO_EXPIRED`, `409 NOTHING_TO_UNDO`) |
 | `POST …/clear` | Clears the chat for me: older messages disappear from my list and preview; the other person keeps them |
+| `POST …/messages/{messageId}/edit` `{ "body": "..." }` | Changes the text of my own message within 24 hours (`400 EDIT_WINDOW_PASSED`, `403 NOT_YOUR_MESSAGE`, `409 ALREADY_DELETED`, `409 MESSAGE_HIDDEN`). Both sides get `edited: true` and `edited_at`: show "edited" next to the time. Sending the same text changes nothing |
 
-Socket events: `chat.deleted { thread_id, message_id, deleted_at }`, `chat.restored` (the message). Every message now has `kind` (text, image, file, voice, video), `duration_seconds`, `deleted`, `deleted_at`, `can_delete_for_everyone`, `undo_until`. The office always sees the original in Chat audit with `deleted_by` and `deleted_for_me_by`, and clears appear in the audit log.
+Socket events: `chat.deleted { thread_id, message_id, deleted_at }`, `chat.restored` (the message), `chat.edited` (the message). Every message now has `kind` (text, image, file, voice, video), `duration_seconds`, `deleted`, `deleted_at`, `can_delete_for_everyone`, `undo_until`. The office always sees the original in Chat audit with `deleted_by` and `deleted_for_me_by`, and every text an edit replaced in `earlier_versions` (`body`, `replaced_at`, `edited_by`, oldest first); teacher and parent see only the latest text. Clears and edits appear in the audit log.
 
 **Voice and video.** Upload with `POST /files` (multipart `file`, `purpose: chat_media`), then send `{ file_id, duration_seconds }`. Voice: m4a, aac, mp3, ogg, wav, webm, 3gp, up to 25 MB, no length limit. Video: mp4, mov, 3gp, webm, up to 25 MB and 120 seconds (`duration_seconds` required; `400 VIDEO_TOO_LONG`). Images and documents keep the `FILE_MAX_MB` limit.
 ## Push notification data (tap routing)

@@ -186,6 +186,29 @@ export class ChatMessageHide {
   created_at: Date;
 }
 
+@Entity('chat_message_edits')
+export class ChatMessageEdit {
+  @PrimaryGeneratedColumn({ primaryKeyConstraintName: 'PK_chat_message_edits' })
+  id: number;
+
+  @Index('IDX_chat_message_edits_school')
+  @Column({ type: 'int' })
+  school_id: number;
+
+  @Index('IDX_chat_message_edits_message')
+  @Column({ type: 'int' })
+  message_id: number;
+
+  @Column({ type: 'text', nullable: true })
+  previous_body: string | null;
+
+  @Column({ type: 'int' })
+  edited_by: number;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  created_at: Date;
+}
+
 export const CHAT_AUDIT_ACTIONS = [
   'viewed_thread',
   'hid_message',

@@ -58,6 +58,7 @@ import {
   ChatAuditLog,
   ChatGroupMember,
   ChatMessage,
+  ChatMessageEdit,
   ChatParty,
   ChatThread,
 } from './entities/chat.entity';
@@ -403,7 +404,17 @@ export class ChatService {
         'EDIT_WINDOW_PASSED',
       );
     }
-    message.body = dto.body.trim();
+    const body = dto.body.trim();
+    if (body === message.body) {
+      return (await this.presentMessages([message], actor.id))[0]!;
+    }
+    await this.dataSource.getRepository(ChatMessageEdit).insert({
+      school_id: message.school_id,
+      message_id: message.id,
+      previous_body: message.body,
+      edited_by: actor.id,
+    });
+    message.body = body;
     message.edited_at = new Date();
     await this.messages.save(message);
     await this.refreshPreview(thread.id);
@@ -961,11 +972,16 @@ export class ChatService {
       `SELECT message_id, user_id FROM chat_message_hides WHERE message_id = ANY($1)`,
       [rows.map((row) => row.id)],
     );
+    const edits = await this.dataSource.getRepository(ChatMessageEdit).find({
+      where: { message_id: In(rows.map((row) => row.id)) },
+      order: { created_at: 'ASC', id: 'ASC' },
+    });
     const [base, people, files] = await Promise.all([
       this.presentMessages(rows),
       this.users([
         ...rows.flatMap((row) => [row.flagged_by, row.hidden_by, row.deleted_for_all_by]),
         ...hides.map((row) => Number(row.user_id)),
+        ...edits.map((row) => row.edited_by),
       ]),
       this.files.presentMany(rows.map((row) => row.file_id)),
     ]);
@@ -984,6 +1000,9 @@ export class ChatService {
       deleted_for_me_by: hides
         .filter((hide) => Number(hide.message_id) === row.id)
         .map((hide) => ref(Number(hide.user_id))!),
+      earlier_versions: edits
+        .filter((item) => item.message_id === row.id)
+        .map((item) => ({ body: item.previous_body, replaced_at: item.created_at, edited_by: ref(item.edited_by)! })),
     }));
   }
 
