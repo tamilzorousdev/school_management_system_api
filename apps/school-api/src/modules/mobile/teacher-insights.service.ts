@@ -19,7 +19,6 @@ import {
   StaffLeaveApprovalDto,
   TeacherProfileDto,
 } from './dto/teacher-insights.dto';
-import { FilesService } from '../files/files.service';
 import { affectedPeriods, balanceAfter, impactSummary, SlotRow, sectionsOf } from './teacher-insights.logic';
 
 @Injectable()
