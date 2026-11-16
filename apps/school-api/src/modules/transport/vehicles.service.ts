@@ -3,9 +3,11 @@ import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { AppException, listQuery, Paginated } from '@app/common';
-import { appConfig, AppConfig } from '../../config/configuration';
+import { appConfig, AppConfig, transportConfig, TransportConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { ROLES } from '../access/access.catalog';
+import { CREW_CHECKS, displayDate } from '../crew/crew.logic';
+import { CrewService } from '../crew/crew.service';
 import { TelematicsClient } from '../fleet/telematics.client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Staff } from '../staff/entities/staff.entity';
@@ -21,10 +23,10 @@ import {
   VehicleInputDto,
   VehicleQueryDto,
 } from './dto/transport.dto';
-import { ExpiryAlert, ExpiryKind } from './entities/expiry-alert.entity';
+import { AlertKind, ExpiryAlert, ExpiryKind } from './entities/expiry-alert.entity';
 import { TransportRoute } from './entities/transport-route.entity';
 import { Vehicle } from './entities/vehicle.entity';
-import { alertThreshold, daysBetween, EXPIRY_LABELS, expiryState } from './transport.logic';
+import { alertThreshold, daysBetween, EXPIRY_LABELS, expiryState, selfAlertThreshold } from './transport.logic';
 
 const VEHICLE_DOCUMENTS: [ExpiryKind, keyof Vehicle][] = [
   ['insurance', 'insurance_expiry'],
@@ -32,6 +34,8 @@ const VEHICLE_DOCUMENTS: [ExpiryKind, keyof Vehicle][] = [
   ['puc', 'puc_expiry'],
   ['permit', 'permit_expiry'],
 ];
+
+type DueDocument = ExpiryDto & { school_id: number; user_id: number | null; approved: boolean };
 
 interface TelematicsDevice {
   id: number;
@@ -51,8 +55,10 @@ export class VehiclesService {
     @InjectRepository(ExpiryAlert) private readonly alerts: Repository<ExpiryAlert>,
     private readonly telematics: TelematicsClient,
     private readonly notifications: NotificationsService,
+    private readonly crew: CrewService,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
+    @Inject(transportConfig.KEY) private readonly transport: TransportConfig,
   ) {}
 
   async list(schoolId: number, query: VehicleQueryDto): Promise<Paginated<VehicleDto>> {
@@ -161,6 +167,13 @@ export class VehiclesService {
       [schoolId, [ROLES.DRIVER, ROLES.ATTENDANT]],
     );
     const vehicles = await this.vehicles.findBy({ school_id: schoolId });
+    const duty = new Map(
+      await Promise.all(
+        rows.map(
+          async (row) => [Number(row.user_id), (await this.crew.dutyOf(schoolId, Number(row.user_id))).status] as const,
+        ),
+      ),
+    );
     return rows
       .map((row) => {
         const isDriver = row.role === ROLES.DRIVER;
@@ -176,6 +189,7 @@ export class VehiclesService {
           licence_expiry: row.licence_expiry,
           licence: isDriver ? expiryState('licence', row.licence_expiry, today) : null,
           vehicle: vehicle ? { id: vehicle.id, name: vehicle.registration_no } : null,
+          duty_status: duty.get(Number(row.user_id)) ?? ('pending' as const),
         };
       })
       .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
@@ -201,17 +215,18 @@ export class VehiclesService {
       subject: item.subject,
       ref_id: item.ref_id,
       vehicle_id: item.vehicle_id,
+      staff_id: item.staff_id,
       date: item.date,
       days_left: item.days_left,
     }));
   }
 
-  private async dueDocuments(schoolId: number | null, days: number): Promise<(ExpiryDto & { school_id: number })[]> {
+  private async dueDocuments(schoolId: number | null, days: number): Promise<DueDocument[]> {
     const today = todayIn(this.app.timeZone);
     const vehicles = await this.vehicles.find({
       where: { ...(schoolId ? { school_id: schoolId } : {}), status: 'active' },
     });
-    const items: (ExpiryDto & { school_id: number })[] = [];
+    const items: DueDocument[] = [];
     for (const vehicle of vehicles) {
       for (const [kind, field] of VEHICLE_DOCUMENTS) {
         const date = vehicle[field] as string | null;
@@ -225,31 +240,44 @@ export class VehiclesService {
             subject: vehicle.registration_no,
             ref_id: vehicle.id,
             vehicle_id: vehicle.id,
+            staff_id: null,
+            user_id: null,
+            approved: false,
             date,
             days_left: daysLeft,
           });
         }
       }
     }
-    const licences: { school_id: number; user_id: number; name: string; licence_expiry: string }[] =
-      await this.dataSource.query(
-        `SELECT st.school_id, st.user_id, u.name, to_char(st.licence_expiry, 'YYYY-MM-DD') AS licence_expiry
-         FROM staff st JOIN users u ON u.id = st.user_id
-         WHERE st.deleted_at IS NULL AND st.status <> 'resigned' AND st.licence_expiry IS NOT NULL
-           AND st.licence_expiry <= ($1::date + $2::int) ${schoolId ? 'AND st.school_id = $3' : ''}`,
-        schoolId ? [today, days, schoolId] : [today, days],
-      );
-    for (const row of licences) {
-      items.push({
-        school_id: Number(row.school_id),
-        kind: 'licence',
-        label: EXPIRY_LABELS.licence,
-        subject: row.name,
-        ref_id: Number(row.user_id),
-        vehicle_id: null,
-        date: row.licence_expiry,
-        days_left: daysBetween(today, row.licence_expiry),
-      });
+    const people: Record<string, string | number | boolean | null>[] = await this.dataSource.query(
+      `SELECT st.school_id, st.id AS staff_id, st.user_id, u.name, st.duty_approved_at IS NOT NULL AS approved,
+              ${CREW_CHECKS.map((check) => `to_char(st.${check.field}, 'YYYY-MM-DD') AS ${check.field}`).join(', ')}
+       FROM staff st JOIN users u ON u.id = st.user_id
+       WHERE st.deleted_at IS NULL AND st.status <> 'resigned'
+         AND (${CREW_CHECKS.map((check) => `st.${check.field} <= ($1::date + $2::int)`).join(' OR ')})
+         ${schoolId ? 'AND st.school_id = $3' : ''}`,
+      schoolId ? [today, days, schoolId] : [today, days],
+    );
+    for (const row of people) {
+      for (const check of CREW_CHECKS) {
+        const date = row[check.field] as string | null;
+        if (!date) continue;
+        const daysLeft = daysBetween(today, date);
+        if (daysLeft > days) continue;
+        items.push({
+          school_id: Number(row.school_id),
+          kind: check.kind,
+          label: EXPIRY_LABELS[check.kind],
+          subject: String(row.name),
+          ref_id: Number(row.user_id),
+          vehicle_id: null,
+          staff_id: Number(row.staff_id),
+          user_id: Number(row.user_id),
+          approved: Boolean(row.approved),
+          date,
+          days_left: daysLeft,
+        });
+      }
     }
     return items.sort((a, b) => a.days_left - b.days_left);
   }
@@ -267,40 +295,72 @@ export class VehiclesService {
 
   async sendExpiryAlerts(schoolId: number | null): Promise<number> {
     const due = await this.dueDocuments(schoolId, 30);
+    const admins = (item: DueDocument) => ({
+      roles: [ROLES.TRANSPORT_INCHARGE, ROLES.ADMIN],
+      school_id: item.school_id,
+    });
     let sent = 0;
     for (const item of due) {
       const threshold = alertThreshold(item.days_left);
       if (threshold === null) continue;
-      const inserted = await this.alerts
-        .createQueryBuilder()
-        .insert()
-        .values({
-          school_id: item.school_id,
-          kind: item.kind,
-          ref_id: item.ref_id,
-          expiry_date: item.date,
-          threshold_days: threshold,
-        })
-        .orIgnore()
-        .execute();
-      if (!(inserted.raw as unknown[] | undefined)?.length) continue;
-      await this.notifications
-        .dispatch({
-          template: 'FLEET_DOCUMENT_EXPIRY',
-          audience: { roles: [ROLES.TRANSPORT_INCHARGE, ROLES.ADMIN], school_id: item.school_id },
-          data: {
-            document: item.label,
-            subject: item.subject,
-            date: item.date.split('-').reverse().join('-'),
-            days: String(Math.max(item.days_left, 0)),
-          },
-        })
-        .then(() => (sent += 1))
-        .catch((error: Error) =>
-          this.logger.warn(`Expiry alert ${item.kind} ${item.ref_id} not sent: ${error.message}`),
-        );
+      const data = {
+        document: item.label,
+        subject: item.subject,
+        date: displayDate(item.date),
+        days: String(Math.max(item.days_left, 0)),
+      };
+      if (await this.firstAlert(item, item.kind, threshold)) {
+        const template = item.user_id ? 'CREW_DOCUMENT_EXPIRY' : 'FLEET_DOCUMENT_EXPIRY';
+        sent += await this.alert(item, template, admins(item), data);
+      }
+      if (!item.user_id) continue;
+      const crew = { user_ids: [item.user_id], school_id: item.school_id };
+      const selfThreshold = selfAlertThreshold(item.days_left);
+      if (
+        this.transport.crewExpiryAutoNotify &&
+        selfThreshold !== null &&
+        (await this.firstAlert(item, `${item.kind as 'licence'}_self`, selfThreshold))
+      ) {
+        const documents = `${item.label} ${item.days_left < 0 ? 'expired on' : 'ends on'} ${data.date}`;
+        sent += await this.alert(item, 'CREW_DOCUMENT_EXPIRY_SELF', crew, { documents });
+      }
+      if (item.days_left < 0 && item.approved && (await this.firstAlert(item, 'blocked', 0))) {
+        sent += await this.alert(item, 'CREW_BLOCKED', admins(item), data);
+        if (this.transport.crewExpiryAutoNotify) await this.alert(item, 'CREW_BLOCKED', crew, data);
+      }
     }
     return sent;
+  }
+
+  private async firstAlert(item: DueDocument, kind: AlertKind, threshold: number): Promise<boolean> {
+    const inserted = await this.alerts
+      .createQueryBuilder()
+      .insert()
+      .values({
+        school_id: item.school_id,
+        kind,
+        ref_id: item.ref_id,
+        expiry_date: item.date,
+        threshold_days: threshold,
+      })
+      .orIgnore()
+      .execute();
+    return Boolean((inserted.raw as unknown[] | undefined)?.length);
+  }
+
+  private async alert(
+    item: DueDocument,
+    template: string,
+    audience: { roles?: string[]; user_ids?: number[]; school_id: number },
+    data: Record<string, string>,
+  ): Promise<number> {
+    return this.notifications
+      .dispatch({ template, audience, data })
+      .then(() => 1)
+      .catch((error: Error) => {
+        this.logger.warn(`Expiry alert ${template} ${item.kind} ${item.ref_id} not sent: ${error.message}`);
+        return 0;
+      });
   }
 
   private async validate(schoolId: number, dto: Partial<VehicleInputDto>, id?: number): Promise<void> {
@@ -322,6 +382,7 @@ export class VehiclesService {
       }
     }
     const people = await this.drivers(schoolId);
+    const current = id ? await this.vehicles.findOneBy({ id, school_id: schoolId }) : null;
     if (dto.driver_user_id && !people.some((item) => item.user_id === dto.driver_user_id && item.role === 'driver')) {
       throw AppException.validation([{ field: 'driver_user_id', message: 'Choose a user with the Driver role' }]);
     }
@@ -330,6 +391,22 @@ export class VehiclesService {
       !people.some((item) => item.user_id === dto.attendant_user_id && item.role === 'attendant')
     ) {
       throw AppException.validation([{ field: 'attendant_user_id', message: 'Choose a user with the Attendant role' }]);
+    }
+    for (const field of ['driver_user_id', 'attendant_user_id'] as const) {
+      const userId = dto[field];
+      if (!userId || userId === current?.[field]) continue;
+      const duty = people.find((item) => item.user_id === userId)?.duty_status;
+      if (duty !== 'approved') {
+        throw AppException.validation([
+          {
+            field,
+            message:
+              duty === 'blocked'
+                ? 'This person needs renewed documents before they can be put on a bus'
+                : 'Approve this person for duty in Drivers and attendants first',
+          },
+        ]);
+      }
     }
   }
 

@@ -595,13 +595,36 @@ Permission `attendance.manage` (AO, school admin, super admin).
 
 Biometric machines push punches to `POST /integrations/biometric/punches` with header `X-Device-Key` (`BIOMETRIC_WEBHOOK_KEY`); the first punch of the day is the check-in and the last is the check-out.
 
+## Drivers and attendants (admin web)
+
+Crew are staff rows whose user has the `DRIVER` or `ATTENDANT` role. Permission `fleet.view` to read, `fleet.manage` to change. `{id}` is the staff id.
+
+| Call | Use |
+|---|---|
+| `GET /admin/crew` | List. Filters: `role` (`driver`/`attendant`), `duty_status` (`pending`/`approved`/`blocked`), `expiry_state` (`expired`/`due_soon`/`missing`), `vehicle_id`, `unassigned`, `status`. Search: name, mobile, employee no, licence no, badge no. Sort: `name`, `employee_no`, `licence_expiry`, `joining_date`, `created_at` |
+| `GET /admin/crew/insights` | `{ drivers, attendants, approved, pending, blocked, due_soon, unassigned }` |
+| `GET /admin/crew/{id}` | Profile with `checks`, `clear`, `approved_at`/`approved_by`/`approved_until`, `last_reminded_at`/`last_reminded_by`, `documents` |
+| `POST /admin/crew` | `{ role, name, mobile, …, licence_no, licence_type (LMV/HMV/TRANSPORT), licence_issued_on, licence_expiry, badge_no, badge_expiry, medical_fitness_expiry, police_verified_on, police_verification_expiry }`. Licence and badge fields are dropped for attendants. 409 `MOBILE_TAKEN`, `STAFF_EXISTS`, `EMPLOYEE_NO_TAKEN` |
+| `PATCH /admin/crew/{id}` | Same fields plus `status`, `left_on`. Changing any licence, badge, medical or police field clears the approval |
+| `DELETE /admin/crew/{id}` | Removes from staff and takes them off their bus |
+| `POST /admin/crew/{id}/approve` | Approve for duty. 400 `CREW_NOT_CLEAR` (message lists the failing checks), 400 `CREW_INACTIVE` |
+| `POST /admin/crew/{id}/remind` | Push "Renew your documents" to the crew member. 400 `NOTHING_DUE`, 429 `REMINDER_TOO_SOON` (6 hours) |
+| `POST /admin/crew/remind` | `{ staff_ids: [] }` → `{ sent, skipped }` |
+| `POST /admin/crew/{id}/documents`, `…/documents/{documentId}/verify`, `DELETE …/documents/{documentId}` | Same body as staff documents. Types `driving_licence`, `psv_badge`, `medical_fitness`, `police_verification` count for clearance; a new one clears the approval |
+
+**Checks.** Drivers: driving licence, PSV badge, medical fitness, police verification. Attendants: medical fitness, police verification. A check is clear when its newest document is verified and its date is today or later.
+
+**Duty status.** `pending` until approved; `approved` while every check stays clear; `blocked` when an approved member's check fails (a date passes or a document is rejected). Only approved crew can be put on a bus (`driver_user_id` / `attendant_user_id` field error) or start a trip (403 `CREW_NOT_APPROVED`). `GET /admin/transport/drivers` now carries `duty_status`.
+
+**Expiry alerts** (07:00 daily, `POST /admin/transport/expiries/check` to run now). Admins and the transport in-charge get `CREW_DOCUMENT_EXPIRY` at 30, 7, 1 and 0 days, and `CREW_BLOCKED` when an approved member's date passes. The crew member gets `CREW_DOCUMENT_EXPIRY_SELF` at 7, 1 and 0 days only when `CREW_EXPIRY_AUTO_NOTIFY=true`; otherwise the admin sends it with the remind calls. `GET /admin/transport/expiries` rows have `staff_id` for crew documents.
+
 ## Live bus
 
 ### Driver app (Driver and Attendant)
 | Call | Screen |
 |---|---|
 | `GET /mobile/driver/trips/today` | Home: my bus, `active_trip` (the trip running now) and each route with today's trips. Show "Start morning pickup" / "Start evening drop" when `active_trip` is null |
-| `POST /mobile/driver/trips` | `{ "route_id": 1, "kind": "pickup" }` starts the trip. Parents of the route get "Bus has started". 409 `TRIP_ALREADY_ACTIVE`, 400 `NO_TRACKER` |
+| `POST /mobile/driver/trips` | `{ "route_id": 1, "kind": "pickup" }` starts the trip. Parents of the route get "Bus has started". 409 `TRIP_ALREADY_ACTIVE`, 400 `NO_TRACKER`, 403 `CREW_NOT_APPROVED` when the bus driver or attendant is not cleared for duty (show the message: renew documents at the transport office) |
 | `GET /mobile/driver/trips/{id}` | Trip screen: `stop_list` in travel order with `status` and `eta_seconds`, `school` (end of a pickup), `riders` (with `boarded`, `alighted`), `not_boarded` and `boardings` (newest first) |
 | `POST /mobile/driver/trips/{id}/positions` | Phone GPS fallback every 5–10 s: `{ "lat", "lng", "speed", "heading" }`. Used only when the bus tracker is silent for 60 s |
 | `POST /mobile/driver/trips/{id}/end` | End by hand. A pickup also ends by itself inside the school gate; a drop after the last stop |

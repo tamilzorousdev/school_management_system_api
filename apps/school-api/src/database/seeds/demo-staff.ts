@@ -282,6 +282,13 @@ const DOCUMENTS: Record<string, [StaffDocumentType, VerificationStatus, string |
     ['id_proof', 'verified', null],
     ['police_verification', 'verified', null],
     ['medical_fitness', 'verified', null],
+    ['driving_licence', 'verified', null],
+    ['psv_badge', 'verified', null],
+  ],
+  '9000000008': [
+    ['id_proof', 'verified', null],
+    ['police_verification', 'verified', null],
+    ['medical_fitness', 'verified', null],
   ],
   '9000000401': [
     ['id_proof', 'verified', null],
@@ -316,6 +323,8 @@ const DOCUMENT_NAMES: Record<StaffDocumentType, string> = {
   experience_letter: 'Experience letter',
   police_verification: 'Police verification',
   medical_fitness: 'Medical fitness certificate',
+  driving_licence: 'Driving licence',
+  psv_badge: 'PSV badge',
   photo: 'Photo',
   other: 'Document',
 };

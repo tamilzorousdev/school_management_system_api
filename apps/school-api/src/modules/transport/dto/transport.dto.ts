@@ -406,6 +406,12 @@ export class DriverDto {
 
   @ApiProperty({ type: RefDto, nullable: true, description: 'Bus they are assigned to' })
   vehicle: RefDto | null;
+
+  @ApiProperty({
+    enum: ['pending', 'approved', 'blocked'],
+    description: 'Only approved crew can be put on a bus or start a trip',
+  })
+  duty_status: 'pending' | 'approved' | 'blocked';
 }
 
 export class StopDto {
@@ -574,14 +580,17 @@ export class ExpiryDto {
   @ApiProperty({ example: 'PUC certificate' })
   label: string;
 
-  @ApiProperty({ example: 'TN 09 AB 1234', description: 'Bus registration, or the driver name for a licence' })
+  @ApiProperty({ example: 'TN 09 AB 1234', description: 'Bus registration, or the crew member name' })
   subject: string;
 
-  @ApiProperty({ example: 1 })
+  @ApiProperty({ example: 1, description: 'Bus id, or the crew member user id' })
   ref_id: number;
 
   @ApiProperty({ nullable: true, type: Number, description: 'Set for bus documents' })
   vehicle_id: number | null;
+
+  @ApiProperty({ nullable: true, type: Number, description: 'Set for crew documents (opens /crew/{staff_id})' })
+  staff_id: number | null;
 
   @ApiProperty({ example: '2026-11-20' })
   date: string;

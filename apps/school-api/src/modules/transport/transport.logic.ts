@@ -10,7 +10,17 @@ export const EXPIRY_LABELS: Record<ExpiryKind, string> = {
   puc: 'PUC certificate',
   permit: 'Permit',
   licence: 'Driving licence',
+  badge: 'PSV badge',
+  medical: 'Medical fitness',
+  police: 'Police verification',
 };
+
+export const SELF_ALERT_THRESHOLDS = [7, 1, 0];
+
+export function selfAlertThreshold(daysLeft: number): number | null {
+  const threshold = alertThreshold(daysLeft);
+  return threshold !== null && SELF_ALERT_THRESHOLDS.includes(threshold) ? threshold : null;
+}
 
 export interface Point {
   lat: number;
