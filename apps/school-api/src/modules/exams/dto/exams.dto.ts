@@ -404,7 +404,13 @@ export class MarksSheetDto {
   @ApiProperty({ type: MarkSubjectDto })
   subject: MarkSubjectDto;
 
-  @ApiProperty({ example: true, description: 'false once published for teachers; the office can still correct' })
+  @ApiPropertyOptional({ type: RefDto, nullable: true })
+  teacher?: RefDto | null;
+
+  @ApiPropertyOptional({ type: RefDto, nullable: true })
+  class_teacher?: RefDto | null;
+
+  @ApiProperty({ example: true, description: 'true only if caller is the assigned class or subject teacher' })
   editable: boolean;
 
   @ApiProperty({ example: 8 })

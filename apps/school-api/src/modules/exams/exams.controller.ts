@@ -131,23 +131,24 @@ export class ExamsController {
   @ApiErrors(HttpStatus.NOT_FOUND)
   marks(
     @SchoolId() schoolId: number,
+    @CurrentUser() user: AuthUser,
     @Param('id', ParseIntPipe) id: number,
     @Param('sectionId', ParseIntPipe) sectionId: number,
     @Query() query: MarksQueryDto,
   ) {
-    return this.exams.marksSheet(schoolId, id, sectionId, query.subject_id);
+    return this.exams.marksSheet(schoolId, id, sectionId, query.subject_id, user);
   }
 
   @Put(':id/sections/:sectionId/marks')
-  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @RequirePermissions(PERMISSIONS.EXAMS_VIEW)
   @ResponseMessage('Marks saved')
   @ApiOperation({
     summary: 'Save marks of one subject for some or all students of a section',
     description:
-      'marks 0 to max marks (2 decimals). is_absent true saves an absence; marks null with is_absent false clears the entry. 400 VALIDATION_FAILED with errors[].field items.N.marks, DUPLICATE_STUDENT, STUDENT_NOT_IN_SECTION.',
+      'marks 0 to max marks (2 decimals). Only the assigned class teacher or subject teacher can enter marks.',
   })
   @ApiEnvelope(MarksSheetDto, { message: 'Marks saved' })
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN)
   saveMarks(
     @SchoolId() schoolId: number,
     @CurrentUser() user: AuthUser,

@@ -70,7 +70,7 @@ export class MobileTeacherExamsController {
   ) {
     const schoolId = teacherSchool(user);
     await this.exams.assertTeacherSubject(schoolId, user.id, sectionId, query.subject_id);
-    return this.exams.marksSheet(schoolId, id, sectionId, query.subject_id, true);
+    return this.exams.marksSheet(schoolId, id, sectionId, query.subject_id, user);
   }
 
   @Put('exams/:id/sections/:sectionId/marks')
@@ -91,7 +91,7 @@ export class MobileTeacherExamsController {
   ) {
     const schoolId = teacherSchool(user);
     await this.exams.assertTeacherSubject(schoolId, user.id, sectionId, query.subject_id);
-    return this.exams.saveMarks(schoolId, id, sectionId, query.subject_id, dto, user, true);
+    return this.exams.saveMarks(schoolId, id, sectionId, query.subject_id, dto, user);
   }
 
   @Get('sections/:id/ranking')

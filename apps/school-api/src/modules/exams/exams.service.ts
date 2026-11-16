@@ -292,12 +292,28 @@ export class ExamsService {
     return this.subjects(schoolId, exam.id);
   }
 
+  async assertStaffMarksAccess(schoolId: number, userId: number, sectionId: number, subjectId: number): Promise<void> {
+    const [row] = await this.dataSource.query(
+      `SELECT (sec.class_teacher_user_id = $2) AS is_class_teacher,
+              EXISTS (SELECT 1 FROM teacher_assignments ta WHERE ta.section_id = sec.id AND ta.subject_id = $3
+                        AND ta.teacher_user_id = $2 AND ta.deleted_at IS NULL) AS teaches
+       FROM sections sec WHERE sec.id = $1 AND sec.school_id = $4 AND sec.deleted_at IS NULL`,
+      [sectionId, userId, subjectId, schoolId],
+    );
+    if (!row?.is_class_teacher && !row?.teaches) {
+      throw AppException.forbidden(
+        'Marks entry is restricted to the assigned class teacher or subject teacher. Administrators cannot enter marks.',
+        'MARKS_TEACHER_ONLY',
+      );
+    }
+  }
+
   async marksSheet(
     schoolId: number,
     examId: number,
     sectionId: number,
     subjectId: number,
-    forTeacher = false,
+    user?: AuthUser,
   ): Promise<MarksSheetDto> {
     const exam = await this.find(schoolId, examId);
     const section = await this.examSection(schoolId, exam, sectionId);
@@ -308,6 +324,22 @@ export class ExamsService {
       roster.map((row) => row.student_id),
       subjectId,
     );
+    const [assignment] = await this.dataSource.query(
+      `SELECT u.id, u.name,
+              sec.class_teacher_user_id,
+              ctu.name AS class_teacher_name
+       FROM sections sec
+       LEFT JOIN teacher_assignments ta ON ta.section_id = sec.id AND ta.subject_id = $2 AND ta.deleted_at IS NULL
+       LEFT JOIN users u ON u.id = ta.teacher_user_id
+       LEFT JOIN users ctu ON ctu.id = sec.class_teacher_user_id
+       WHERE sec.id = $1 AND sec.school_id = $3`,
+      [sectionId, subjectId, schoolId],
+    );
+    const isSubjectTeacher = Boolean(user && assignment?.id && Number(assignment.id) === user.id);
+    const isClassTeacher = Boolean(
+      user && assignment?.class_teacher_user_id && Number(assignment.class_teacher_user_id) === user.id,
+    );
+    const canEnter = (isSubjectTeacher || isClassTeacher) && exam.status === 'draft';
     const students = roster.map((row) => {
       const mark = marks.get(`${row.student_id}:${subjectId}`);
       return {
@@ -324,7 +356,11 @@ export class ExamsService {
       exam: this.ref(exam),
       section: this.sectionRef(section),
       subject: this.subjectRef(subject),
-      editable: !forTeacher || exam.status === 'draft',
+      teacher: assignment?.name ? { id: Number(assignment.id), name: assignment.name } : null,
+      class_teacher: assignment?.class_teacher_name
+        ? { id: Number(assignment.class_teacher_user_id), name: assignment.class_teacher_name }
+        : null,
+      editable: canEnter,
       entered: students.filter((row) => row.entered).length,
       total: students.length,
       students,
@@ -338,12 +374,12 @@ export class ExamsService {
     subjectId: number,
     dto: SaveMarksDto,
     actor: AuthUser,
-    forTeacher = false,
   ): Promise<MarksSheetDto> {
     const exam = await this.find(schoolId, examId);
-    if (forTeacher && exam.status !== 'draft') {
+    if (exam.status !== 'draft') {
       throw AppException.conflict('Results are published. Ask the office to correct marks.', 'EXAM_PUBLISHED');
     }
+    await this.assertStaffMarksAccess(schoolId, actor.id, sectionId, subjectId);
     const section = await this.examSection(schoolId, exam, sectionId);
     const subject = await this.paper(exam, section.class_id, subjectId);
     const roster = await this.roster(exam, section.class_id, section.id);
@@ -390,7 +426,7 @@ export class ExamsService {
         );
       }
     });
-    return this.marksSheet(schoolId, exam.id, section.id, subjectId, forTeacher);
+    return this.marksSheet(schoolId, exam.id, section.id, subjectId, actor);
   }
 
   async sectionResults(schoolId: number, examId: number, sectionId: number): Promise<SectionResultsDto> {
