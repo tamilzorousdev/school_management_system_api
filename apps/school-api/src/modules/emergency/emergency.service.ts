@@ -1,0 +1,641 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'crypto';
+import { DataSource, In, Repository } from 'typeorm';
+import { AppException, AuthUser, listQuery, Paginated, paginate } from '@app/common';
+import { appConfig, AppConfig } from '../../config/configuration';
+import { todayIn } from '../../shared/dates';
+import { yearWhere } from '../../shared/year-context';
+import { Notification } from '../notifications/entities/notification.entity';
+import { TEMPLATES } from '../notifications/notification-templates.catalog';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { AcademicYear } from '../setup/entities/academic-year.entity';
+import {
+  CreateEmergencyDto,
+  EmergencyAudienceDto,
+  EmergencyBroadcastDto,
+  EmergencyCountsDto,
+  EmergencyInsightsDto,
+  EmergencyPreviewDto,
+  EmergencyQueryDto,
+  EmergencyRecipientDto,
+  EmergencyTemplateDto,
+  MyEmergencyDto,
+  MyEmergencyQueryDto,
+  RecipientsQueryDto,
+  ResendDto,
+  ResendResultDto,
+} from './dto/emergency.dto';
+import { EmergencyDeliveryService } from './emergency-delivery.service';
+import {
+  CandidateRow,
+  EMERGENCY_TEMPLATES,
+  mergeRecipients,
+  MergedRecipient,
+  share,
+  startingStatus,
+  textFor,
+} from './emergency.logic';
+import { EmergencyBroadcast, EmergencyChannel, EmergencyRecipient } from './entities/emergency.entity';
+
+const DEFAULT_CHANNELS: EmergencyChannel[] = ['push', 'sms'];
+const CHUNK = 500;
+
+interface CountRow {
+  broadcast_id: number;
+  [key: string]: number | string;
+}
+
+const escapeLike = (text: string) => text.replace(/[\\%_]/g, (char) => `\\${char}`);
+
+@Injectable()
+export class EmergencyService {
+  private readonly logger = new Logger('Emergency');
+
+  constructor(
+    private readonly dataSource: DataSource,
+    @InjectRepository(EmergencyBroadcast) private readonly broadcasts: Repository<EmergencyBroadcast>,
+    @InjectRepository(EmergencyRecipient) private readonly recipients: Repository<EmergencyRecipient>,
+    @InjectRepository(Notification) private readonly notifications: Repository<Notification>,
+    private readonly delivery: EmergencyDeliveryService,
+    private readonly realtime: RealtimeGateway,
+    @Inject(appConfig.KEY) private readonly app: AppConfig,
+  ) {}
+
+  templates(): EmergencyTemplateDto[] {
+    return EMERGENCY_TEMPLATES;
+  }
+
+  async preview(schoolId: number, dto: EmergencyAudienceDto): Promise<EmergencyPreviewDto> {
+    const people = await this.resolve(schoolId, dto);
+    const withApp = people.filter((person) => person.user_id).length;
+    const withMobile = people.filter((person) => person.mobile).length;
+    return {
+      recipients: people.length,
+      parents: people.filter((person) => person.kind !== 'staff').length,
+      staff: people.filter((person) => person.kind !== 'parent').length,
+      with_app: withApp,
+      with_mobile: withMobile,
+      sms_only: people.filter((person) => !person.user_id && person.mobile).length,
+      unreachable: people.filter((person) => !person.user_id && !person.mobile).length,
+    };
+  }
+
+  async create(actor: AuthUser, schoolId: number, dto: CreateEmergencyDto): Promise<EmergencyBroadcastDto> {
+    if (dto.client_id) {
+      const existing = await this.broadcasts.findOneBy({ school_id: schoolId, client_id: dto.client_id });
+      if (existing) return this.detail(schoolId, existing.id);
+    }
+    if (dto.follow_up_of) await this.find(schoolId, dto.follow_up_of);
+    const people = await this.resolve(schoolId, dto);
+    if (!people.length) {
+      throw AppException.badRequest('Nobody matches this audience', 'NO_RECIPIENTS');
+    }
+    const channels = dto.channels?.length ? dto.channels : DEFAULT_CHANNELS;
+    const now = new Date();
+    const broadcast = await this.dataSource.transaction(async (manager) => {
+      const saved = await manager.save(
+        manager.create(EmergencyBroadcast, {
+          school_id: schoolId,
+          batch_id: randomUUID(),
+          title: dto.title,
+          message: dto.message,
+          title_ta: dto.title_ta || null,
+          message_ta: dto.message_ta || null,
+          category: dto.category,
+          severity: dto.severity ?? 'critical',
+          audience: dto.audience,
+          class_ids: dto.audience === 'classes' ? (dto.class_ids ?? []) : null,
+          section_ids: dto.audience === 'sections' ? (dto.section_ids ?? []) : null,
+          student_ids: dto.audience === 'students' ? (dto.student_ids ?? []) : null,
+          include_teachers: Boolean(dto.include_teachers),
+          channels,
+          status: 'sending',
+          total: people.length,
+          client_id: dto.client_id ?? null,
+          follow_up_of: dto.follow_up_of ?? null,
+          sent_at: now,
+          created_by: actor.id,
+        }),
+      );
+      for (let start = 0; start < people.length; start += CHUNK) {
+        const slice = people.slice(start, start + CHUNK);
+        await manager.insert(
+          EmergencyRecipient,
+          slice.map((person) => {
+            const push = startingStatus('push', person, channels);
+            const sms = startingStatus('sms', person, channels);
+            return {
+              school_id: schoolId,
+              broadcast_id: saved.id,
+              kind: person.kind,
+              user_id: person.user_id,
+              guardian_id: person.guardian_id,
+              name: person.name.slice(0, 150),
+              mobile: person.mobile,
+              language: person.language,
+              students: person.students,
+              push_status: push,
+              push_next_at: push === 'pending' ? now : null,
+              sms_status: sms,
+              sms_next_at: sms === 'pending' ? now : null,
+            };
+          }),
+        );
+        const appUsers = slice.filter((person) => person.user_id);
+        if (appUsers.length) {
+          await manager.insert(
+            Notification,
+            appUsers.map((person) => ({
+              school_id: schoolId,
+              user_id: person.user_id!,
+              batch_id: saved.batch_id,
+              channel: 'in_app' as const,
+              category: 'alert' as const,
+              template_code: TEMPLATES.EMERGENCY_BROADCAST,
+              title: textFor(person.language, saved.title, saved.title_ta),
+              body: textFor(person.language, saved.message, saved.message_ta),
+              data: { broadcast_id: String(saved.id), severity: saved.severity, category: 'alert' },
+              status: 'delivered' as const,
+              sent_at: now,
+            })),
+          );
+        }
+      }
+      return saved;
+    });
+    this.alertLive(broadcast, people);
+    this.logger.log(
+      `Emergency broadcast ${broadcast.id} "${broadcast.title}" by user ${actor.id} to ${people.length} people`,
+    );
+    this.delivery.kick();
+    return this.detail(schoolId, broadcast.id);
+  }
+
+  async list(schoolId: number, query: EmergencyQueryDto): Promise<Paginated<EmergencyBroadcastDto>> {
+    const qb = this.broadcasts.createQueryBuilder('b').where('b.school_id = :schoolId', { schoolId });
+    if (query.category) qb.andWhere('b.category = :category', { category: query.category });
+    if (query.status) qb.andWhere('b.status = :status', { status: query.status });
+    if (query.from)
+      qb.andWhere(`b.sent_at >= (:from::date)::timestamp AT TIME ZONE :tz`, {
+        from: query.from,
+        tz: this.app.timeZone,
+      });
+    if (query.to) {
+      qb.andWhere(`b.sent_at < ((:to::date) + 1)::timestamp AT TIME ZONE :tz`, { to: query.to, tz: this.app.timeZone });
+    }
+    const page = await listQuery(qb, query, {
+      searchable: ['b.title', 'b.message'],
+      sortable: { sent_at: 'b.sent_at', title: 'b.title' },
+      defaultSort: 'sent_at',
+    });
+    return { ...page, items: await this.present(page.items) };
+  }
+
+  async detail(schoolId: number, id: number): Promise<EmergencyBroadcastDto> {
+    const [presented] = await this.present([await this.find(schoolId, id)]);
+    return presented!;
+  }
+
+  async recipientsOf(
+    schoolId: number,
+    id: number,
+    query: RecipientsQueryDto,
+  ): Promise<Paginated<EmergencyRecipientDto>> {
+    await this.find(schoolId, id);
+    const qb = this.recipients.createQueryBuilder('r').where('r.broadcast_id = :id', { id });
+    const filter = query.filter ?? 'all';
+    if (filter === 'failed') qb.andWhere(`(r.push_status = 'failed' OR r.sms_status = 'failed')`);
+    if (filter === 'not_read') qb.andWhere('r.read_at IS NULL');
+    if (filter === 'not_acknowledged') qb.andWhere('r.acknowledged_at IS NULL');
+    if (filter === 'sms_only') qb.andWhere('r.user_id IS NULL AND r.mobile IS NOT NULL');
+    if (filter === 'unreachable') qb.andWhere(`r.push_status = 'none' AND r.sms_status = 'none' AND r.user_id IS NULL`);
+    if (query.search?.trim()) {
+      qb.andWhere(`(r.name ILIKE :search OR r.mobile ILIKE :search OR r.students::text ILIKE :search)`, {
+        search: `%${escapeLike(query.search.trim())}%`,
+      });
+    }
+    const [rows, total] = await qb
+      .orderBy('r.name', 'ASC')
+      .addOrderBy('r.id', 'ASC')
+      .skip((query.page - 1) * query.limit)
+      .take(query.limit)
+      .getManyAndCount();
+    return paginate(
+      [
+        rows.map((row) => ({
+          id: row.id,
+          kind: row.kind,
+          name: row.name,
+          mobile: row.mobile,
+          has_app: Boolean(row.user_id),
+          students: row.students,
+          push_status: row.push_status,
+          push_error: row.push_error,
+          sms_status: row.sms_status,
+          sms_error: row.sms_error,
+          read_at: row.read_at,
+          acknowledged_at: row.acknowledged_at,
+        })),
+        total,
+      ],
+      query.page,
+      query.limit,
+    );
+  }
+
+  async resend(schoolId: number, id: number, dto: ResendDto): Promise<ResendResultDto> {
+    const broadcast = await this.find(schoolId, id);
+    if (broadcast.status === 'sending') {
+      throw AppException.conflict('This broadcast is still sending. Try again when it finishes.', 'STILL_SENDING');
+    }
+    const push = broadcast.channels.includes('push');
+    const sms = broadcast.channels.includes('sms');
+    const reset = (channel: 'push' | 'sms', where: string) =>
+      this.dataSource.query(
+        `UPDATE emergency_recipients
+         SET ${channel}_status = 'pending', ${channel}_attempts = 0, ${channel}_error = NULL,
+             ${channel}_next_at = now(), updated_at = now()
+         WHERE broadcast_id = $1 AND ${where}`,
+        [id],
+      );
+    let condition: string;
+    if (dto.target === 'failed') {
+      condition = `(push_status = 'failed' OR sms_status = 'failed')`;
+    } else {
+      const reachable = [...(push ? ['user_id IS NOT NULL'] : []), ...(sms ? ['mobile IS NOT NULL'] : [])];
+      condition = `acknowledged_at IS NULL AND (${reachable.join(' OR ') || 'false'})`;
+    }
+    const [count] = await this.dataSource.query(
+      `SELECT COUNT(*) AS total FROM emergency_recipients WHERE broadcast_id = $1 AND ${condition}`,
+      [id],
+    );
+    const queued = Number(count?.total ?? 0);
+    if (!queued) return { queued: 0 };
+    if (dto.target === 'failed') {
+      await reset('push', `push_status = 'failed'`);
+      await reset('sms', `sms_status = 'failed'`);
+    } else {
+      if (push) await reset('push', `acknowledged_at IS NULL AND user_id IS NOT NULL`);
+      if (sms) await reset('sms', `acknowledged_at IS NULL AND mobile IS NOT NULL`);
+    }
+    await this.broadcasts.update(id, { status: 'sending', completed_at: null });
+    this.logger.log(`Emergency broadcast ${id}: resend to ${queued} (${dto.target})`);
+    this.delivery.kick();
+    return { queued };
+  }
+
+  async insights(schoolId: number): Promise<EmergencyInsightsDto> {
+    const monthStart = `${todayIn(this.app.timeZone).slice(0, 7)}-01`;
+    const [row] = await this.dataSource.query(
+      `SELECT COUNT(DISTINCT b.id) AS broadcasts, COUNT(r.id) AS recipients,
+              COUNT(r.id) FILTER (WHERE r.push_status = 'sent' OR r.sms_status = 'sent') AS reached,
+              COUNT(r.id) FILTER (WHERE r.acknowledged_at IS NOT NULL) AS acknowledged
+       FROM emergency_broadcasts b LEFT JOIN emergency_recipients r ON r.broadcast_id = b.id
+       WHERE b.school_id = $1 AND b.deleted_at IS NULL AND b.sent_at >= ($2::date)::timestamp AT TIME ZONE $3`,
+      [schoolId, monthStart, this.app.timeZone],
+    );
+    const sending = await this.broadcasts.countBy({ school_id: schoolId, status: 'sending' });
+    const last = await this.broadcasts.findOne({ where: { school_id: schoolId }, order: { sent_at: 'DESC' } });
+    const recipients = Number(row?.recipients ?? 0);
+    return {
+      this_month: Number(row?.broadcasts ?? 0),
+      recipients,
+      reached_percent: share(Number(row?.reached ?? 0), recipients),
+      acknowledged_percent: share(Number(row?.acknowledged ?? 0), recipients),
+      sending,
+      last: last ? (await this.present([last]))[0]! : null,
+    };
+  }
+
+  async mine(user: AuthUser, query: MyEmergencyQueryDto): Promise<Paginated<MyEmergencyDto>> {
+    const qb = this.recipients
+      .createQueryBuilder('r')
+      .innerJoin(EmergencyBroadcast, 'b', 'b.id = r.broadcast_id AND b.deleted_at IS NULL')
+      .where('r.user_id = :userId', { userId: user.id });
+    if (query.pending) qb.andWhere('r.acknowledged_at IS NULL');
+    const [rows, total] = await qb
+      .orderBy('b.sent_at', 'DESC')
+      .addOrderBy('r.id', 'DESC')
+      .offset((query.page - 1) * query.limit)
+      .limit(query.limit)
+      .getManyAndCount();
+    return paginate([await this.presentMine(rows), total], query.page, query.limit);
+  }
+
+  async mineOne(user: AuthUser, id: number): Promise<MyEmergencyDto> {
+    const row = await this.myRow(user, id);
+    if (!row.read_at) {
+      row.read_at = new Date();
+      await this.recipients.update(row.id, { read_at: row.read_at });
+      await this.markInAppRead(user.id, id);
+    }
+    return (await this.presentMine([row]))[0]!;
+  }
+
+  async acknowledge(user: AuthUser, id: number): Promise<MyEmergencyDto> {
+    const row = await this.myRow(user, id);
+    const now = new Date();
+    if (!row.acknowledged_at) {
+      row.acknowledged_at = now;
+      row.read_at ??= now;
+      await this.recipients.update(row.id, { acknowledged_at: row.acknowledged_at, read_at: row.read_at });
+      await this.markInAppRead(user.id, id);
+    }
+    return (await this.presentMine([row]))[0]!;
+  }
+
+  private async resolve(schoolId: number, dto: EmergencyAudienceDto): Promise<MergedRecipient[]> {
+    const year = await this.dataSource.getRepository(AcademicYear).findOneBy(yearWhere(schoolId));
+    if (!year) throw AppException.badRequest('Set the current academic year first', 'NO_CURRENT_YEAR');
+    await this.assertInSchool(schoolId, year.id, dto);
+    const rows: CandidateRow[] = [];
+    if (dto.audience !== 'staff') rows.push(...(await this.parentRows(schoolId, year.id, dto)));
+    if (dto.audience === 'everyone' || dto.audience === 'staff') {
+      rows.push(...(await this.staffRows(schoolId, null)));
+    } else if (dto.include_teachers && dto.audience !== 'parents') {
+      rows.push(...(await this.staffRows(schoolId, await this.teacherIds(year.id, dto))));
+    }
+    return mergeRecipients(rows);
+  }
+
+  private parentRows(schoolId: number, yearId: number, dto: EmergencyAudienceDto): Promise<CandidateRow[]> {
+    const filters: Record<string, [string, number[] | undefined]> = {
+      classes: ['AND e.class_id = ANY($3)', dto.class_ids],
+      sections: ['AND e.section_id = ANY($3)', dto.section_ids],
+      students: ['AND s.id = ANY($3)', dto.student_ids],
+    };
+    const [filter, ids] = filters[dto.audience] ?? ['', undefined];
+    return this.dataSource.query(
+      `SELECT 'parent' AS kind, CASE WHEN u.id IS NOT NULL THEN g.user_id END AS user_id, g.id AS guardian_id,
+              g.name, COALESCE(u.mobile, g.mobile) AS mobile, u.language,
+              s.id AS student_id, concat_ws(' ', s.first_name, s.last_name) AS student_name,
+              c.name || ' - ' || sec.name AS section
+       FROM student_enrollments e
+       JOIN students s ON s.id = e.student_id AND s.deleted_at IS NULL AND s.status = 'active'
+       JOIN student_guardians sg ON sg.student_id = s.id
+       JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
+       LEFT JOIN users u ON u.id = g.user_id AND u.deleted_at IS NULL AND u.status = 'active'
+       LEFT JOIN sections sec ON sec.id = e.section_id
+       LEFT JOIN classes c ON c.id = e.class_id
+       WHERE s.school_id = $1 AND e.academic_year_id = $2 ${filter}`,
+      ids ? [schoolId, yearId, ids] : [schoolId, yearId],
+    );
+  }
+
+  private staffRows(schoolId: number, userIds: number[] | null): Promise<CandidateRow[]> {
+    if (userIds && !userIds.length) return Promise.resolve([]);
+    return this.dataSource.query(
+      `SELECT 'staff' AS kind, u.id AS user_id, NULL::int AS guardian_id, u.name, u.mobile, u.language
+       FROM staff st JOIN users u ON u.id = st.user_id AND u.deleted_at IS NULL AND u.status = 'active'
+       WHERE st.school_id = $1 AND st.deleted_at IS NULL AND st.status <> 'resigned'
+         ${userIds ? 'AND st.user_id = ANY($2)' : ''}`,
+      userIds ? [schoolId, userIds] : [schoolId],
+    );
+  }
+
+  private async teacherIds(yearId: number, dto: EmergencyAudienceDto): Promise<number[]> {
+    const sectionQueries: Record<string, [string, number[] | undefined]> = {
+      classes: [
+        `SELECT id FROM sections WHERE class_id = ANY($1) AND academic_year_id = $2 AND deleted_at IS NULL`,
+        dto.class_ids,
+      ],
+      sections: [`SELECT id FROM sections WHERE id = ANY($1) AND academic_year_id = $2`, dto.section_ids],
+      students: [
+        `SELECT DISTINCT section_id AS id FROM student_enrollments
+         WHERE student_id = ANY($1) AND academic_year_id = $2 AND section_id IS NOT NULL`,
+        dto.student_ids,
+      ],
+    };
+    const entry = sectionQueries[dto.audience];
+    if (!entry) return [];
+    const sections: { id: number }[] = await this.dataSource.query(entry[0], [entry[1] ?? [], yearId]);
+    const sectionIds = sections.map((row) => Number(row.id));
+    if (!sectionIds.length) return [];
+    const teachers: { user_id: number }[] = await this.dataSource.query(
+      `SELECT class_teacher_user_id AS user_id FROM sections WHERE id = ANY($1) AND class_teacher_user_id IS NOT NULL
+       UNION
+       SELECT teacher_user_id FROM teacher_assignments WHERE section_id = ANY($1) AND academic_year_id = $2 AND deleted_at IS NULL`,
+      [sectionIds, yearId],
+    );
+    return teachers.map((row) => Number(row.user_id));
+  }
+
+  private async assertInSchool(schoolId: number, yearId: number, dto: EmergencyAudienceDto): Promise<void> {
+    const checks: [number[] | undefined, string, unknown[], string][] = [
+      [
+        dto.audience === 'classes' ? dto.class_ids : undefined,
+        `SELECT COUNT(*) AS total FROM classes WHERE id = ANY($1) AND school_id = $2 AND deleted_at IS NULL`,
+        [],
+        'classes',
+      ],
+      [
+        dto.audience === 'sections' ? dto.section_ids : undefined,
+        `SELECT COUNT(*) AS total FROM sections WHERE id = ANY($1) AND school_id = $2 AND academic_year_id = $3 AND deleted_at IS NULL`,
+        [yearId],
+        'sections',
+      ],
+      [
+        dto.audience === 'students' ? dto.student_ids : undefined,
+        `SELECT COUNT(*) AS total FROM students WHERE id = ANY($1) AND school_id = $2 AND deleted_at IS NULL`,
+        [],
+        'students',
+      ],
+    ];
+    for (const [ids, sql, extra, label] of checks) {
+      if (!ids?.length) continue;
+      const [row] = await this.dataSource.query(sql, [ids, schoolId, ...extra]);
+      if (Number(row?.total ?? 0) !== ids.length) {
+        throw AppException.badRequest(`Some of the chosen ${label} are not in this school`, 'AUDIENCE_INVALID');
+      }
+    }
+  }
+
+  private alertLive(broadcast: EmergencyBroadcast, people: MergedRecipient[]): void {
+    for (const language of ['en', 'ta'] as const) {
+      const userIds = people
+        .filter((person) => person.user_id && person.language === language)
+        .map((person) => person.user_id!);
+      if (!userIds.length) continue;
+      this.realtime.toUsers(userIds, 'emergency.alert', {
+        broadcast_id: broadcast.id,
+        title: textFor(language, broadcast.title, broadcast.title_ta),
+        message: textFor(language, broadcast.message, broadcast.message_ta),
+        category: broadcast.category,
+        severity: broadcast.severity,
+        sent_at: broadcast.sent_at,
+      });
+    }
+  }
+
+  private async markInAppRead(userId: number, broadcastId: number): Promise<void> {
+    await this.dataSource.query(
+      `UPDATE notifications SET read_at = now(), status = 'read', updated_at = now()
+       WHERE user_id = $1 AND channel = 'in_app' AND read_at IS NULL
+         AND batch_id = (SELECT batch_id FROM emergency_broadcasts WHERE id = $2)`,
+      [userId, broadcastId],
+    );
+  }
+
+  private async myRow(user: AuthUser, id: number): Promise<EmergencyRecipient> {
+    const row = await this.recipients
+      .createQueryBuilder('r')
+      .innerJoin(EmergencyBroadcast, 'b', 'b.id = r.broadcast_id AND b.deleted_at IS NULL')
+      .where('r.broadcast_id = :id AND r.user_id = :userId', { id, userId: user.id })
+      .getOne();
+    if (!row) throw AppException.notFound('Emergency message not found', 'BROADCAST_NOT_FOUND');
+    return row;
+  }
+
+  private async find(schoolId: number, id: number): Promise<EmergencyBroadcast> {
+    const broadcast = await this.broadcasts.findOneBy({ id, school_id: schoolId });
+    if (!broadcast) throw AppException.notFound('Emergency broadcast not found', 'BROADCAST_NOT_FOUND');
+    return broadcast;
+  }
+
+  private async presentMine(rows: EmergencyRecipient[]): Promise<MyEmergencyDto[]> {
+    if (!rows.length) return [];
+    const broadcasts = await this.broadcasts.findBy({ id: In(rows.map((row) => row.broadcast_id)) });
+    const schools: { id: number; name: string }[] = await this.dataSource.query(
+      `SELECT id, name FROM schools WHERE id = ANY($1)`,
+      [[...new Set(broadcasts.map((item) => item.school_id))]],
+    );
+    return rows.map((row) => {
+      const broadcast = broadcasts.find((item) => item.id === row.broadcast_id)!;
+      return {
+        id: broadcast.id,
+        title: textFor(row.language, broadcast.title, broadcast.title_ta),
+        message: textFor(row.language, broadcast.message, broadcast.message_ta),
+        category: broadcast.category,
+        severity: broadcast.severity,
+        school: schools.find((item) => Number(item.id) === broadcast.school_id)?.name ?? '',
+        students: row.students,
+        sent_at: broadcast.sent_at,
+        read_at: row.read_at,
+        acknowledged_at: row.acknowledged_at,
+        follow_up_of: broadcast.follow_up_of,
+      };
+    });
+  }
+
+  private async present(rows: EmergencyBroadcast[]): Promise<EmergencyBroadcastDto[]> {
+    if (!rows.length) return [];
+    const ids = rows.map((row) => row.id);
+    const counts: CountRow[] = await this.dataSource.query(
+      `SELECT broadcast_id, COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE kind <> 'staff') AS parents,
+              COUNT(*) FILTER (WHERE kind <> 'parent') AS staff,
+              COUNT(*) FILTER (WHERE user_id IS NOT NULL) AS in_app,
+              ${['push', 'sms']
+                .flatMap((channel) =>
+                  ['pending', 'sending', 'sent', 'failed', 'skipped'].map(
+                    (status) => `COUNT(*) FILTER (WHERE ${channel}_status = '${status}') AS ${channel}_${status}`,
+                  ),
+                )
+                .join(', ')},
+              COUNT(*) FILTER (WHERE push_status = 'sent' OR sms_status = 'sent') AS reached,
+              COUNT(*) FILTER (WHERE read_at IS NOT NULL) AS read,
+              COUNT(*) FILTER (WHERE acknowledged_at IS NOT NULL) AS acknowledged
+       FROM emergency_recipients WHERE broadcast_id = ANY($1) GROUP BY broadcast_id`,
+      [ids],
+    );
+    const userIds = [...new Set(rows.map((row) => row.created_by).filter((id): id is number => Boolean(id)))];
+    const followIds = [...new Set(rows.map((row) => row.follow_up_of).filter((id): id is number => Boolean(id)))];
+    const [users, follows, labels] = await Promise.all([
+      userIds.length
+        ? (this.dataSource.query(`SELECT id, name FROM users WHERE id = ANY($1)`, [userIds]) as Promise<
+            { id: number; name: string }[]
+          >)
+        : Promise.resolve([]),
+      followIds.length ? this.broadcasts.findBy({ id: In(followIds) }) : Promise.resolve([]),
+      this.audienceLabels(rows),
+    ]);
+    return rows.map((row) => {
+      const count = counts.find((item) => Number(item.broadcast_id) === row.id);
+      const value = (key: string) => Number(count?.[key] ?? 0);
+      const channel = (name: 'push' | 'sms') => ({
+        pending: value(`${name}_pending`),
+        sending: value(`${name}_sending`),
+        sent: value(`${name}_sent`),
+        failed: value(`${name}_failed`),
+        skipped: value(`${name}_skipped`),
+      });
+      const total = value('total');
+      const counted: EmergencyCountsDto = {
+        total,
+        parents: value('parents'),
+        staff: value('staff'),
+        in_app: value('in_app'),
+        push: channel('push'),
+        sms: channel('sms'),
+        reached: value('reached'),
+        read: value('read'),
+        acknowledged: value('acknowledged'),
+        reached_percent: share(value('reached'), total),
+        acknowledged_percent: share(value('acknowledged'), total),
+      };
+      const sender = users.find((user) => Number(user.id) === row.created_by);
+      const follow = follows.find((item) => item.id === row.follow_up_of);
+      return {
+        id: row.id,
+        title: row.title,
+        message: row.message,
+        title_ta: row.title_ta,
+        message_ta: row.message_ta,
+        category: row.category,
+        severity: row.severity,
+        audience: row.audience,
+        audience_label: labels.get(row.id) ?? '',
+        class_ids: row.class_ids ?? [],
+        section_ids: row.section_ids ?? [],
+        student_ids: row.student_ids ?? [],
+        include_teachers: row.include_teachers,
+        channels: row.channels,
+        status: row.status,
+        sent_by: sender ? { id: Number(sender.id), name: sender.name } : null,
+        sent_at: row.sent_at,
+        completed_at: row.completed_at,
+        follow_up_of: follow ? { id: follow.id, name: follow.title } : null,
+        counts: counted,
+      };
+    });
+  }
+
+  private async audienceLabels(rows: EmergencyBroadcast[]): Promise<Map<number, string>> {
+    const classIds = [...new Set(rows.flatMap((row) => row.class_ids ?? []))];
+    const sectionIds = [...new Set(rows.flatMap((row) => row.section_ids ?? []))];
+    const [classes, sections] = await Promise.all([
+      classIds.length
+        ? (this.dataSource.query(`SELECT id, name FROM classes WHERE id = ANY($1)`, [classIds]) as Promise<
+            { id: number; name: string }[]
+          >)
+        : Promise.resolve([]),
+      sectionIds.length
+        ? (this.dataSource.query(
+            `SELECT sec.id, c.name || ' - ' || sec.name AS name FROM sections sec JOIN classes c ON c.id = sec.class_id WHERE sec.id = ANY($1)`,
+            [sectionIds],
+          ) as Promise<{ id: number; name: string }[]>)
+        : Promise.resolve([]),
+    ]);
+    const names = (ids: number[] | null, list: { id: number; name: string }[], prefix = '') =>
+      (ids ?? []).map((id) => `${prefix}${list.find((item) => Number(item.id) === id)?.name ?? id}`).join(', ');
+    const teachers = (row: EmergencyBroadcast) => (row.include_teachers ? ' and their teachers' : '');
+    return new Map(
+      rows.map((row) => {
+        const label =
+          row.audience === 'everyone'
+            ? 'All parents and staff'
+            : row.audience === 'parents'
+              ? 'All parents'
+              : row.audience === 'staff'
+                ? 'All staff'
+                : row.audience === 'classes'
+                  ? `Parents of ${names(row.class_ids, classes, 'Class ')}${teachers(row)}`
+                  : row.audience === 'sections'
+                    ? `Parents of ${names(row.section_ids, sections)}${teachers(row)}`
+                    : `Parents of ${row.student_ids?.length ?? 0} ${row.student_ids?.length === 1 ? 'student' : 'students'}${teachers(row)}`;
+        return [row.id, label];
+      }),
+    );
+  }
+}

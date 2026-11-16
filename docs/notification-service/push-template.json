@@ -1,5 +1,7 @@
 {
-  "tenant": { "tenantId": "TZSMS" },
+  "tenant": {
+    "tenantId": "TZSMS"
+  },
   "templates": [
     {
       "templateId": "school_push",
@@ -13,6 +15,195 @@
       "subject": "",
       "body": "",
       "note": "Data-only call ring. The message has dataOnly: true, data, priority: high and ttl (seconds). Send it with no title or body: OneSignal data + content_available + priority 10 + ttl, to include_aliases.external_id = externalIds."
+    },
+    {
+      "templateId": "school_emergency_broadcast",
+      "channel": "sms",
+      "subject": "",
+      "body": "{{school}}: {{title}}. {{message}}",
+      "note": "Emergency broadcast SMS. Variables: school, title, message, name. Sent to every recipient with a mobile number, also parents without the app."
+    },
+    {
+      "templateId": "school_emergency_broadcast_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "{{school}}: {{title}}. {{message}}",
+      "note": "Emergency broadcast SMS. Variables: school, title, message, name. Sent to every recipient with a mobile number, also parents without the app. Tamil text."
+    },
+    {
+      "templateId": "school_system_test",
+      "channel": "sms",
+      "subject": "",
+      "body": "Dear {{name}}, this is a test message from {{school}}. -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone."
+    },
+    {
+      "templateId": "school_system_test_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "அன்புள்ள {{name}}, இது {{school}} அனுப்பிய சோதனைச் செய்தி. -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone. Tamil text."
+    },
+    {
+      "templateId": "school_account_invite",
+      "channel": "sms",
+      "subject": "",
+      "body": "Dear {{name}}, your {{school}} {{app}} account is ready. Install the app and sign in with this mobile number. -TAMILZOROUS",
+      "note": "Sent every time."
+    },
+    {
+      "templateId": "school_account_invite_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "அன்புள்ள {{name}}, உங்கள் {{school}} {{app}} கணக்கு தயார். செயலியை நிறுவி இந்த மொபைல் எண்ணுடன் உள்நுழையவும். -TAMILZOROUS",
+      "note": "Sent every time. Tamil text."
+    },
+    {
+      "templateId": "school_student_absent",
+      "channel": "sms",
+      "subject": "",
+      "body": "Dear parent, {{student}} ({{class}}) was marked absent on {{date}}. -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone."
+    },
+    {
+      "templateId": "school_student_absent_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "அன்புள்ள பெற்றோரே, {{student}} ({{class}}) {{date}} அன்று வருகை இல்லை எனக் குறிக்கப்பட்டுள்ளார். -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone. Tamil text."
+    },
+    {
+      "templateId": "school_bus_approaching",
+      "channel": "sms",
+      "subject": "",
+      "body": "{{bus}} will reach {{stop}} in about {{minutes}} minutes. -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone."
+    },
+    {
+      "templateId": "school_bus_approaching_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "{{bus}} சுமார் {{minutes}} நிமிடங்களில் {{stop}} வந்தடையும். -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone. Tamil text."
+    },
+    {
+      "templateId": "school_sos_alert",
+      "channel": "sms",
+      "subject": "",
+      "body": "SOS: {{reporter}} raised an alert on {{bus}} near {{location}} at {{time}}. Call {{phone}}. -TAMILZOROUS",
+      "note": "Sent every time."
+    },
+    {
+      "templateId": "school_sos_alert_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "அவசரம்: {{reporter}} {{time}} மணிக்கு {{location}} அருகே {{bus}}-இல் அவசர அழைப்பு. {{phone}} எண்ணை அழைக்கவும். -TAMILZOROUS",
+      "note": "Sent every time. Tamil text."
+    },
+    {
+      "templateId": "school_safety_alert_high",
+      "channel": "sms",
+      "subject": "",
+      "body": "Urgent: {{message}} on {{bus}} at {{time}}. Check with the driver now. -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone."
+    },
+    {
+      "templateId": "school_safety_alert_high_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "அவசரம்: {{time}} மணிக்கு {{bus}}-இல் {{message}}. உடனே ஓட்டுநரிடம் விசாரிக்கவும். -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone. Tamil text."
+    },
+    {
+      "templateId": "school_meeting_reminder",
+      "channel": "sms",
+      "subject": "",
+      "body": "Reminder: your meeting with {{host}} about {{student}} starts at {{time}}. Join from the app. -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone."
+    },
+    {
+      "templateId": "school_meeting_reminder_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "நினைவூட்டல்: {{student}} குறித்து {{host}} உடனான கூட்டம் {{time}} மணிக்குத் தொடங்கும். செயலியில் இணையவும். -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone. Tamil text."
+    },
+    {
+      "templateId": "school_announcement_urgent",
+      "channel": "sms",
+      "subject": "",
+      "body": "Urgent from {{school}}: {{title}}. Open the app for details. -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone."
+    },
+    {
+      "templateId": "school_announcement_urgent_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "{{school}} அவசர அறிவிப்பு: {{title}}. விவரங்களுக்கு செயலியைத் திறக்கவும். -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone. Tamil text."
+    },
+    {
+      "templateId": "school_substitute_assigned",
+      "channel": "sms",
+      "subject": "",
+      "body": "Proxy: {{section}} period {{period}} ({{time}}) on {{date}} for {{absent}}. - {{school}}",
+      "note": "Sent when push did not reach the phone."
+    },
+    {
+      "templateId": "school_substitute_assigned_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "மாற்று வகுப்பு: {{section}} பாடவேளை {{period}} ({{time}}) {{date}}, {{absent}} பதிலாக. - {{school}}",
+      "note": "Sent when push did not reach the phone. Tamil text."
+    },
+    {
+      "templateId": "school_class_combined",
+      "channel": "sms",
+      "subject": "",
+      "body": "Combined class: {{count}} {{group}} of {{from}} join {{section}} period {{period}} ({{time}}) on {{date}}. - {{school}}",
+      "note": "Sent when push did not reach the phone."
+    },
+    {
+      "templateId": "school_class_combined_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "இணைந்த வகுப்பு: {{from}} {{count}} {{group_ta}} → {{section}} பாடவேளை {{period}} ({{time}}) {{date}}. - {{school}}",
+      "note": "Sent when push did not reach the phone. Tamil text."
+    },
+    {
+      "templateId": "school_fee_due",
+      "channel": "sms",
+      "subject": "",
+      "body": "Dear parent, {{installment}} fee of {{amount}} for {{student}} is due on {{due_date}}. -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone."
+    },
+    {
+      "templateId": "school_fee_due_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "அன்புள்ள பெற்றோரே, {{student}}-க்கான {{installment}} கட்டணம் {{amount}}, {{due_date}} அன்றுக்குள் செலுத்த வேண்டும். -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone. Tamil text."
+    },
+    {
+      "templateId": "school_fee_overdue",
+      "channel": "sms",
+      "subject": "",
+      "body": "Dear parent, {{amount}} fee for {{student}} was due on {{due_date}} and is unpaid. -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone."
+    },
+    {
+      "templateId": "school_fee_overdue_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "அன்புள்ள பெற்றோரே, {{student}}-க்கான {{amount}} கட்டணம் {{due_date}} முதல் நிலுவையில் உள்ளது. -TAMILZOROUS",
+      "note": "Sent when push did not reach the phone. Tamil text."
+    },
+    {
+      "templateId": "otp",
+      "channel": "sms",
+      "subject": "",
+      "body": "Your OTP for verification is {{otp}}. Please enter this code within {{expiry}}. Do not share this with anyone. -TAMILZOROUS {{app_hash}}",
+      "note": "Shared OTP template (no school_ prefix). Variables: otp, expiry (for example \"10 minutes\"), name, mobile, app_hash. Used only when AUTH_PROVIDER=local and OTP_SMS_DRIVER=kafka; with AUTH_PROVIDER=central the Auth Service sends the OTP."
     }
   ]
 }

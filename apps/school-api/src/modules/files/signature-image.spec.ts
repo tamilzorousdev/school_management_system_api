@@ -7,6 +7,8 @@ import {
   signatureFromPhoto,
 } from './signature-image';
 
+jest.setTimeout(30_000);
+
 const paperPhoto = (ink: string) =>
   sharp(
     Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900">

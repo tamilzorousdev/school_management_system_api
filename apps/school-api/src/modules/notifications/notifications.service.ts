@@ -5,7 +5,7 @@ import { In, IsNull, MoreThan, Repository, SelectQueryBuilder } from 'typeorm';
 import { AppException, AuthUser, listQuery, offset, paginate, Paginated } from '@app/common';
 import { pushConfig, PushConfig } from '../../config/configuration';
 import { ROLES } from '../access/access.catalog';
-import { SmsService } from '../sms/sms.service';
+import { SmsResult, SmsService } from '../sms/sms.service';
 import { Language, User } from '../users/entities/user.entity';
 import { UserDevicesService } from '../users/user-devices.service';
 import {
@@ -329,6 +329,52 @@ export class NotificationsService implements OnModuleInit {
       devices: tokens.length,
       error: result.error ?? null,
     };
+  }
+
+  async pushNow(input: {
+    userId: number;
+    title: string;
+    body: string;
+    data: Record<string, string>;
+  }): Promise<PushResult> {
+    if (!this.pushSettings.auto) {
+      return {
+        status: 'skipped',
+        provider: 'off',
+        successCount: 0,
+        invalidTokens: [],
+        error: 'Automatic push is off (PUSH_AUTO=false)',
+      };
+    }
+    const tokens = (await this.devices.tokensFor(input.userId)).map((device) => device.fcm_token);
+    const result = await this.push.send({
+      tokens,
+      title: input.title,
+      body: input.body,
+      data: input.data,
+      userId: input.userId,
+      variables: { ...input.data, title: input.title, body: input.body },
+    });
+    await this.devices.removeTokens(result.invalidTokens);
+    return result;
+  }
+
+  async smsNow(input: {
+    mobile: string;
+    text: string;
+    templateCode: string;
+    variables: Record<string, string>;
+    language: Language;
+  }): Promise<SmsResult> {
+    const template = await this.templates.findOneBy({ code: input.templateCode, language: input.language });
+    return this.sms.send({
+      mobile: input.mobile,
+      text: input.text,
+      dltTemplateId: template?.dlt_template_id ?? null,
+      templateCode: input.templateCode,
+      variables: input.variables,
+      language: input.language,
+    });
   }
 
   async sendCallPush(

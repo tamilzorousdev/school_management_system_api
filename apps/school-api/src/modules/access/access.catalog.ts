@@ -27,6 +27,8 @@ export const PERMISSIONS = {
   EXAMS_MANAGE: 'exams.manage',
   FEEDBACK_VIEW: 'feedback.view',
   FEEDBACK_MANAGE: 'feedback.manage',
+  EMERGENCY_VIEW: 'emergency.view',
+  EMERGENCY_SEND: 'emergency.send',
   NOTIFICATIONS_VIEW: 'notifications.view',
   NOTIFICATIONS_SEND: 'notifications.send',
   MEETINGS_VIEW: 'meetings.view',
@@ -83,6 +85,16 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     code: PERMISSIONS.FEEDBACK_MANAGE,
     name: 'Turn parent ratings and student feedback on or off and choose how often parents can rate',
     group: 'Feedback',
+  },
+  {
+    code: PERMISSIONS.EMERGENCY_VIEW,
+    name: 'See emergency broadcasts, who received, read and acknowledged them',
+    group: 'Emergency',
+  },
+  {
+    code: PERMISSIONS.EMERGENCY_SEND,
+    name: 'Send emergency broadcasts to parents and staff, and resend to those not reached',
+    group: 'Emergency',
   },
   { code: PERMISSIONS.NOTIFICATIONS_VIEW, name: 'View sent notifications and the SMS outbox', group: 'Communication' },
   { code: PERMISSIONS.NOTIFICATIONS_SEND, name: 'Send notifications and test messages', group: 'Communication' },
@@ -183,6 +195,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.ANNOUNCEMENTS_MANAGE,
       PERMISSIONS.CHAT_AUDIT,
       PERMISSIONS.FLEET_VIEW,
+      PERMISSIONS.EMERGENCY_VIEW,
+      PERMISSIONS.EMERGENCY_SEND,
     ],
   },
   {
@@ -214,6 +228,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.ANNOUNCEMENTS_MANAGE,
       PERMISSIONS.CHAT_AUDIT,
       PERMISSIONS.FLEET_VIEW,
+      PERMISSIONS.EMERGENCY_VIEW,
+      PERMISSIONS.EMERGENCY_SEND,
     ],
   },
   {

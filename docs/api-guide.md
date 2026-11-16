@@ -159,6 +159,9 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 | `TEACHER_OVER_LIMIT` | 409 | Teacher assignments or the timetable would give a teacher more periods a week than their `max_periods_per_week`. Changes that bring an old overload down are still allowed |
 | `LIMIT_BELOW_LOAD` | 409 | Staff edit: the weekly limit cannot go below the periods a week the teacher already has |
 | `SIGNATURE_NOT_FOUND` | 400 | Signature upload: no ink found in the photo, or the signature pad is empty |
+| `NO_RECIPIENTS` | 400 | Emergency broadcast: nobody matches the chosen audience |
+| `AUDIENCE_INVALID` | 400 | Emergency broadcast: a chosen class, section or student is not in this school |
+| `STILL_SENDING` | 409 | Emergency resend while the broadcast is still going out |
 | `RATING_CLOSED` | 403 | Parent rating: the school has teacher ratings off, or today is outside the academic year |
 | `NOT_CHILD_TEACHER` | 400 | Parent rating: the teacher does not teach this child |
 | `ALREADY_RATED` | 409 | Parent rating: already rated this teacher in this window; the message says when the next window opens |
@@ -415,6 +418,35 @@ Sign in as 9000000004 (Priya, class teacher of 6-A) to try it.
 | `GET /mobile/teacher/substitutions` | Classes I cover for absent teachers, today and the next 7 days: date, period and time, section, subject, room, who is away, note |
 
 Staff leave status moves `pending_hod` → `pending_principal` → `approved` (or `rejected` at any step). With no HOD in the department it starts at `pending_principal`.
+
+### Emergency broadcast
+
+An urgent message from the school office to all parents, all staff, everyone, or the parents of chosen classes, sections or students (optionally with their teachers). School admin, Principal and AO can send it (`emergency.send`) and see the history (`emergency.view`).
+
+**How it is delivered.** On send, the API saves one row per person first (a parent with several children gets one message that lists them), then delivers in the background: an in-app notification at once (category `alert`), a live socket event `emergency.alert { broadcast_id, title, message, category, severity, sent_at }` to everyone with the app open, push to app users and SMS to every mobile number, including parents without the app. Push and SMS each get up to 3 tries (10 s, 30 s, 90 s apart); after a restart the API carries on with whatever was not sent. Tamil readers get the Tamil title and message when given. Push follows `PUSH_AUTO`: while it is `false` the push is marked not sent and the in-app, socket and SMS still go out. SMS goes through Kafka with template `school_emergency_broadcast` (`_ta` for Tamil), variables `school`, `title`, `message`, `name`.
+
+**Admin web (`/admin/emergency-broadcasts`).**
+
+| Call | What it does |
+|---|---|
+| `GET /templates` | Ready-made messages in English and Tamil (rain holiday, early closure, security, transport delay, health, all clear) |
+| `POST /preview` `{ audience, class_ids?, section_ids?, student_ids?, include_teachers? }` | People it will reach: `recipients`, `parents`, `staff`, `with_app`, `with_mobile`, `sms_only`, `unreachable` |
+| `POST` `{ audience, …, title, message, title_ta?, message_ta?, category, severity?, channels?: ["push","sms"], client_id?, follow_up_of? }` | Sends now (201). `audience` = `everyone`, `parents`, `staff`, `classes`, `sections`, `students`. `category` = `weather`, `school_closed`, `security`, `health`, `transport`, `all_clear`, `other`. `severity` = `info`, `warning`, `critical` (default). `client_id` stops a double click sending twice. `follow_up_of` links an all clear to the original |
+| `GET` | History, paged: `search`, `category`, `status` (`sending`, `sent`, `partly_failed`), `from`, `to`, `sort=sent_at|title` |
+| `GET /{id}` | One broadcast with `audience_label` and `counts`: `total`, `parents`, `staff`, `in_app`, `push` and `sms` (`pending`, `sending`, `sent`, `failed`, `skipped`), `reached`, `read`, `acknowledged` and the two percentages. Poll while `status` is `sending` |
+| `GET /{id}/recipients` | Paged people with `push_status`, `sms_status` and the reason when not sent, `read_at`, `acknowledged_at`, and their children. `filter` = `all`, `failed`, `not_read`, `not_acknowledged`, `sms_only`, `unreachable`; `search` = name, mobile or child |
+| `POST /{id}/resend` `{ target: "failed" | "not_acknowledged" }` | Sends again to those it failed for, or by push and SMS to everyone who has not acknowledged (409 `STILL_SENDING` while it is still going out) |
+| `GET /insights` | This month: broadcasts, people, reached % and acknowledged %, broadcasts still sending, and the last broadcast |
+
+**Parent and Staff apps (`/me/emergency-broadcasts`).**
+
+| Call | What it does |
+|---|---|
+| `GET /me/emergency-broadcasts?pending=true` | My emergency messages, newest first, in my language; `pending=true` only the ones I have not acknowledged. Call it on app open and show any pending one as a full-screen alert |
+| `GET /me/emergency-broadcasts/{id}` | One message; opening it marks it read (and its in-app notification) |
+| `POST /me/emergency-broadcasts/{id}/acknowledge` | The "I have seen this" button; safe to press twice |
+
+Each item has `title`, `message`, `category`, `severity`, `school`, `students` (my children it is about, for parents), `sent_at`, `read_at`, `acknowledged_at` and `follow_up_of`. The push has `category: "alert"` and `broadcast_id`.
 
 ### Digital signature (sign on screen or photo)
 
@@ -1026,7 +1058,7 @@ Socket events: `chat.deleted { thread_id, message_id, deleted_at }`, `chat.resto
 
 Register the phone with `POST /me/devices` `{ "push_token": "<OneSignal subscription id>", "platform": "android" }` (`fcm_token` is the old name and still works); remove with `DELETE /me/devices?push_token=…`.
 
-**Delivery (PUSH_DRIVER=kafka):** pushes go through the central Notification Service with OneSignal. The app only needs the OneSignal **App ID** and must call `OneSignal.login("<our user id>")` right after sign-in (`data.user.id` from `/auth/otp/verify`) and `OneSignal.logout()` on sign-out; we target that external id. The Notification Service needs one push template registered once: `docs/notification-service/push-template.json` (`school_push`, title and body come ready from us in English or Tamil).
+**Delivery (PUSH_DRIVER=kafka):** pushes go through the central Notification Service with OneSignal. The app only needs the OneSignal **App ID** and must call `OneSignal.login("<our user id>")` right after sign-in (`data.user.id` from `/auth/otp/verify`) and `OneSignal.logout()` on sign-out; we target that external id. The Notification Service needs our templates registered for tenant `TZSMS`: `docs/notification-service/push-template.json` lists all of them (push `school_push` and `school_call`, every SMS template in English and Tamil, and the shared `otp`). Title and body come ready from us in English or Tamil.
 
 Every push (OneSignal `additionalData`) has `category`, `template` and `notification_id`, plus the ids below. Ids are strings.
 
@@ -1039,6 +1071,7 @@ Every push (OneSignal `additionalData`) has `category`, `template` and `notifica
 | `diary` | DIARY_POSTED, DIARY_REJECTED | `entry_id` where present | diary |
 | `fees` | FEE_DUE, FEE_OVERDUE | `student_id` | fees |
 | `system` | RESULT_PUBLISHED (`exam_id`), ACHIEVEMENT_ADDED (`achievement_id`) | `student_id` | results / achievements |
+| `alert` | EMERGENCY_BROADCAST (`broadcast_id`, `severity`) to parents and staff | — | full-screen emergency alert, then `GET /me/emergency-broadcasts/{broadcast_id}` |
 | `system` | STUDENT_FEEDBACK (`feedback_id`) to the parents | `student_id` | the child's feedback |
 | `system` | TEACHER_RATED (`rating_id`, `teacher_user_id`) to the school admin | `student_id` | admin web, Teacher feedback |
 | `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips | `trip_id`, `alert_id`, `announcement_id` where present | the matching screen |

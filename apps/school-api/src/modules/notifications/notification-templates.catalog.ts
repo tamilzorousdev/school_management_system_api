@@ -49,6 +49,7 @@ export const TEMPLATES = {
   SPECIAL_CLASS_ABSENT: 'SPECIAL_CLASS_ABSENT',
   TEACHER_RATED: 'TEACHER_RATED',
   STUDENT_FEEDBACK: 'STUDENT_FEEDBACK',
+  EMERGENCY_BROADCAST: 'EMERGENCY_BROADCAST',
 } as const;
 
 interface TemplateText {
@@ -67,6 +68,25 @@ export interface TemplateDefinition {
 }
 
 export const TEMPLATE_CATALOG: TemplateDefinition[] = [
+  {
+    code: TEMPLATES.EMERGENCY_BROADCAST,
+    category: 'alert',
+    push: true,
+    sms: 'always',
+    critical: true,
+    text: {
+      en: {
+        title: '{{title}}',
+        body: '{{message}}',
+        sms_body: '{{school}}: {{title}}. {{message}}',
+      },
+      ta: {
+        title: '{{title}}',
+        body: '{{message}}',
+        sms_body: '{{school}}: {{title}}. {{message}}',
+      },
+    },
+  },
   {
     code: TEMPLATES.TEACHER_RATED,
     category: 'system',
