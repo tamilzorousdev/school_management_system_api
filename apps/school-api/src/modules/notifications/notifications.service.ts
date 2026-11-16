@@ -1,8 +1,9 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
+import { In, IsNull, MoreThan, Repository, SelectQueryBuilder } from 'typeorm';
 import { AppException, AuthUser, listQuery, offset, paginate, Paginated } from '@app/common';
+import { pushConfig, PushConfig } from '../../config/configuration';
 import { ROLES } from '../access/access.catalog';
 import { SmsService } from '../sms/sms.service';
 import { Language, User } from '../users/entities/user.entity';
@@ -14,6 +15,8 @@ import {
   OutboxInsightsDto,
   OutboxItemDto,
   OutboxQueryDto,
+  TestPushDto,
+  TestPushResultDto,
 } from './dto/notification.dto';
 import { Notification } from './entities/notification.entity';
 import { NotificationTemplate } from './entities/notification-template.entity';
@@ -56,6 +59,9 @@ type Recipient = Pick<User, 'id' | 'school_id' | 'mobile' | 'language' | 'name'>
 const PUSH_JOB = 'notifications.push';
 const SMS_JOB = 'notifications.sms';
 
+const TEST_PUSH = 'TEST_PUSH';
+const TEST_PUSH_GAP_MS = 5000;
+
 @Injectable()
 export class NotificationsService implements OnModuleInit {
   private readonly logger = new Logger('Notifications');
@@ -68,6 +74,7 @@ export class NotificationsService implements OnModuleInit {
     private readonly push: PushService,
     private readonly sms: SmsService,
     private readonly devices: UserDevicesService,
+    @Inject(pushConfig.KEY) private readonly pushSettings: PushConfig,
   ) {}
 
   onModuleInit(): void {
@@ -224,7 +231,16 @@ export class NotificationsService implements OnModuleInit {
     const smsFollowUp = smsBody
       ? { body: smsBody, dlt_template_id: template.dlt_template_id, language: template.language }
       : null;
-    if (template.push) {
+    if (template.push && !this.pushSettings.auto) {
+      await this.notifications.insert({
+        ...base,
+        channel: 'push',
+        body,
+        status: 'skipped',
+        provider: 'off',
+        error: 'Automatic push is off (PUSH_AUTO=false)',
+      });
+    } else if (template.push) {
       const push = await this.notifications.save(
         this.notifications.create({ ...base, channel: 'push', body, status: 'queued' }),
       );
@@ -247,6 +263,72 @@ export class NotificationsService implements OnModuleInit {
       dlt_template_id: followUp.dlt_template_id,
       language: followUp.language,
     });
+  }
+
+  async sendTestPush(user: AuthUser, input: TestPushDto): Promise<TestPushResultDto> {
+    const recent = await this.notifications.findOne({
+      where: {
+        user_id: user.id,
+        template_code: TEST_PUSH,
+        created_at: MoreThan(new Date(Date.now() - TEST_PUSH_GAP_MS)),
+      },
+    });
+    if (recent) {
+      throw AppException.tooManyRequests('Wait a few seconds before sending another test push', 'TEST_PUSH_TOO_SOON');
+    }
+    const devices = await this.devices.tokensFor(user.id);
+    const tokens = devices.map((device) => device.fcm_token);
+    const data = {
+      ...Object.fromEntries(Object.entries(input.data ?? {}).map(([key, value]) => [key, String(value)])),
+      test: 'true',
+    };
+    const row = await this.notifications.save(
+      this.notifications.create({
+        school_id: user.school_id,
+        user_id: user.id,
+        batch_id: randomUUID(),
+        category: 'system',
+        template_code: TEST_PUSH,
+        title: input.title?.trim() || 'Test notification',
+        body: input.body?.trim() || 'Push notifications are working on this phone.',
+        data,
+        channel: 'push',
+        status: 'queued',
+      }),
+    );
+    const result = await this.push
+      .send({
+        tokens,
+        title: row.title,
+        body: row.body,
+        data: { ...data, notification_id: String(row.id), category: row.category, template: TEST_PUSH },
+        userId: user.id,
+        variables: data,
+      })
+      .catch((error: Error) => ({
+        status: 'failed' as const,
+        provider: this.pushSettings.driver,
+        successCount: 0,
+        invalidTokens: [] as string[],
+        error: error.message,
+      }));
+    await this.devices.removeTokens(result.invalidTokens);
+    await this.notifications.update(row.id, {
+      status: result.status,
+      provider: result.provider,
+      recipient: tokens.length ? `${tokens.length} device${tokens.length === 1 ? '' : 's'}` : null,
+      error: result.error ?? null,
+      attempts: 1,
+      sent_at: result.status === 'sent' ? new Date() : null,
+    });
+    return {
+      notification_id: row.id,
+      status: result.status,
+      provider: result.provider,
+      external_id: String(user.id),
+      devices: tokens.length,
+      error: result.error ?? null,
+    };
   }
 
   async sendCallPush(

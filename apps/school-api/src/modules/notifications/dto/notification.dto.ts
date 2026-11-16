@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, Min } from 'class-validator';
+import { IsIn, IsInt, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { ListQueryDto, PaginationDto, toBoolean } from '@app/common';
 import {
   CATEGORIES,
@@ -178,6 +178,48 @@ export class TemplateDto {
 
   @ApiProperty()
   critical: boolean;
+}
+
+export class TestPushDto {
+  @ApiPropertyOptional({ example: 'Test notification', maxLength: 100 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  title?: string;
+
+  @ApiPropertyOptional({ example: 'Push notifications are working on this phone.', maxLength: 300 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  body?: string;
+
+  @ApiPropertyOptional({
+    example: { category: 'chat', thread_id: '8' },
+    description: 'Extra data to test tap routing (values are sent as strings)',
+  })
+  @IsOptional()
+  @IsObject()
+  data?: Record<string, string>;
+}
+
+export class TestPushResultDto {
+  @ApiProperty({ example: 2051 })
+  notification_id: number;
+
+  @ApiProperty({ enum: ['sent', 'failed', 'skipped'], example: 'sent' })
+  status: 'sent' | 'failed' | 'skipped';
+
+  @ApiProperty({ example: 'kafka', description: 'off, kafka, onesignal or fcm' })
+  provider: string;
+
+  @ApiProperty({ example: '5', description: 'The OneSignal External ID we sent to: OneSignal.login must use this' })
+  external_id: string;
+
+  @ApiProperty({ example: 1, description: 'Devices registered with POST /me/devices' })
+  devices: number;
+
+  @ApiProperty({ nullable: true, type: String, example: null })
+  error: string | null;
 }
 
 export class DispatchResultDto {

@@ -1019,6 +1019,11 @@ Socket events: `chat.deleted { thread_id, message_id, deleted_at }`, `chat.resto
 **Voice and video.** Upload with `POST /files` (multipart `file`, `purpose: chat_media`), then send `{ file_id, duration_seconds }`. Voice: m4a, aac, mp3, ogg, wav, webm, 3gp, up to 25 MB, no length limit. Video: mp4, mov, 3gp, webm, up to 25 MB and 120 seconds (`duration_seconds` required; `400 VIDEO_TOO_LONG`). Images and documents keep the `FILE_MAX_MB` limit.
 ## Push notification data (tap routing)
 
+**Automatic pushes can be switched off.** With `PUSH_AUTO=false` the API sends no push on its own: every notification is still saved in the app's notification list (`GET /me/notifications`), and its push row is marked `skipped` ("Automatic push is off"), with no SMS fallback because of it. Pushes only go out when the app asks for one:
+
+`POST /me/notifications/test-push` `{ "title"?: "...", "body"?: "...", "data"?: { "category": "chat", "thread_id": "8" } }` sends a push to my own phone now, through the configured channel, even when `PUSH_AUTO=false`. The reply says what happened: `status` (`sent`, `failed` or `skipped`), `provider`, `error`, `devices` (registered with `POST /me/devices`) and `external_id`, the id `OneSignal.login` must use. One every 5 seconds (`429 TEST_PUSH_TOO_SOON`). `sent` means the push left our API; if the phone shows nothing, check the External ID in OneSignal.
+
+
 Register the phone with `POST /me/devices` `{ "push_token": "<OneSignal subscription id>", "platform": "android" }` (`fcm_token` is the old name and still works); remove with `DELETE /me/devices?push_token=…`.
 
 **Delivery (PUSH_DRIVER=kafka):** pushes go through the central Notification Service with OneSignal. The app only needs the OneSignal **App ID** and must call `OneSignal.login("<our user id>")` right after sign-in (`data.user.id` from `/auth/otp/verify`) and `OneSignal.logout()` on sign-out; we target that external id. The Notification Service needs one push template registered once: `docs/notification-service/push-template.json` (`school_push`, title and body come ready from us in English or Tamil).

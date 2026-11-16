@@ -84,6 +84,7 @@ export type PushDriver = 'off' | 'fcm' | 'onesignal' | 'kafka';
 export const pushConfig = registerAs('push', () => ({
   driver: (process.env.PUSH_DRIVER ?? 'off') as PushDriver,
   callDriver: (process.env.CALL_PUSH_DRIVER || process.env.PUSH_DRIVER || 'off') as PushDriver,
+  auto: process.env.PUSH_AUTO !== 'false',
   credentialsFile: process.env.FIREBASE_CREDENTIALS_FILE ?? '',
   oneSignalAppId: process.env.ONESIGNAL_APP_ID ?? '',
   oneSignalApiKey: process.env.ONESIGNAL_REST_API_KEY ?? '',

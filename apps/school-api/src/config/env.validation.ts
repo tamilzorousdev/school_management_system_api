@@ -308,6 +308,10 @@ export class EnvironmentVariables {
   @IsIn(['off', 'fcm', 'onesignal', 'kafka'], { message: 'PUSH_DRIVER must be off, fcm, onesignal or kafka' })
   PUSH_DRIVER: string = 'off';
 
+  @Transform(toBoolean)
+  @IsBoolean()
+  PUSH_AUTO: boolean = true;
+
   @ValidateIf((env: EnvironmentVariables) => Boolean(env.CALL_PUSH_DRIVER))
   @IsIn(['off', 'fcm', 'onesignal', 'kafka'], { message: 'CALL_PUSH_DRIVER must be off, fcm, onesignal or kafka' })
   CALL_PUSH_DRIVER?: string;

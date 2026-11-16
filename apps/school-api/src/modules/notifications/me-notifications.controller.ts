@@ -1,7 +1,13 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, ResponseMessage } from '@app/common';
-import { MyNotificationDto, MyNotificationsQueryDto, UnreadCountDto } from './dto/notification.dto';
+import {
+  MyNotificationDto,
+  MyNotificationsQueryDto,
+  TestPushDto,
+  TestPushResultDto,
+  UnreadCountDto,
+} from './dto/notification.dto';
 import { NotificationsService } from './notifications.service';
 
 @ApiTags('Me · Notifications')
@@ -23,6 +29,20 @@ export class MeNotificationsController {
   @ApiEnvelope(UnreadCountDto)
   async unreadCount(@CurrentUser() user: AuthUser): Promise<UnreadCountDto> {
     return { unread: await this.notifications.unreadCount(user.id) };
+  }
+
+  @Post('test-push')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Test push processed')
+  @ApiOperation({
+    summary: 'Send a test push to my own phone now',
+    description:
+      'For the app team to check push. Sends through the configured channel even when automatic pushes are off (PUSH_AUTO=false). Returns status sent, failed or skipped with the reason, and the external_id that OneSignal.login must use. One every 5 seconds (429 TEST_PUSH_TOO_SOON).',
+  })
+  @ApiEnvelope(TestPushResultDto, { message: 'Test push processed' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.TOO_MANY_REQUESTS)
+  testPush(@CurrentUser() user: AuthUser, @Body() dto: TestPushDto) {
+    return this.notifications.sendTestPush(user, dto);
   }
 
   @Post('read-all')
