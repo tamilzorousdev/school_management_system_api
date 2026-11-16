@@ -24,6 +24,7 @@ import { Guardian } from '../students/entities/guardian.entity';
 import { ExamsService } from './exams.service';
 import { reportCardsPdf, ReportCardPdfData } from './report-card.pdf';
 import { attendanceSummary, buildReportCard, CardExamInput, gradeScale } from './report-card.logic';
+import { signedCaption } from '../signatures/signatures.logic';
 
 interface Enrollment {
   student_id: number;
@@ -226,11 +227,8 @@ export class ReportCardsService {
         exam_id: scope.exam?.id ?? IsNull(),
       },
     });
-    const teacherSigned = !!(sig?.teacher_signed_at || enrollment.class_teacher_signature_file_id);
+    const teacherSigned = !!sig?.teacher_signed_at;
     const parentSigned = !!sig?.parent_signed_at;
-    const teacherSigFileId = sig?.teacher_signature_file_id ?? enrollment.class_teacher_signature_file_id;
-    const parentSigFileId =
-      sig?.parent_signature_file_id ?? (parentSigned ? enrollment.parent_signature_file_id : null);
     return {
       id: enrollment.student_id,
       full_name: enrollment.full_name,
@@ -242,12 +240,14 @@ export class ReportCardsService {
       parent_name: enrollment.parent_name,
       class_teacher: enrollment.class_teacher,
       photo_url: this.files.linkFor(enrollment.photo_file_id),
-      class_teacher_signature_url: teacherSigned ? this.files.linkFor(teacherSigFileId) : null,
-      parent_signature_url: parentSigned ? this.files.linkFor(parentSigFileId) : null,
+      class_teacher_signature_url: teacherSigned ? this.files.linkFor(sig?.teacher_signature_file_id ?? null) : null,
+      parent_signature_url: parentSigned ? this.files.linkFor(sig?.parent_signature_file_id ?? null) : null,
       parent_signed: parentSigned,
       parent_signed_at: sig?.parent_signed_at ?? null,
+      parent_signature_updated_at: sig?.parent_signature_updated_at ?? null,
       teacher_signed: teacherSigned,
       teacher_signed_at: sig?.teacher_signed_at ?? null,
+      teacher_signature_updated_at: sig?.teacher_signature_updated_at ?? null,
     };
   }
 
@@ -515,20 +515,8 @@ export class ReportCardsService {
         exam_id: card.scope.exam?.id ?? IsNull(),
       },
     });
-    const [enr] = await this.dataSource.query(
-      `SELECT se.section_id, s.signature_file_id AS class_teacher_signature_file_id,
-              g.signature_file_id AS parent_signature_file_id
-       FROM student_enrollments se
-       LEFT JOIN sections sec ON sec.id = se.section_id AND sec.deleted_at IS NULL
-       LEFT JOIN staff s ON s.user_id = sec.class_teacher_user_id AND s.deleted_at IS NULL
-       LEFT JOIN student_guardians sg ON sg.student_id = se.student_id AND sg.is_primary = true
-       LEFT JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
-       WHERE se.student_id = $1 AND se.academic_year_id = $2 LIMIT 1`,
-      [card.student.id, card.scope.academic_year.id],
-    );
-    const teacherSigFileId = sig?.teacher_signature_file_id ?? enr?.class_teacher_signature_file_id;
-    const parentSigFileId =
-      sig?.parent_signature_file_id ?? (sig?.parent_signed_at ? enr?.parent_signature_file_id : null);
+    const teacherSigFileId = sig?.teacher_signed_at ? sig.teacher_signature_file_id : null;
+    const parentSigFileId = sig?.parent_signed_at ? sig.parent_signature_file_id : null;
     return {
       card,
       logo: await this.files.readImage(school?.logo_file_id ?? null),
@@ -537,6 +525,16 @@ export class ReportCardsService {
       photo: await this.files.readImage(student?.photo_file_id ?? null),
       teacher_signature: await this.files.readImage(teacherSigFileId ?? null),
       parent_signature: await this.files.readImage(parentSigFileId ?? null),
+      teacher_caption: signedCaption(
+        sig?.teacher_signed_at ?? null,
+        sig?.teacher_signature_updated_at ?? null,
+        this.app.timeZone,
+      ),
+      parent_caption: signedCaption(
+        sig?.parent_signed_at ?? null,
+        sig?.parent_signature_updated_at ?? null,
+        this.app.timeZone,
+      ),
       generated_on: todayIn(this.app.timeZone),
     };
   }
@@ -615,6 +613,7 @@ export class ReportCardsService {
     sig.parent_user_id = userId;
     sig.parent_signature_file_id = guardian.signature_file_id;
     sig.parent_signed_at = new Date();
+    sig.parent_signature_updated_at = null;
     await sigRepo.save(sig);
     return this.card(schoolId, studentId, dto, pdfBase);
   }
@@ -655,6 +654,7 @@ export class ReportCardsService {
       sig.teacher_user_id = teacherUserId;
       sig.teacher_signature_file_id = staff.signature_file_id;
       sig.teacher_signed_at = now;
+      sig.teacher_signature_updated_at = null;
       await sigRepo.save(sig);
     }
     return this.sectionSignaturesStatus(schoolId, teacherUserId, sectionId, dto);
@@ -694,6 +694,7 @@ export class ReportCardsService {
     sig.teacher_user_id = teacherUserId;
     sig.teacher_signature_file_id = staff.signature_file_id;
     sig.teacher_signed_at = new Date();
+    sig.teacher_signature_updated_at = null;
     await sigRepo.save(sig);
     return this.card(schoolId, studentId, dto, `/api/v1/admin/students/${studentId}/report-card/pdf`);
   }
@@ -719,7 +720,7 @@ export class ReportCardsService {
 
     const students: SectionStudentSignatureItemDto[] = roster.map((r) => {
       const sig = sigMap.get(r.student_id);
-      const teacherSigned = !!(sig?.teacher_signed_at ?? r.class_teacher_signature_file_id);
+      const teacherSigned = !!sig?.teacher_signed_at;
       const parentSigned = !!sig?.parent_signed_at;
       return {
         student_id: r.student_id,
@@ -731,8 +732,10 @@ export class ReportCardsService {
         parent_mobile: r.parent_mobile,
         teacher_signed: teacherSigned,
         teacher_signed_at: sig?.teacher_signed_at ?? null,
+        teacher_signature_updated_at: sig?.teacher_signature_updated_at ?? null,
         parent_signed: parentSigned,
         parent_signed_at: sig?.parent_signed_at ?? null,
+        parent_signature_updated_at: sig?.parent_signature_updated_at ?? null,
         status: parentSigned ? 'signed' : 'pending_parent',
       };
     });

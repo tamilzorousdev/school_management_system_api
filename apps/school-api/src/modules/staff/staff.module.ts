@@ -1,3 +1,4 @@
+import { SignaturesModule } from '../signatures/signatures.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AccessModule } from '../access/access.module';
@@ -28,6 +29,7 @@ import { StaffService } from './staff.service';
       User,
     ]),
     AccessModule,
+    SignaturesModule,
   ],
   controllers: [StaffController, TeacherAssignmentsController, StaffAppraisalController],
   providers: [StaffService, AssignmentsService, AppraisalsService],

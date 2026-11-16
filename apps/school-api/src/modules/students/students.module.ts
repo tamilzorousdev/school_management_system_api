@@ -1,3 +1,4 @@
+import { SignaturesModule } from '../signatures/signatures.module';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AcademicYear } from '../setup/entities/academic-year.entity';
@@ -29,6 +30,7 @@ import { StudentsService } from './students.service';
       Admission,
       AcademicYear,
     ]),
+    SignaturesModule,
   ],
   controllers: [
     StudentsController,

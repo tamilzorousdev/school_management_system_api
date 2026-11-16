@@ -8,6 +8,8 @@ export interface ReportCardPdfData {
   signature?: Buffer | null;
   teacher_signature?: Buffer | null;
   parent_signature?: Buffer | null;
+  teacher_caption?: string | null;
+  parent_caption?: string | null;
   seal?: Buffer | null;
   photo: Buffer | null;
   generated_on: string;
@@ -714,7 +716,7 @@ function gradingTable(doc: Pdf, card: ReportCardDto, layout: Layout, summaryBott
 }
 
 function signatures(doc: Pdf, data: ReportCardPdfData, layout: Layout, gradingBottom: number): void {
-  const { card, signature, seal, teacher_signature, parent_signature } = data;
+  const { card, signature, seal, teacher_signature, parent_signature, teacher_caption, parent_caption } = data;
   const { left, width, pageHeight } = layout;
   const sigY = Math.max(gradingBottom + 20, pageHeight - 110);
   const boxWidth = 92;
@@ -727,8 +729,15 @@ function signatures(doc: Pdf, data: ReportCardPdfData, layout: Layout, gradingBo
       label: 'Class Teacher',
       name: card.student.class_teacher || '',
       signature: teacher_signature,
+      caption: teacher_caption,
     },
-    { type: 'sig' as const, label: 'Parents', name: card.student.parent_name || '', signature: parent_signature },
+    {
+      type: 'sig' as const,
+      label: 'Parents',
+      name: card.student.parent_name || '',
+      signature: parent_signature,
+      caption: parent_caption,
+    },
     { type: 'seal' as const, label: 'School Seal', signature: null },
     { type: 'sig' as const, label: 'Principal', name: principalName, isPrincipal: true, signature },
   ];
@@ -779,6 +788,17 @@ function signatures(doc: Pdf, data: ReportCardPdfData, layout: Layout, gradingBo
           align: 'center',
           lineBreak: false,
         });
+      if ('caption' in col && col.caption) {
+        doc
+          .font('Helvetica')
+          .fontSize(5.5)
+          .fillColor('#6b7280')
+          .text(col.caption, boxX - 14, sigY + 11 + boxHeight + 14, {
+            width: boxWidth + 28,
+            align: 'center',
+            lineBreak: false,
+          });
+      }
     } else if (col.type === 'seal') {
       if (seal) {
         try {

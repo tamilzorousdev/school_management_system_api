@@ -27,6 +27,8 @@ import { Guardian } from './entities/guardian.entity';
 import { StudentGuardian } from './entities/student-guardian.entity';
 import { yearClause } from '../../shared/year-context';
 import { FilesService } from '../files/files.service';
+import { SignatureSavedDto } from '../signatures/dto/signature.dto';
+import { SignaturesService } from '../signatures/signatures.service';
 
 export interface Invite {
   user_id: number;
@@ -53,6 +55,7 @@ export class GuardiansService {
     private readonly notifications: NotificationsService,
     private readonly files: FilesService,
     private readonly dataSource: DataSource,
+    private readonly signatures: SignaturesService,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
@@ -392,22 +395,8 @@ export class GuardiansService {
       children,
     };
   }
-  async updateSignatureForUser(
-    userId: number,
-    fileId: number | null,
-  ): Promise<{ signature_file_id: number | null; signature_url: string | null }> {
+  async updateSignatureForUser(userId: number, fileId: number | null): Promise<SignatureSavedDto> {
     const guardian = await this.ownGuardian(userId);
-    if (fileId !== null && fileId !== undefined) {
-      await this.files.assertAttachable(fileId, guardian.school_id, 'signature_file_id');
-    }
-    guardian.signature_file_id = fileId ?? null;
-    await this.guardians.save(guardian);
-    if (guardian.user_id) {
-      await this.dataSource.getRepository(User).update(guardian.user_id, { signature_file_id: fileId ?? null });
-    }
-    return {
-      signature_file_id: guardian.signature_file_id,
-      signature_url: this.files.linkFor(guardian.signature_file_id),
-    };
+    return this.signatures.saveParent(guardian, fileId, { user_id: userId, by_admin: false });
   }
 }

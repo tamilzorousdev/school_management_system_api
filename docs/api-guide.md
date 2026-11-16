@@ -456,7 +456,21 @@ Teachers, parents and the school have two ways to sign. Both are saved as a clea
 1. **Sign here (signature pad in the app).** The app shows a white pad; the person signs with a finger or stylus. Export the pad as a PNG (transparent or white background, dark ink) and upload it with `POST /files` (multipart `file`, `purpose: "signature_pad"`). The API keeps the strokes, removes the background and crops it. An empty pad gives `400 SIGNATURE_NOT_FOUND` ("The signature pad is empty").
 2. **Upload photo (signed on paper).** Sign with a dark pen on white paper and take a photo; upload with `purpose: "signature"` (`teacher_signature`, `parent_signature` and `school_signature` work too). The API fixes the rotation and removes shadows, the paper and ruled lines, keeping only the ink in the pen's colour. A photo without ink gives `400 SIGNATURE_NOT_FOUND`.
 
-Then save the file id with `PUT /mobile/teacher/signature` or `PUT /mobile/parent/signature` `{ "signature_file_id": 42 }` (school: `PATCH /admin/school` `{ signature_file_id }`). Other upload purposes keep their format.
+Then save the file id with `PUT /mobile/teacher/signature` or `PUT /mobile/parent/signature` `{ "signature_file_id": 42 }` (school: `PATCH /admin/school` `{ signature_file_id }`). Other upload purposes keep their format. `GET` on the same paths returns the current signature and its `history` (newest first).
+
+**Teacher and parent signatures are separate.** One person who is both a teacher and a parent has two signatures. Saving one never changes the other, with one exception: the first time they save a teacher signature while the Parent app one is empty, it is copied there. The save answers `{ signature_file_id, signature_url, parent_signature_copied, message }`; show `message` when it is not null:
+
+| Saved from | When | `message` |
+|---|---|---|
+| Staff app | first time, copied | This signature is also set for your Parent app. You can change it there anytime. |
+| Staff app | Parent app already has one | Your Parent app signature stays the same. Change it in the Parent app. |
+| Parent app | the parent is also staff | Your Staff app signature stays the same. Change it in the Staff app. |
+
+**On report cards.** A box shows a signature only after that person signs the card (`teacher_signed`, `parent_signed`). When someone changes their signature, cards they already signed **this academic year** switch to the new one and get `teacher_signature_updated_at` / `parent_signature_updated_at`; the PDF prints "Signed 12 Nov 2026 · updated 16 Nov 2026" under the box. Earlier years never change. Removing a signature leaves signed cards as they are, and signing again needs a signature (`400 NO_SIGNATURE_UPLOADED`).
+
+**Admin web.** `GET`/`PUT /admin/staff/{id}/signature` (`staff.view` / `staff.manage`) and `GET`/`PUT /admin/guardians/{id}/signature` (`students.view` / `students.manage`) show and set or remove the signature for that person. Every add, change and removal is kept in `history` with `action` (`added`, `changed`, `removed`), the old and new image, `changed_by`, `by_admin` and `at`. When the office changes it, the owner gets an in-app note (`SIGNATURE_SET_BY_SCHOOL`). When a parent changes or removes their own signature, their children's class teachers and the school admin and principal get an in-app note (`PARENT_SIGNATURE_CHANGED`). Neither sends push or SMS.
+
+**Use an earlier signature again.** Each `history` row has `can_use_again` (its image is not the current signature). `POST /mobile/teacher/signature/history/{changeId}/use` or `POST /mobile/parent/signature/history/{changeId}/use` (admin: `POST /admin/staff/{id}/signature/history/{changeId}/use` and `POST /admin/guardians/{id}/signature/history/{changeId}/use`) makes that image current again with no new drawing or photo. It answers like the save (`message` included), is recorded as `changed` with the note "Used an earlier signature again", and report cards signed this year switch to it. A row of another person gives `404 SIGNATURE_CHANGE_NOT_FOUND`; the current one gives `400 SIGNATURE_ALREADY_IN_USE`.
 
 ### Teacher feedback
 

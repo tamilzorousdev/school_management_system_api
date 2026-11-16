@@ -54,6 +54,8 @@ import {
 } from './staff-metrics';
 import { yearWhere } from '../../shared/year-context';
 import { assertLimitCoversLoad, teacherLoads } from './teacher-load';
+import { SignatureSavedDto } from '../signatures/dto/signature.dto';
+import { SignaturesService } from '../signatures/signatures.service';
 
 const DOCUMENT_TITLES: Record<StaffDocumentType, string> = {
   id_proof: 'ID proof',
@@ -85,6 +87,7 @@ export class StaffService {
     private readonly notifications: NotificationsService,
     private readonly cipher: FieldCipher,
     private readonly dataSource: DataSource,
+    private readonly signatures: SignaturesService,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
@@ -855,22 +858,8 @@ export class StaffService {
       created_at: row.created_at,
     }));
   }
-  async updateSignature(
-    schoolId: number,
-    userId: number,
-    fileId: number | null,
-  ): Promise<{ signature_file_id: number | null; signature_url: string | null }> {
-    if (fileId !== null && fileId !== undefined) {
-      await this.files.assertAttachable(fileId, schoolId, 'signature_file_id');
-    }
-    const staff = await this.staff.findOneBy({ user_id: userId, school_id: schoolId });
-    if (!staff) throw AppException.notFound('Staff record not found', 'STAFF_NOT_FOUND');
-    staff.signature_file_id = fileId ?? null;
-    await this.staff.save(staff);
-    await this.dataSource.getRepository(User).update(userId, { signature_file_id: fileId ?? null });
-    return {
-      signature_file_id: staff.signature_file_id,
-      signature_url: this.files.linkFor(staff.signature_file_id),
-    };
+  async updateSignature(schoolId: number, userId: number, fileId: number | null): Promise<SignatureSavedDto> {
+    const staff = await this.signatures.ownStaff(schoolId, userId);
+    return this.signatures.saveTeacher(staff, fileId, { user_id: userId, by_admin: false });
   }
 }

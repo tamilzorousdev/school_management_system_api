@@ -129,11 +129,25 @@ export class ReportCardStudentDto {
   @ApiPropertyOptional({ nullable: true, type: Date })
   parent_signed_at?: Date | null;
 
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Date,
+    description: 'The parent changed their signature after signing; the card shows the new one',
+  })
+  parent_signature_updated_at?: Date | null;
+
   @ApiPropertyOptional({ example: false })
   teacher_signed?: boolean;
 
   @ApiPropertyOptional({ nullable: true, type: Date })
   teacher_signed_at?: Date | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    type: Date,
+    description: 'The teacher changed their signature after signing; the card shows the new one',
+  })
+  teacher_signature_updated_at?: Date | null;
 }
 
 export class ReportCardScopeDto {
@@ -365,6 +379,17 @@ export class SignatureResponseDto {
 
   @ApiProperty({ example: 'https://...', nullable: true, type: String })
   signature_url: string | null;
+
+  @ApiProperty({ description: 'A teacher who is also a parent: the first signature was copied to the Parent app' })
+  parent_signature_copied: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'This signature is also set for your Parent app. You can change it there anytime.',
+    description: 'Show this short note when present',
+  })
+  message: string | null;
 }
 
 export class SignReportCardDto {
@@ -426,11 +451,17 @@ export class SectionStudentSignatureItemDto {
   @ApiProperty({ nullable: true, type: Date })
   teacher_signed_at: Date | null;
 
+  @ApiProperty({ nullable: true, type: Date })
+  teacher_signature_updated_at: Date | null;
+
   @ApiProperty({ example: false })
   parent_signed: boolean;
 
   @ApiProperty({ nullable: true, type: Date })
   parent_signed_at: Date | null;
+
+  @ApiProperty({ nullable: true, type: Date })
+  parent_signature_updated_at: Date | null;
 
   @ApiProperty({ example: 'pending_parent' })
   status: 'signed' | 'pending_parent' | 'pending_teacher';

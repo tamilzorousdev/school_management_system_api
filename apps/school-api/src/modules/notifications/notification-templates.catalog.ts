@@ -53,6 +53,8 @@ export const TEMPLATES = {
   TEACHER_RATED: 'TEACHER_RATED',
   STUDENT_FEEDBACK: 'STUDENT_FEEDBACK',
   EMERGENCY_BROADCAST: 'EMERGENCY_BROADCAST',
+  PARENT_SIGNATURE_CHANGED: 'PARENT_SIGNATURE_CHANGED',
+  SIGNATURE_SET_BY_SCHOOL: 'SIGNATURE_SET_BY_SCHOOL',
 } as const;
 
 interface TemplateText {
@@ -71,6 +73,44 @@ export interface TemplateDefinition {
 }
 
 export const TEMPLATE_CATALOG: TemplateDefinition[] = [
+  {
+    code: TEMPLATES.PARENT_SIGNATURE_CHANGED,
+    category: 'system',
+    push: false,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Parent signature {{change}}',
+        body: '{{parent}} ({{children}}) {{change}} on {{date}}. Signed report cards this year now show the new signature.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'பெற்றோர் கையொப்ப மாற்றம்',
+        body: '{{parent}} ({{children}}) {{date}} அன்று கையொப்பத்தை மாற்றினார். இந்த ஆண்டின் கையொப்பமிட்ட மதிப்பெண் அட்டைகளில் புதிய கையொப்பம் காட்டப்படும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SIGNATURE_SET_BY_SCHOOL,
+    category: 'system',
+    push: false,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Your signature was {{change}}',
+        body: 'The school office {{change}} your {{app}} signature on {{date}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உங்கள் கையொப்பம் மாற்றப்பட்டது',
+        body: 'பள்ளி அலுவலகம் {{date}} அன்று உங்கள் {{app}} கையொப்பத்தை மாற்றியது.',
+        sms_body: null,
+      },
+    },
+  },
   {
     code: TEMPLATES.EMERGENCY_BROADCAST,
     category: 'alert',

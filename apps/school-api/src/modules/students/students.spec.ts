@@ -173,6 +173,7 @@ describe('GuardiansService.ensureLogin', () => {
     {} as never,
     { linkFor: () => null } as never,
     {} as never,
+    {} as never,
     { timeZone: 'Asia/Kolkata' } as AppConfig,
   );
   const guardian = () =>

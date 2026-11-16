@@ -25,6 +25,9 @@ export class ReportCardSignature extends SchoolScopedEntity {
   @Column({ type: 'timestamptz', nullable: true })
   teacher_signed_at: Date | null;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  teacher_signature_updated_at: Date | null;
+
   @Column({ type: 'int', nullable: true })
   parent_user_id: number | null;
 
@@ -33,4 +36,7 @@ export class ReportCardSignature extends SchoolScopedEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   parent_signed_at: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  parent_signature_updated_at: Date | null;
 }
