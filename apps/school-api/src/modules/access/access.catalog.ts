@@ -249,14 +249,14 @@ export const ROLE_CATALOG: RoleDefinition[] = [
     name: 'Head of department',
     description: 'Teacher who also approves leave for the department.',
     app: 'staff',
-    permissions: [],
+    permissions: [PERMISSIONS.EXAMS_VIEW],
   },
   {
     code: ROLES.TEACHER,
     name: 'Teacher',
     description: 'Uses the Staff app for classes, attendance, diary and chat.',
     app: 'staff',
-    permissions: [],
+    permissions: [PERMISSIONS.EXAMS_VIEW],
   },
   {
     code: ROLES.PARENT,
