@@ -32,6 +32,9 @@ export const TEMPLATES = {
   FEE_DUE: 'FEE_DUE',
   FEE_OVERDUE: 'FEE_OVERDUE',
   FLEET_DOCUMENT_EXPIRY: 'FLEET_DOCUMENT_EXPIRY',
+  CREW_DOCUMENT_EXPIRY: 'CREW_DOCUMENT_EXPIRY',
+  CREW_DOCUMENT_EXPIRY_SELF: 'CREW_DOCUMENT_EXPIRY_SELF',
+  CREW_BLOCKED: 'CREW_BLOCKED',
   VEHICLE_FAULT: 'VEHICLE_FAULT',
   TRIP_NOT_BOARDED: 'TRIP_NOT_BOARDED',
   RESULT_PUBLISHED: 'RESULT_PUBLISHED',
@@ -777,6 +780,63 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{document}} {{date}} அன்று முடிகிறது: {{subject}}',
         body: '{{subject}} க்கான {{document}} {{date}} வரை மட்டுமே செல்லும் ({{days}} நாட்கள் உள்ளன). பேருந்து இயங்க புதுப்பிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.CREW_DOCUMENT_EXPIRY,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{subject}}: {{document}} ends on {{date}}',
+        body: '{{subject}}’s {{document}} is valid till {{date}} ({{days}} days left). Remind them to renew it and verify the new copy.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{subject}}: {{document}} {{date}} அன்று முடிகிறது',
+        body: '{{subject}} அவர்களின் {{document}} {{date}} வரை மட்டுமே செல்லும் ({{days}} நாட்கள் உள்ளன). புதுப்பிக்க நினைவூட்டி, புதிய நகலைச் சரிபார்க்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.CREW_DOCUMENT_EXPIRY_SELF,
+    category: 'transport',
+    push: true,
+    sms: 'fallback',
+    critical: false,
+    text: {
+      en: {
+        title: 'Renew your documents',
+        body: '{{documents}}. Renew it and give a copy to the transport office to stay on duty.',
+        sms_body: 'Dear {{name}}, {{documents}}. Renew it and give a copy to the transport office to stay on duty.',
+      },
+      ta: {
+        title: 'உங்கள் ஆவணங்களைப் புதுப்பிக்கவும்',
+        body: '{{documents}}. பணியில் தொடர புதுப்பித்து, நகலைப் போக்குவரத்து அலுவலகத்தில் கொடுக்கவும்.',
+        sms_body: '{{name}}, {{documents}}. பணியில் தொடர புதுப்பித்து, நகலைப் போக்குவரத்து அலுவலகத்தில் கொடுக்கவும்.',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.CREW_BLOCKED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: '{{subject}} is off duty',
+        body: '{{document}} expired on {{date}}. {{subject}} cannot be on a bus until it is renewed, verified and approved again.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{subject}} பணியில் இல்லை',
+        body: '{{document}} {{date}} அன்று காலாவதியானது. புதுப்பித்து, சரிபார்த்து, மீண்டும் அனுமதிக்கும் வரை {{subject}} பேருந்தில் பணியாற்ற முடியாது.',
         sms_body: null,
       },
     },

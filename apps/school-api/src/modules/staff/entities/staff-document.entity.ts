@@ -9,10 +9,19 @@ export const STAFF_DOCUMENT_TYPES = [
   'experience_letter',
   'police_verification',
   'medical_fitness',
+  'driving_licence',
+  'psv_badge',
   'photo',
   'other',
 ] as const;
 export type StaffDocumentType = (typeof STAFF_DOCUMENT_TYPES)[number];
+
+export const CREW_DOCUMENT_TYPES: StaffDocumentType[] = [
+  'driving_licence',
+  'psv_badge',
+  'medical_fitness',
+  'police_verification',
+];
 
 @Entity('staff_documents')
 export class StaffDocument extends VerifiableDocument {

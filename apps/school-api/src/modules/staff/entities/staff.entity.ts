@@ -94,6 +94,42 @@ export class Staff extends SchoolScopedEntity {
   @Column({ type: 'date', nullable: true })
   licence_expiry: string | null;
 
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  licence_type: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  licence_issued_on: string | null;
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  badge_no: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  badge_expiry: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  medical_fitness_expiry: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  police_verified_on: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  police_verification_expiry: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  duty_approved_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  duty_approved_by: number | null;
+
+  @Column({ type: 'date', nullable: true })
+  duty_approved_until: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  last_reminded_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  last_reminded_by: number | null;
+
   @OneToMany(() => StaffQualification, (item) => item.staff)
   qualifications?: StaffQualification[];
 

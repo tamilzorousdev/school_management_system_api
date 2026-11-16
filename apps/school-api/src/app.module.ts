@@ -32,6 +32,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module';
 import { MobileModule } from './modules/mobile/mobile.module';
 import { SecurityModule } from './modules/security/security.module';
 import { StaffModule } from './modules/staff/staff.module';
+import { CrewModule } from './modules/crew/crew.module';
 import { StaffAttendanceModule } from './modules/staff-attendance/staff-attendance.module';
 import { StaffLeaveModule } from './modules/staff-leave/staff-leave.module';
 import { TimetableModule } from './modules/timetable/timetable.module';
@@ -62,6 +63,7 @@ import { UsersModule } from './modules/users/users.module';
     StudentLifecycleModule,
     StudentImportModule,
     StaffModule,
+    CrewModule,
     AttendanceModule,
     StaffAttendanceModule,
     StaffLeaveModule,

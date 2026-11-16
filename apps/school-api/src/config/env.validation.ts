@@ -91,6 +91,10 @@ export class EnvironmentVariables {
   @IsBoolean()
   SEED_ON_START: boolean = false;
 
+  @Transform(toBoolean)
+  @IsBoolean()
+  CREW_EXPIRY_AUTO_NOTIFY: boolean = false;
+
   @IsUrl(
     { require_tld: false, require_protocol: true },
     { message: 'TELEMATICS_API_URL must be like http://localhost:3001/api/v1' },

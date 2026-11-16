@@ -39,7 +39,7 @@ import {
   StaffListItemDto,
 } from './dto/staff-response.dto';
 import { StaffBankAccount } from './entities/staff-bank-account.entity';
-import { StaffDocument, StaffDocumentType } from './entities/staff-document.entity';
+import { CREW_DOCUMENT_TYPES, StaffDocument, StaffDocumentType } from './entities/staff-document.entity';
 import { StaffQualification } from './entities/staff-qualification.entity';
 import { Staff } from './entities/staff.entity';
 import { TeacherAssignment } from './entities/teacher-assignment.entity';
@@ -62,6 +62,8 @@ const DOCUMENT_TITLES: Record<StaffDocumentType, string> = {
   experience_letter: 'Experience letter',
   police_verification: 'Police verification',
   medical_fitness: 'Medical fitness certificate',
+  driving_licence: 'Driving licence',
+  psv_badge: 'PSV badge',
   photo: 'Photo',
   other: 'Document',
 };
@@ -493,6 +495,9 @@ export class StaffService {
         status: 'pending',
       }),
     );
+    if (CREW_DOCUMENT_TYPES.includes(dto.type)) {
+      await this.staff.update(id, { duty_approved_at: null, duty_approved_by: null, duty_approved_until: null });
+    }
     return (await this.presentDocuments([saved]))[0];
   }
 

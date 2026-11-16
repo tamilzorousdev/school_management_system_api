@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { CrewModule } from '../crew/crew.module';
 import { StudentLifecycleModule } from '../student-lifecycle/student-lifecycle.module';
 import { BoardingService } from './boarding.service';
 import { DriverSafetyController } from './driver-safety.controller';
@@ -21,6 +22,7 @@ import { TripsService } from './trips.service';
     TypeOrmModule.forFeature([TransportTrip, TripEvent, TripBoarding, FleetAlert]),
     AuthModule,
     StudentLifecycleModule,
+    CrewModule,
   ],
   controllers: [
     AdminTripsController,

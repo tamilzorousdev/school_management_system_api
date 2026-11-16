@@ -106,6 +106,10 @@ export const telematicsConfig = registerAs('telematics', () => ({
   webhookSecret: process.env.TELEMATICS_WEBHOOK_SECRET ?? '',
 }));
 
+export const transportConfig = registerAs('transport', () => ({
+  crewExpiryAutoNotify: process.env.CREW_EXPIRY_AUTO_NOTIFY === 'true',
+}));
+
 export const videoConfig = registerAs('video', () => ({
   agoraAppId: process.env.AGORA_APP_ID ?? '',
   agoraAppCertificate: process.env.AGORA_APP_CERTIFICATE ?? '',
@@ -139,6 +143,7 @@ export type StorageConfig = ConfigType<typeof storageConfig>;
 export type QueueConfig = ConfigType<typeof queueConfig>;
 export type SecurityConfig = ConfigType<typeof securityConfig>;
 export type TelematicsConfig = ConfigType<typeof telematicsConfig>;
+export type TransportConfig = ConfigType<typeof transportConfig>;
 export type VideoConfig = ConfigType<typeof videoConfig>;
 
 export const ALL_CONFIGS = [
@@ -153,6 +158,7 @@ export const ALL_CONFIGS = [
   storageConfig,
   securityConfig,
   telematicsConfig,
+  transportConfig,
   videoConfig,
   queueConfig,
 ];
