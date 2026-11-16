@@ -129,3 +129,59 @@ export function messagePreview(body: string | null, hasFile: boolean, kind?: str
   const flat = body.replace(/\s+/g, ' ').trim();
   return flat.length > PREVIEW_LENGTH ? `${flat.slice(0, PREVIEW_LENGTH - 1).trimEnd()}…` : flat;
 }
+
+export const GROUP_EVENTS = ['member_added', 'member_removed', 'member_left', 'admin_changed'] as const;
+export type GroupEvent = (typeof GROUP_EVENTS)[number];
+
+export const NO_LONGER_MEMBER =
+  'You are no longer a member of this group, so you cannot send or receive messages here.';
+
+interface Person {
+  id: number;
+  name: string;
+}
+
+export function groupEventText(
+  event: GroupEvent,
+  actor: Person,
+  target: Person | null,
+  viewerId: number | null,
+): string {
+  const you = (person: Person | null) => (person && person.id === viewerId ? 'you' : (person?.name ?? 'someone'));
+  const byYou = actor.id === viewerId;
+  switch (event) {
+    case 'member_added':
+      return byYou ? `You added ${you(target)}` : `${actor.name} added ${you(target)}`;
+    case 'member_removed':
+      if (target?.id === viewerId) return `${actor.name} removed you from this group. ${NO_LONGER_MEMBER}`;
+      return byYou ? `You removed ${you(target)}` : `${actor.name} removed ${you(target)}`;
+    case 'member_left':
+      return byYou ? `You left this group. ${NO_LONGER_MEMBER}` : `${actor.name} left the group`;
+    case 'admin_changed':
+      return target?.id === viewerId
+        ? 'You are now the group admin'
+        : `${target?.name ?? 'Someone'} is now the group admin`;
+  }
+}
+
+const STAFF_ROLES = ['TEACHER', 'HOD', 'PRINCIPAL', 'ADMIN', 'SUPER_ADMIN', 'AO'];
+
+export function groupParty(actor: { roles: string[] }): 'teacher' | 'parent' {
+  return actor.roles.some((role) => STAFF_ROLES.includes(role)) ? 'teacher' : 'parent';
+}
+
+export function directoryDetail(
+  children: { name: string; class_section: string }[],
+  classes: { class_section: string; class_teacher: boolean }[],
+): string | null {
+  const lead = classes.filter((item) => item.class_teacher).map((item) => item.class_section);
+  const other = classes.filter((item) => !item.class_teacher).map((item) => item.class_section);
+  const parts = [
+    lead.length ? `Class teacher ${lead.join(', ')}` : null,
+    other.length ? `Teaches ${other.join(', ')}` : null,
+    children.length
+      ? `Parent of ${children.map((child) => `${child.name} (${child.class_section})`).join(', ')}`
+      : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+}

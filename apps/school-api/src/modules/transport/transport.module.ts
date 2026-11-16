@@ -1,3 +1,5 @@
+import { VehicleDocument } from './entities/vehicle-document.entity';
+import { VehicleDocumentsService } from './vehicle-documents.service';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CrewModule } from '../crew/crew.module';
@@ -11,9 +13,12 @@ import { MobileDriverController, StudentTransportController, TransportController
 import { VehiclesService } from './vehicles.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Vehicle, TransportRoute, RouteStop, StudentTransport, ExpiryAlert]), CrewModule],
+  imports: [
+    TypeOrmModule.forFeature([Vehicle, TransportRoute, RouteStop, StudentTransport, ExpiryAlert, VehicleDocument]),
+    CrewModule,
+  ],
   controllers: [TransportController, StudentTransportController, MobileDriverController],
-  providers: [VehiclesService, RoutesService],
+  providers: [VehicleDocumentsService, VehiclesService, RoutesService],
   exports: [VehiclesService, RoutesService],
 })
 export class TransportModule {}

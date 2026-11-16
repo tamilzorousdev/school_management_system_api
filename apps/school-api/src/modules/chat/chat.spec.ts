@@ -8,6 +8,10 @@ import {
   undoUntil,
   zonedParts,
   zonedToUtc,
+  directoryDetail,
+  groupEventText,
+  groupParty,
+  NO_LONGER_MEMBER,
 } from './chat.logic';
 
 const TZ = 'Asia/Kolkata';
@@ -98,5 +102,48 @@ describe('chat delete and media', () => {
     const now = new Date('2026-11-12T12:00:00Z');
     expect(canEditMessage(new Date('2026-11-11T12:30:00Z'), now)).toBe(true);
     expect(canEditMessage(new Date('2026-11-11T11:30:00Z'), now)).toBe(false);
+  });
+});
+
+describe('group notices', () => {
+  const arun = { id: 7, name: 'Arun Prakash' };
+  const kala = { id: 9, name: 'Kala Prabhu' };
+
+  it('words a removal for the remover, the removed person and everyone else', () => {
+    expect(groupEventText('member_removed', arun, kala, 7)).toBe('You removed Kala Prabhu');
+    expect(groupEventText('member_removed', arun, kala, 9)).toBe(
+      `Arun Prakash removed you from this group. ${NO_LONGER_MEMBER}`,
+    );
+    expect(groupEventText('member_removed', arun, kala, 3)).toBe('Arun Prakash removed Kala Prabhu');
+    expect(groupEventText('member_removed', arun, kala, null)).toBe('Arun Prakash removed Kala Prabhu');
+  });
+
+  it('words leaving, adding and a new admin', () => {
+    expect(groupEventText('member_left', kala, null, 9)).toBe(`You left this group. ${NO_LONGER_MEMBER}`);
+    expect(groupEventText('member_left', kala, null, 7)).toBe('Kala Prabhu left the group');
+    expect(groupEventText('member_added', arun, kala, 9)).toBe('Arun Prakash added you');
+    expect(groupEventText('member_added', arun, kala, 7)).toBe('You added Kala Prabhu');
+    expect(groupEventText('admin_changed', arun, kala, 9)).toBe('You are now the group admin');
+    expect(groupEventText('admin_changed', arun, kala, 7)).toBe('Kala Prabhu is now the group admin');
+  });
+
+  it('sends staff as the teacher side and parents as the parent side', () => {
+    expect(groupParty({ roles: ['TEACHER', 'PARENT'] })).toBe('teacher');
+    expect(groupParty({ roles: ['PARENT'] })).toBe('parent');
+  });
+});
+
+describe('directory detail line', () => {
+  it('lists classes led, classes taught and children', () => {
+    expect(
+      directoryDetail(
+        [{ name: 'Nila Narayanan', class_section: '7 - A' }],
+        [
+          { class_section: '7 - A', class_teacher: true },
+          { class_section: '3 - A', class_teacher: false },
+        ],
+      ),
+    ).toBe('Class teacher 7 - A · Teaches 3 - A · Parent of Nila Narayanan (7 - A)');
+    expect(directoryDetail([], [])).toBeNull();
   });
 });

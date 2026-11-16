@@ -93,7 +93,7 @@ export class EnvironmentVariables {
 
   @Transform(toBoolean)
   @IsBoolean()
-  CREW_EXPIRY_AUTO_NOTIFY: boolean = false;
+  CREW_EXPIRY_AUTO_NOTIFY: boolean = true;
 
   @IsUrl(
     { require_tld: false, require_protocol: true },

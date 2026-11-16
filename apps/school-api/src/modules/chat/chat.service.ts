@@ -1,10 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, EntityManager, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { AppException, AuthUser, listQuery, offset, paginate, Paginated } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { currentYearId, currentYearSql, onlyCurrentYear } from '../../shared/academic-year';
+import { yearClause } from '../../shared/year-context';
 import { addDays, holidaySet } from '../../shared/school-days';
 import { parentsOfStudent, teachersOfStudent } from '../../shared/student-contacts';
 import { withoutSelf } from '../meetings/meeting-people';
@@ -26,6 +27,11 @@ import {
   undoUntil,
   VIDEO_MAX_SECONDS,
   zonedParts,
+  groupEventText,
+  GroupEvent,
+  NO_LONGER_MEMBER,
+  directoryDetail,
+  groupParty,
 } from './chat.logic';
 import {
   AddGroupMembersDto,
@@ -134,12 +140,14 @@ export class ChatService {
     const thread = await this.findForParty(actor, party, id);
     const limit = query.limit ?? PAGE_SIZE;
     let cleared: Date | null = null;
+    let leftAt: Date | null = null;
     if (thread.is_group) {
       const [member] = (await this.dataSource.query(
-        `SELECT cleared_at FROM chat_group_members WHERE thread_id = $1 AND user_id = $2`,
+        `SELECT cleared_at, left_at FROM chat_group_members WHERE thread_id = $1 AND user_id = $2`,
         [thread.id, actor.id],
-      )) as { cleared_at: Date | null }[];
+      )) as { cleared_at: Date | null; left_at: Date | null }[];
       cleared = member?.cleared_at ?? null;
+      leftAt = member?.left_at ?? null;
     } else {
       cleared = party === 'teacher' ? thread.teacher_cleared_at : thread.parent_cleared_at;
     }
@@ -151,6 +159,11 @@ export class ChatService {
       });
     if (query.before_id) qb.andWhere('m.id < :beforeId', { beforeId: query.before_id });
     if (cleared) qb.andWhere('m.created_at > :cleared', { cleared });
+    if (leftAt) {
+      qb.andWhere(
+        'm.created_at <= (SELECT gm.left_at FROM chat_group_members gm WHERE gm.thread_id = m.thread_id AND gm.user_id = :viewer)',
+      );
+    }
     const rows = await qb
       .orderBy('m.id', 'DESC')
       .take(limit + 1)
@@ -176,6 +189,7 @@ export class ChatService {
 
   async send(actor: AuthUser, party: ChatParty, id: number, dto: SendMessageDto): Promise<ChatMessageDto> {
     const thread = await this.findForParty(actor, party, id);
+    if (thread.is_group) await this.assertActiveMember(thread.id, actor.id);
     if (!dto.body && !dto.file_id) {
       throw AppException.validation([{ field: 'body', message: 'Write a message or attach a file' }]);
     }
@@ -226,7 +240,7 @@ export class ChatService {
           .execute();
         await manager.query(
           `UPDATE chat_group_members SET unread_count = unread_count + 1, updated_at = now()
-           WHERE thread_id = $1 AND user_id != $2`,
+           WHERE thread_id = $1 AND user_id != $2 AND left_at IS NULL`,
           [thread.id, actor.id],
         );
       } else {
@@ -301,6 +315,7 @@ export class ChatService {
     const thread = await this.findForParty(actor, party, threadId);
     const message = await this.messages.findOneBy({ id: messageId, thread_id: thread.id });
     if (!message) throw AppException.notFound('Message not found', 'MESSAGE_NOT_FOUND');
+    if (message.event) throw AppException.badRequest('Group notices cannot be reported', 'SYSTEM_MESSAGE');
     if (message.sender_user_id === actor.id) {
       throw AppException.badRequest('You cannot report your own message', 'OWN_MESSAGE');
     }
@@ -388,6 +403,7 @@ export class ChatService {
     dto: EditMessageDto,
   ): Promise<ChatMessageDto> {
     const thread = await this.findForParty(actor, party, threadId);
+    if (thread.is_group) await this.assertActiveMember(thread.id, actor.id);
     const message = await this.visibleMessage(thread, party, actor.id, messageId);
     if (message.sender_user_id !== actor.id) {
       throw AppException.forbidden('You can edit only your own messages', 'NOT_YOUR_MESSAGE');
@@ -719,28 +735,230 @@ export class ChatService {
     return (await this.present([thread], actor.id))[0];
   }
 
-  async addGroupMembers(actor: AuthUser, threadId: number, dto: AddGroupMembersDto): Promise<ChatMemberDto[]> {
-    const thread = await this.threads.findOneBy({ id: threadId });
-    if (!thread || !thread.is_group) {
-      throw AppException.notFound('Group conversation not found', 'GROUP_NOT_FOUND');
+  async addGroupMembers(
+    actor: AuthUser,
+    threadId: number,
+    dto: AddGroupMembersDto,
+    schoolId: number | null = null,
+  ): Promise<ChatMemberDto[]> {
+    const thread = await this.groupThread(threadId, schoolId);
+    if (schoolId === null) await this.assertActiveMember(thread.id, actor.id);
+    const wanted = [...new Set(dto.user_ids ?? [])].filter((id) => id !== actor.id);
+    const allowed = new Set((await this.directoryIds(thread.school_id, wanted)).map(Number));
+    const outside = wanted.filter((id) => !allowed.has(id));
+    if (outside.length) {
+      throw AppException.validation([{ field: 'user_ids', message: 'Add only teachers and parents of this school' }]);
     }
-    const [isMember] = await this.dataSource.query(
+    const added: number[] = [];
+    const events: ChatMessage[] = [];
+    await this.dataSource.transaction(async (manager) => {
+      for (const userId of wanted) {
+        const rows = (await manager.query(
+          `INSERT INTO chat_group_members (school_id, thread_id, user_id, role, unread_count, created_at, updated_at)
+           VALUES ($1, $2, $3, 'member', 0, now(), now())
+           ON CONFLICT (thread_id, user_id) DO UPDATE
+             SET role = 'member', unread_count = 0, cleared_at = now(), left_at = NULL, left_reason = NULL,
+                 removed_by = NULL, updated_at = now()
+             WHERE chat_group_members.left_at IS NOT NULL
+           RETURNING user_id`,
+          [thread.school_id, thread.id, userId],
+        )) as { user_id: number }[];
+        if (!rows.length) continue;
+        added.push(userId);
+        events.push(await this.postGroupEvent(manager, thread, actor, 'member_added', userId));
+      }
+    });
+    if (added.length) await this.announce(thread, actor, events, added);
+    return this.groupMembers(thread.id);
+  }
+
+  async removeGroupMember(
+    actor: AuthUser,
+    threadId: number,
+    userId: number,
+    schoolId: number | null,
+  ): Promise<ChatMemberDto[]> {
+    const thread = await this.groupThread(threadId, schoolId);
+    if (userId === actor.id) {
+      throw AppException.badRequest('Use Leave group to leave it yourself', 'USE_LEAVE_GROUP');
+    }
+    if (schoolId === null) {
+      const me = await this.assertActiveMember(thread.id, actor.id);
+      if (me.role !== 'creator') {
+        throw AppException.forbidden('Only the group admin can remove members', 'NOT_GROUP_ADMIN');
+      }
+    }
+    const target = await this.activeMember(thread.id, userId);
+    if (!target) throw AppException.notFound('This person is not in the group', 'MEMBER_NOT_FOUND');
+    const events = await this.dataSource.transaction(async (manager) => {
+      const message = await this.postGroupEvent(manager, thread, actor, 'member_removed', userId);
+      await manager.query(
+        `UPDATE chat_group_members
+         SET left_at = (SELECT created_at FROM chat_messages WHERE id = $3), left_reason = 'removed', removed_by = $4,
+             unread_count = 0, role = 'member', updated_at = now()
+         WHERE thread_id = $1 AND user_id = $2`,
+        [thread.id, userId, message.id, actor.id],
+      );
+      const handover = target.role === 'creator' ? await this.handOver(manager, thread, actor) : null;
+      return [message, ...(handover ? [handover] : [])];
+    });
+    await this.announce(thread, actor, events, [], userId);
+    const [actorName] = await this.dataSource.query(`SELECT name FROM users WHERE id = $1`, [actor.id]);
+    await this.pushMessage(
+      thread,
+      userId,
+      thread.title ?? 'Group',
+      groupEventText(
+        'member_removed',
+        { id: actor.id, name: actorName?.name ?? actor.name },
+        { id: userId, name: '' },
+        userId,
+      ),
+      1,
+    );
+    return this.groupMembers(thread.id);
+  }
+
+  async leaveGroup(actor: AuthUser, threadId: number): Promise<ChatThreadDto> {
+    const thread = await this.groupThread(threadId, null);
+    const me = await this.assertActiveMember(thread.id, actor.id);
+    const events = await this.dataSource.transaction(async (manager) => {
+      const message = await this.postGroupEvent(manager, thread, actor, 'member_left', null);
+      await manager.query(
+        `UPDATE chat_group_members
+         SET left_at = (SELECT created_at FROM chat_messages WHERE id = $3), left_reason = 'left', unread_count = 0,
+             role = 'member', updated_at = now()
+         WHERE thread_id = $1 AND user_id = $2`,
+        [thread.id, actor.id, message.id],
+      );
+      const handover = me.role === 'creator' ? await this.handOver(manager, thread, actor) : null;
+      return [message, ...(handover ? [handover] : [])];
+    });
+    await this.announce(thread, actor, events, [], actor.id);
+    return (await this.present([(await this.threads.findOneBy({ id: thread.id }))!], actor.id))[0];
+  }
+
+  async groupMembersFor(actor: AuthUser, threadId: number): Promise<ChatMemberDto[]> {
+    const thread = await this.groupThread(threadId, null);
+    const [member] = await this.dataSource.query(
       `SELECT 1 FROM chat_group_members WHERE thread_id = $1 AND user_id = $2`,
       [thread.id, actor.id],
     );
-    if (!isMember && !actor.roles.includes('admin') && !actor.roles.includes('super_admin')) {
-      throw AppException.forbidden('You are not a member of this group', 'NOT_GROUP_MEMBER');
-    }
-    const toAdd = [...new Set(dto.user_ids ?? [])];
-    for (const userId of toAdd) {
-      await this.dataSource.query(
-        `INSERT INTO chat_group_members (school_id, thread_id, user_id, role, unread_count, created_at, updated_at)
-         VALUES ($1, $2, $3, 'member', 0, now(), now())
-         ON CONFLICT (thread_id, user_id) DO NOTHING`,
-        [thread.school_id, thread.id, userId],
-      );
-    }
+    if (!member) throw AppException.notFound('Group conversation not found', 'GROUP_NOT_FOUND');
     return this.groupMembers(thread.id);
+  }
+
+  private async groupThread(threadId: number, schoolId: number | null): Promise<ChatThread> {
+    const thread = await this.threads.findOneBy({ id: threadId });
+    if (!thread || !thread.is_group || (schoolId !== null && thread.school_id !== schoolId)) {
+      throw AppException.notFound('Group conversation not found', 'GROUP_NOT_FOUND');
+    }
+    return thread;
+  }
+
+  private async activeMember(threadId: number, userId: number): Promise<{ role: string } | null> {
+    const [row] = (await this.dataSource.query(
+      `SELECT role FROM chat_group_members WHERE thread_id = $1 AND user_id = $2 AND left_at IS NULL`,
+      [threadId, userId],
+    )) as { role: string }[];
+    return row ?? null;
+  }
+
+  private async assertActiveMember(threadId: number, userId: number): Promise<{ role: string }> {
+    const member = await this.activeMember(threadId, userId);
+    if (!member) throw AppException.forbidden(NO_LONGER_MEMBER, 'NOT_GROUP_MEMBER');
+    return member;
+  }
+
+  private async handOver(manager: EntityManager, thread: ChatThread, actor: AuthUser): Promise<ChatMessage | null> {
+    const [next] = (await manager.query(
+      `SELECT user_id FROM chat_group_members WHERE thread_id = $1 AND left_at IS NULL ORDER BY created_at, id LIMIT 1`,
+      [thread.id],
+    )) as { user_id: number }[];
+    if (!next) return null;
+    await manager.query(
+      `UPDATE chat_group_members SET role = 'creator', updated_at = now() WHERE thread_id = $1 AND user_id = $2`,
+      [thread.id, next.user_id],
+    );
+    return this.postGroupEvent(manager, thread, actor, 'admin_changed', Number(next.user_id));
+  }
+
+  private async postGroupEvent(
+    manager: EntityManager,
+    thread: ChatThread,
+    actor: AuthUser,
+    event: GroupEvent,
+    targetId: number | null,
+  ): Promise<ChatMessage> {
+    const people: { id: number; name: string }[] = await manager.query(
+      `SELECT id, name FROM users WHERE id = ANY($1)`,
+      [[actor.id, targetId].filter(Boolean)],
+    );
+    const name = (id: number | null) => people.find((person) => Number(person.id) === id)?.name ?? '';
+    const message = await manager.save(
+      manager.create(ChatMessage, {
+        school_id: thread.school_id,
+        thread_id: thread.id,
+        sender_user_id: actor.id,
+        sender_party: groupParty(actor),
+        body: null,
+        kind: 'system',
+        event,
+        event_user_id: targetId,
+      }),
+    );
+    await manager
+      .createQueryBuilder()
+      .update(ChatThread)
+      .set({
+        last_message_at: message.created_at,
+        last_message_preview: groupEventText(
+          event,
+          { id: actor.id, name: name(actor.id) },
+          targetId ? { id: targetId, name: name(targetId) } : null,
+          null,
+        ).slice(0, 160),
+        last_sender_id: actor.id,
+        message_count: () => 'message_count + 1',
+      })
+      .where('id = :id', { id: thread.id })
+      .execute();
+    return message;
+  }
+
+  private async announce(
+    thread: ChatThread,
+    actor: AuthUser,
+    events: ChatMessage[],
+    added: number[],
+    gone: number | null = null,
+  ): Promise<void> {
+    const recipients = [...new Set([...(await this.threadMemberIds(thread)), ...(gone ? [gone] : [])])];
+    for (const userId of recipients) {
+      for (const message of await this.presentMessages(events, userId)) {
+        this.realtime.toUsers([userId], 'chat.message', message);
+      }
+    }
+    this.realtime.toUsers(recipients, 'chat.members_changed', {
+      thread_id: thread.id,
+      by_user_id: actor.id,
+      added_user_ids: added,
+      gone_user_id: gone,
+    });
+  }
+
+  private async directoryIds(schoolId: number, ids: number[]): Promise<number[]> {
+    if (!ids.length) return [];
+    const rows: { id: number }[] = await this.dataSource.query(
+      `SELECT u.id FROM users u
+       WHERE u.id = ANY($2) AND u.deleted_at IS NULL AND u.status = 'active'
+         AND EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                     WHERE ur.user_id = u.id AND r.code IN ('TEACHER', 'HOD', 'PRINCIPAL', 'PARENT'))
+         AND (u.school_id = $1 OR EXISTS (
+           SELECT 1 FROM guardians g WHERE g.user_id = u.id AND g.school_id = $1 AND g.deleted_at IS NULL))`,
+      [schoolId, ids],
+    );
+    return rows.map((row) => Number(row.id));
   }
 
   async deleteGroup(actor: AuthUser, threadId: number, schoolId: number | null): Promise<void> {
@@ -769,7 +987,7 @@ export class ChatService {
         `SELECT gm.id, gm.user_id, gm.role, gm.created_at, u.name
          FROM chat_group_members gm
          JOIN users u ON u.id = gm.user_id
-         WHERE gm.thread_id = $1
+         WHERE gm.thread_id = $1 AND gm.left_at IS NULL
          ORDER BY gm.id ASC`,
         [threadId],
       );
@@ -806,18 +1024,66 @@ export class ChatService {
        LIMIT 50`,
       params,
     );
-    return rows.map((row) => ({
-      id: Number(row.id),
-      name: row.name,
-      role: row.is_teacher ? 'teacher' : 'parent',
-      label: row.is_teacher && row.is_parent ? 'Teacher, parent' : row.is_teacher ? 'Teacher' : 'Parent',
-    }));
+    const ids = rows.map((row) => Number(row.id));
+    const [children, classes] = ids.length
+      ? await Promise.all([
+          this.dataSource.query(
+            `SELECT DISTINCT g.user_id, s.id, concat_ws(' ', s.first_name, s.last_name) AS name,
+                    concat_ws(' - ', c.name, sec.name) AS class_section, c.grade_level, sec.name AS section_name
+             FROM guardians g
+             JOIN student_guardians sg ON sg.guardian_id = g.id
+             JOIN students s ON s.id = sg.student_id AND s.deleted_at IS NULL AND s.status = 'active'
+             JOIN student_enrollments e ON e.student_id = s.id
+             JOIN academic_years y ON y.id = e.academic_year_id AND y.school_id = $1 AND ${yearClause('y')}
+             JOIN classes c ON c.id = e.class_id
+             LEFT JOIN sections sec ON sec.id = e.section_id
+             WHERE g.user_id = ANY($2) AND g.school_id = $1 AND g.deleted_at IS NULL
+             ORDER BY c.grade_level, sec.name`,
+            [schoolId, ids],
+          ) as Promise<{ user_id: number; id: number; name: string; class_section: string }[]>,
+          this.dataSource.query(
+            `SELECT x.user_id, l.class_section, bool_or(x.class_teacher) AS class_teacher
+             FROM (
+               SELECT sec.class_teacher_user_id AS user_id, sec.id AS section_id, true AS class_teacher
+               FROM sections sec WHERE sec.class_teacher_user_id = ANY($2) AND sec.deleted_at IS NULL
+               UNION ALL
+               SELECT ta.teacher_user_id, ta.section_id, false
+               FROM teacher_assignments ta WHERE ta.teacher_user_id = ANY($2) AND ta.deleted_at IS NULL
+             ) x
+             JOIN sections sec ON sec.id = x.section_id AND sec.deleted_at IS NULL
+             JOIN academic_years y ON y.id = sec.academic_year_id AND y.school_id = $1 AND ${yearClause('y')}
+             JOIN classes c ON c.id = sec.class_id
+             CROSS JOIN LATERAL (SELECT concat_ws(' - ', c.name, sec.name) AS class_section, c.grade_level) l
+             GROUP BY x.user_id, l.class_section, l.grade_level
+             ORDER BY bool_or(x.class_teacher) DESC, l.grade_level, l.class_section`,
+            [schoolId, ids],
+          ) as Promise<{ user_id: number; class_section: string; class_teacher: boolean }[]>,
+        ])
+      : [[], []];
+    return rows.map((row) => {
+      const id = Number(row.id);
+      const kids = children
+        .filter((child) => Number(child.user_id) === id)
+        .map((child) => ({ id: Number(child.id), name: child.name, class_section: child.class_section }));
+      const teaches = classes
+        .filter((item) => Number(item.user_id) === id)
+        .map((item) => ({ class_section: item.class_section, class_teacher: Boolean(item.class_teacher) }));
+      return {
+        id,
+        name: row.name,
+        role: row.is_teacher ? 'teacher' : 'parent',
+        label: row.is_teacher && row.is_parent ? 'Teacher, parent' : row.is_teacher ? 'Teacher' : 'Parent',
+        children: kids,
+        classes: teaches,
+        detail: directoryDetail(kids, teaches),
+      };
+    });
   }
 
   private async threadMemberIds(thread: ChatThread): Promise<number[]> {
     if (thread.is_group) {
       const rows: { user_id: number }[] = await this.dataSource.query(
-        `SELECT user_id FROM chat_group_members WHERE thread_id = $1`,
+        `SELECT user_id FROM chat_group_members WHERE thread_id = $1 AND left_at IS NULL`,
         [thread.id],
       );
       return rows.map((r) => Number(r.user_id));
@@ -855,12 +1121,14 @@ export class ChatService {
     messageId: number,
   ): Promise<ChatMessage> {
     let cleared: Date | null = null;
+    let leftAt: Date | null = null;
     if (thread.is_group) {
       const [member] = (await this.dataSource.query(
-        `SELECT cleared_at FROM chat_group_members WHERE thread_id = $1 AND user_id = $2`,
+        `SELECT cleared_at, left_at FROM chat_group_members WHERE thread_id = $1 AND user_id = $2`,
         [thread.id, viewerId],
-      )) as { cleared_at: Date | null }[];
+      )) as { cleared_at: Date | null; left_at: Date | null }[];
       cleared = member?.cleared_at ?? null;
+      leftAt = member?.left_at ?? null;
     } else {
       cleared = party === 'teacher' ? thread.teacher_cleared_at : thread.parent_cleared_at;
     }
@@ -871,8 +1139,11 @@ export class ChatService {
           viewerId,
         ])
       : [];
-    if (!message || hidden || (cleared && message.created_at <= cleared)) {
+    if (!message || hidden || (cleared && message.created_at <= cleared) || (leftAt && message.created_at > leftAt)) {
       throw AppException.notFound('Message not found', 'MESSAGE_NOT_FOUND');
+    }
+    if (message.event) {
+      throw AppException.badRequest('Group notices cannot be changed or deleted', 'SYSTEM_MESSAGE');
     }
     return message;
   }
@@ -953,7 +1224,7 @@ export class ChatService {
     const gone = (row: ChatMessage) => Boolean(row.hidden_at || row.deleted_for_all_at);
     const schoolIds = [...new Set(rows.map((row) => row.school_id).filter(Boolean))];
     const [people, files, schoolRows] = await Promise.all([
-      this.users(rows.map((row) => row.sender_user_id)),
+      this.users(rows.flatMap((row) => [row.sender_user_id, row.event_user_id])),
       this.files.presentMany(rows.map((row) => (gone(row) ? null : row.file_id))),
       schoolIds.length
         ? this.dataSource.query<{ id: number; chat_delete_window: string }[]>(
@@ -968,12 +1239,22 @@ export class ChatService {
         s.chat_delete_window ?? '24_hours',
       ]),
     );
+    const person = (id: number) => ({ id, name: people.get(id)?.name ?? '' });
+    const systemText = (row: ChatMessage) =>
+      groupEventText(
+        row.event!,
+        person(row.sender_user_id),
+        row.event_user_id ? person(row.event_user_id) : null,
+        viewerId,
+      );
     return rows.map((row) => ({
       id: row.id,
       thread_id: row.thread_id,
       sender: { id: row.sender_user_id, name: people.get(row.sender_user_id)?.name ?? '' },
       sender_party: row.sender_party,
-      body: gone(row) ? null : row.body,
+      body: row.event ? systemText(row) : gone(row) ? null : row.body,
+      event: row.event ?? null,
+      event_user: row.event_user_id ? person(row.event_user_id) : null,
       file: gone(row) || !row.file_id ? null : (files.get(row.file_id) ?? null),
       sent_at: row.created_at,
       read_at: row.read_at,
@@ -985,10 +1266,15 @@ export class ChatService {
       edited: Boolean(row.edited_at),
       edited_at: row.edited_at ?? null,
       can_edit:
-        viewerId === row.sender_user_id && !row.deleted_for_all_at && !row.hidden_at && canEditMessage(row.created_at),
+        !row.event &&
+        viewerId === row.sender_user_id &&
+        !row.deleted_for_all_at &&
+        !row.hidden_at &&
+        canEditMessage(row.created_at),
       deleted: Boolean(row.deleted_for_all_at),
       deleted_at: row.deleted_for_all_at ?? null,
       can_delete_for_everyone:
+        !row.event &&
         viewerId === row.sender_user_id &&
         !row.deleted_for_all_at &&
         canDeleteForEveryone(row.created_at, windows.get(row.school_id) ?? '24_hours'),
@@ -1071,7 +1357,8 @@ export class ChatService {
       ),
       groupThreadIds.length
         ? (this.dataSource.query(
-            `SELECT gm.id, gm.thread_id, gm.user_id, gm.role, gm.unread_count, gm.created_at, u.name
+            `SELECT gm.id, gm.thread_id, gm.user_id, gm.role, gm.unread_count, gm.created_at, gm.left_at,
+                    gm.left_reason, gm.removed_by, u.name
              FROM chat_group_members gm
              JOIN users u ON u.id = gm.user_id
              WHERE gm.thread_id = ANY($1)
@@ -1085,6 +1372,9 @@ export class ChatService {
               role: string;
               unread_count: number;
               created_at: Date;
+              left_at: Date | null;
+              left_reason: 'left' | 'removed' | null;
+              removed_by: number | null;
               name: string;
             }[]
           >)
@@ -1102,16 +1392,35 @@ export class ChatService {
     }
     return rows.map((row) => {
       if (row.is_group) {
-        const gmList = groupMembersByThread.get(row.id) ?? [];
-        const myMembership = viewerId ? gmList.find((m) => Number(m.user_id) === viewerId) : null;
-        const unread =
-          viewerId === null
+        const everyone = groupMembersByThread.get(row.id) ?? [];
+        const gmList = everyone.filter((m) => !m.left_at);
+        const myMembership = viewerId ? everyone.find((m) => Number(m.user_id) === viewerId) : null;
+        const gone = myMembership?.left_at ? myMembership : null;
+        const remover = gone?.removed_by ? everyone.find((m) => Number(m.user_id) === Number(gone.removed_by)) : null;
+        const unread = gone
+          ? 0
+          : viewerId === null
             ? gmList.reduce((sum, m) => sum + Number(m.unread_count || 0), 0)
             : Number(myMembership?.unread_count || 0);
+        const goneText = gone
+          ? gone.left_reason === 'removed'
+            ? groupEventText(
+                'member_removed',
+                { id: Number(gone.removed_by), name: remover?.name ?? 'The school' },
+                { id: viewerId!, name: '' },
+                viewerId,
+              )
+            : groupEventText('member_left', { id: viewerId!, name: '' }, null, viewerId)
+          : null;
         return {
           id: row.id,
           is_group: true,
           title: row.title,
+          is_member: viewerId === null ? true : Boolean(myMembership && !gone),
+          can_send: viewerId === null ? false : Boolean(myMembership && !gone),
+          is_admin: myMembership?.role === 'creator' && !gone,
+          left_at: gone?.left_at ?? null,
+          left_reason: gone?.left_reason ?? null,
           member_count: gmList.length,
           members: gmList.map((m) => ({
             id: Number(m.id),
@@ -1126,8 +1435,8 @@ export class ChatService {
           other: null,
           student: null,
           class_section: null,
-          last_message_at: row.last_message_at,
-          last_message_preview: clearedFor(row, viewerId) ? null : row.last_message_preview,
+          last_message_at: gone ? gone.left_at : row.last_message_at,
+          last_message_preview: goneText ?? (clearedFor(row, viewerId) ? null : row.last_message_preview),
           unread,
           message_count: row.message_count,
           open_flags: row.open_flags,

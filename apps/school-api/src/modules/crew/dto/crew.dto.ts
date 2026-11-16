@@ -1,3 +1,4 @@
+import { AllowedTodayDto } from '../../transport/dto/transport.dto';
 import { ApiProperty, ApiPropertyOptional, IntersectionType, PartialType, PickType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
@@ -340,6 +341,13 @@ export class CrewDetailDto extends CrewListItemDto {
 
   @ApiProperty({ nullable: true, type: String, description: 'Earliest expiry at the time of approval' })
   approved_until: string | null;
+
+  @ApiProperty({
+    type: AllowedTodayDto,
+    nullable: true,
+    description: 'The office allowed this person on duty today despite a failing check',
+  })
+  allowed_today: AllowedTodayDto | null;
 
   @ApiProperty({ nullable: true, type: Date })
   last_reminded_at: Date | null;

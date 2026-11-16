@@ -16,6 +16,7 @@ import { StaffService } from '../staff/staff.service';
 import { TransportRoute } from '../transport/entities/transport-route.entity';
 import { Vehicle } from '../transport/entities/vehicle.entity';
 import { User } from '../users/entities/user.entity';
+import { readOverrides } from './overrides';
 import { CREW_ROLE_SQL, DRIVER_SQL, DUTY_SQL, EXPIRY_SQL, ON_BUS_SQL, VEHICLE_SQL } from './crew-sql';
 import {
   CREW_DESIGNATIONS,
@@ -142,6 +143,10 @@ export class CrewService {
       last_reminded_at: row.last_reminded_at,
       last_reminded_by: row.last_reminded_by ? (people.get(row.last_reminded_by) ?? null) : null,
       documents: detail.documents,
+      allowed_today:
+        (await readOverrides(this.dataSource, schoolId, 'crew', [row.user_id], todayIn(this.app.timeZone))).get(
+          row.user_id,
+        ) ?? null,
     };
   }
 

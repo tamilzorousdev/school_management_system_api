@@ -28,7 +28,7 @@ import { TEACHER_MODULE_TAGS } from './teacher-modules.catalog';
 import { PARENT_MODULE_TAGS } from './parent-modules.catalog';
 
 const REALTIME =
-  'Live updates on socket.io namespace /comm with { auth: { token } }: chat.message, chat.read, chat.updated, chat.deleted, chat.restored, chat.edited, chat.typing ' +
+  'Live updates on socket.io namespace /comm with { auth: { token } }: chat.message, chat.read, chat.updated, chat.deleted, chat.restored, chat.edited, chat.members_changed, chat.typing ' +
   '(send chat.typing { thread_id }).';
 
 @ApiTags(TEACHER_MODULE_TAGS.MODULE_6)
@@ -40,7 +40,11 @@ export class MobileTeacherChatController {
   constructor(private readonly chat: ChatService) {}
 
   @Get('directory')
-  @ApiOperation({ summary: 'Directory of teachers and parents to add to groups' })
+  @ApiOperation({
+    summary: 'Directory of teachers and parents to add to groups',
+    description:
+      'Parents come with their children and class; teachers with the classes they lead or teach. detail is one ready line.',
+  })
   @ApiEnvelope(ChatDirectoryUserDto, { isArray: true })
   directory(@CurrentUser() user: AuthUser, @Query('search') search?: string) {
     return this.chat.directory(user.school_id!, search);
@@ -81,11 +85,42 @@ export class MobileTeacherChatController {
   }
 
   @Get('groups/:id/members')
-  @ApiOperation({ summary: 'List members of a group chat' })
+  @ApiOperation({ summary: 'Current members of a group I am in (or was in)' })
   @ApiEnvelope(ChatMemberDto, { isArray: true })
   @ApiErrors(HttpStatus.NOT_FOUND)
-  members(@Param('id', ParseIntPipe) id: number) {
-    return this.chat.groupMembers(id);
+  members(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.chat.groupMembersFor(user, id);
+  }
+
+  @Delete('groups/:id/members/:userId')
+  @ResponseMessage('Member removed')
+  @ApiOperation({
+    summary: 'Remove a member from a group',
+    description:
+      'Only the group admin (the person who created it, or who it was handed to) can remove members (403 NOT_GROUP_ADMIN). The removed person keeps the messages up to that moment, sees “<name> removed you from this group. You are no longer a member…” and can no longer send (403 NOT_GROUP_MEMBER). Everyone else sees “<name> removed <person>”. 400 USE_LEAVE_GROUP for yourself, 404 MEMBER_NOT_FOUND. Socket events chat.message and chat.members_changed.',
+  })
+  @ApiEnvelope(ChatMemberDto, { isArray: true, message: 'Member removed' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  removeMember(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('userId', ParseIntPipe) userId: number,
+  ) {
+    return this.chat.removeGroupMember(user, id, userId, null);
+  }
+
+  @Post('groups/:id/leave')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('You left the group')
+  @ApiOperation({
+    summary: 'Leave a group',
+    description:
+      'Everyone sees “<name> left the group”; you see “You left this group. You are no longer a member…”. You keep the messages up to that moment and cannot send. When the group admin leaves, the longest-standing member becomes admin (“<name> is now the group admin”). 403 NOT_GROUP_MEMBER if you already left.',
+  })
+  @ApiEnvelope(ChatThreadDto, { message: 'You left the group' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  leave(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.chat.leaveGroup(user, id);
   }
 
   @Get('threads')
@@ -246,7 +281,11 @@ export class MobileParentChatController {
   ) {}
 
   @Get('chat/directory')
-  @ApiOperation({ summary: 'Directory of teachers and parents to add to groups' })
+  @ApiOperation({
+    summary: 'Directory of teachers and parents to add to groups',
+    description:
+      'Parents come with their children and class; teachers with the classes they lead or teach. detail is one ready line.',
+  })
   @ApiEnvelope(ChatDirectoryUserDto, { isArray: true })
   async parentDirectory(@CurrentUser() user: AuthUser, @Query('search') search?: string) {
     const schoolId = await this.chat.resolveActorSchool(user);
@@ -289,11 +328,42 @@ export class MobileParentChatController {
   }
 
   @Get('chat/groups/:id/members')
-  @ApiOperation({ summary: 'List members of a group chat' })
+  @ApiOperation({ summary: 'Current members of a group I am in (or was in)' })
   @ApiEnvelope(ChatMemberDto, { isArray: true })
   @ApiErrors(HttpStatus.NOT_FOUND)
-  members(@Param('id', ParseIntPipe) id: number) {
-    return this.chat.groupMembers(id);
+  members(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.chat.groupMembersFor(user, id);
+  }
+
+  @Delete('chat/groups/:id/members/:userId')
+  @ResponseMessage('Member removed')
+  @ApiOperation({
+    summary: 'Remove a member from a group',
+    description:
+      'Only the group admin (the person who created it, or who it was handed to) can remove members (403 NOT_GROUP_ADMIN). The removed person keeps the messages up to that moment, sees “<name> removed you from this group. You are no longer a member…” and can no longer send (403 NOT_GROUP_MEMBER). Everyone else sees “<name> removed <person>”. 400 USE_LEAVE_GROUP for yourself, 404 MEMBER_NOT_FOUND. Socket events chat.message and chat.members_changed.',
+  })
+  @ApiEnvelope(ChatMemberDto, { isArray: true, message: 'Member removed' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  removeMember(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('userId', ParseIntPipe) userId: number,
+  ) {
+    return this.chat.removeGroupMember(user, id, userId, null);
+  }
+
+  @Post('chat/groups/:id/leave')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('You left the group')
+  @ApiOperation({
+    summary: 'Leave a group',
+    description:
+      'Everyone sees “<name> left the group”; you see “You left this group. You are no longer a member…”. You keep the messages up to that moment and cannot send. When the group admin leaves, the longest-standing member becomes admin (“<name> is now the group admin”). 403 NOT_GROUP_MEMBER if you already left.',
+  })
+  @ApiEnvelope(ChatThreadDto, { message: 'You left the group' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  leave(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.chat.leaveGroup(user, id);
   }
 
   @Get('chat/threads')

@@ -23,8 +23,12 @@ import {
   ResponseMessage,
 } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
+import { VerifyDocumentDto } from '../../shared/verification';
 import { PERMISSIONS, ROLES } from '../access/access.catalog';
+import { ClearanceService } from '../crew/clearance.service';
 import {
+  AllowedTodayDto,
+  AllowTodayDto,
   AssignResultDto,
   AssignStopStudentsDto,
   AssignTransportDto,
@@ -43,11 +47,15 @@ import {
   StudentTransportQueryDto,
   UpdateRouteDto,
   UpdateVehicleDto,
+  VehicleDocumentDto,
+  VehicleDocumentInputDto,
   VehicleDto,
   VehicleInputDto,
+  VehicleInsightsDto,
   VehicleQueryDto,
 } from './dto/transport.dto';
 import { RoutesService } from './routes.service';
+import { VehicleDocumentsService } from './vehicle-documents.service';
 import { VehiclesService } from './vehicles.service';
 
 @ApiTags('Admin · Transport')
@@ -59,17 +67,111 @@ export class TransportController {
   constructor(
     private readonly vehicles: VehiclesService,
     private readonly routes: RoutesService,
+    private readonly vehicleDocuments: VehicleDocumentsService,
+    private readonly clearance: ClearanceService,
   ) {}
 
   @Get('vehicles')
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
   @ApiOperation({
-    summary: 'School buses with tracker, driver, attendant and document expiry',
-    description: 'search matches registration, name and model. sort: name, registration_no, created_at.',
+    summary: 'School buses with tracker, crew, documents, seats taken and road-worthiness',
+    description:
+      'search matches registration, name and model. sort: name, registration_no, created_at. Filters: status, vehicle_type, flag (not_road_worthy, expired, due_soon, nearly_full, contractor).',
   })
   @ApiEnvelope(VehicleDto, { paginated: true })
   listVehicles(@SchoolId() schoolId: number, @Query() query: VehicleQueryDto) {
     return this.vehicles.list(schoolId, query);
+  }
+
+  @Get('vehicles/insights')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary: 'Bus insight cards: total, not road-worthy, expired, due soon, nearly full, contractor',
+    description: 'Each card maps to the list filter flag with the same name. Active buses only.',
+  })
+  @ApiEnvelope(VehicleInsightsDto)
+  vehicleInsights(@SchoolId() schoolId: number) {
+    return this.vehicles.insights(schoolId);
+  }
+
+  @Get('vehicles/:id/documents')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary:
+      'Bus documents (RC, insurance, fitness, permit, PUC, road tax, speed governor, fire extinguisher, first aid, other), newest first',
+    description: 'current is true for the newest copy of each type; older copies are the renewal history.',
+  })
+  @ApiEnvelope(VehicleDocumentDto, { isArray: true })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  vehicleDocumentList(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.vehicleDocuments.list(schoolId, id);
+  }
+
+  @Post('vehicles/:id/documents')
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Document added')
+  @ApiOperation({
+    summary: 'Upload or renew a bus document',
+    description:
+      'Upload the file first with POST /files (purpose vehicle_document). Every type except other needs expiry_date, which becomes the bus’s date for that document, so renewing updates the expiry and the alerts. The copy waits for verification.',
+  })
+  @ApiEnvelope(VehicleDocumentDto, { status: HttpStatus.CREATED, message: 'Document added' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  addVehicleDocument(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: VehicleDocumentInputDto,
+  ) {
+    return this.vehicleDocuments.add(schoolId, id, dto);
+  }
+
+  @Post('vehicles/:id/documents/:documentId/verify')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Document checked')
+  @ApiOperation({ summary: 'Verify or reject a bus document (remarks required to reject)' })
+  @ApiEnvelope(VehicleDocumentDto, { message: 'Document checked' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  verifyVehicleDocument(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @Body() dto: VerifyDocumentDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.vehicleDocuments.verify(schoolId, id, documentId, dto, actor);
+  }
+
+  @Delete('vehicles/:id/documents/:documentId')
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Document removed')
+  @ApiOperation({ summary: 'Remove a wrongly uploaded bus document (the expiry date stays)' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  removeVehicleDocument(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('documentId', ParseIntPipe) documentId: number,
+  ) {
+    return this.vehicleDocuments.remove(schoolId, id, documentId);
+  }
+
+  @Post('vehicles/:id/allow-today')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Allowed to run today')
+  @ApiOperation({
+    summary: 'Let a bus that is not road-worthy run trips today only, with a written reason',
+    description: 'Ends at midnight. Saved with who allowed it; sending it again the same day replaces the reason.',
+  })
+  @ApiEnvelope(AllowedTodayDto, { message: 'Allowed to run today' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  allowVehicleToday(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AllowTodayDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.clearance.allowVehicle(schoolId, id, dto.reason, actor);
   }
 
   @Get('vehicles/:id')
@@ -98,7 +200,10 @@ export class TransportController {
   @Patch('vehicles/:id')
   @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
   @ResponseMessage('Bus updated')
-  @ApiOperation({ summary: 'Edit a bus' })
+  @ApiOperation({
+    summary: 'Edit a bus',
+    description: '400 CAPACITY_BELOW_ASSIGNED when the seats would go below the students already on its routes.',
+  })
   @ApiEnvelope(VehicleDto, { message: 'Bus updated' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
   updateVehicle(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateVehicleDto) {

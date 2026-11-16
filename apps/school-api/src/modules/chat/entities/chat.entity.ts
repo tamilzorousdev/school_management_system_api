@@ -1,10 +1,11 @@
+import type { GroupEvent } from '../chat.logic';
 import { BaseEntity, SchoolScopedEntity } from '@app/common';
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 export const CHAT_PARTIES = ['teacher', 'parent'] as const;
 export type ChatParty = (typeof CHAT_PARTIES)[number];
 
-export const CHAT_MESSAGE_KINDS = ['text', 'image', 'file', 'voice', 'video'] as const;
+export const CHAT_MESSAGE_KINDS = ['text', 'image', 'file', 'voice', 'video', 'system'] as const;
 export type ChatMessageKind = (typeof CHAT_MESSAGE_KINDS)[number];
 
 @Entity('chat_threads')
@@ -92,6 +93,15 @@ export class ChatGroupMember {
   @Column({ type: 'timestamptz', nullable: true })
   cleared_at: Date | null;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  left_at: Date | null;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  left_reason: 'left' | 'removed' | null;
+
+  @Column({ type: 'int', nullable: true })
+  removed_by: number | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 
@@ -166,6 +176,12 @@ export class ChatMessage extends BaseEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   edited_at: Date | null;
+
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  event: GroupEvent | null;
+
+  @Column({ type: 'int', nullable: true })
+  event_user_id: number | null;
 }
 
 @Entity('chat_message_hides')

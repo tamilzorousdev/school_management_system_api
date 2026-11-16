@@ -204,6 +204,34 @@
       "subject": "",
       "body": "Your OTP for verification is {{otp}}. Please enter this code within {{expiry}}. Do not share this with anyone. -TAMILZOROUS {{app_hash}}",
       "note": "Shared OTP template (no school_ prefix). Variables: otp, expiry (for example \"10 minutes\"), name, mobile, app_hash. Used only when AUTH_PROVIDER=local and OTP_SMS_DRIVER=kafka; with AUTH_PROVIDER=central the Auth Service sends the OTP."
+    },
+    {
+      "templateId": "school_fleet_document_expiry_urgent",
+      "channel": "sms",
+      "subject": "",
+      "body": "{{school}}: {{document}} for bus {{subject}} {{when}}. Renew it to keep the bus on the road.",
+      "note": "Bus document expiry at 7 days, 1 day and on the day, to the admin and transport in-charge. Variables: school, document, subject, date, days, when, name."
+    },
+    {
+      "templateId": "school_fleet_document_expiry_urgent_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "{{school}}: {{subject}} பேருந்தின் {{document}} {{date}} உடன் முடிகிறது. புதுப்பிக்கவும்.",
+      "note": "Bus document expiry at 7 days, 1 day and on the day. Tamil text."
+    },
+    {
+      "templateId": "school_crew_document_expiry_urgent",
+      "channel": "sms",
+      "subject": "",
+      "body": "{{school}}: {{subject}}’s {{document}} {{when}}. Get the renewed copy to keep them on duty.",
+      "note": "Driver or attendant document expiry at 7 days, 1 day and on the day, to the admin and transport in-charge. Variables: school, document, subject, date, days, when, name."
+    },
+    {
+      "templateId": "school_crew_document_expiry_urgent_ta",
+      "channel": "sms",
+      "subject": "",
+      "body": "{{school}}: {{subject}} அவர்களின் {{document}} {{date}} உடன் முடிகிறது. புதிய நகலைப் பெறவும்.",
+      "note": "Driver or attendant document expiry at 7 days, 1 day and on the day. Tamil text."
     }
   ]
 }

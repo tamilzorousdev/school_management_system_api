@@ -61,8 +61,31 @@ export class ChatAuditController {
   @ResponseMessage('Members added')
   @ApiOperation({ summary: 'Add members to a group chat' })
   @ApiEnvelope(ChatMemberDto, { isArray: true, message: 'Members added' })
-  addMembers(@Param('id', ParseIntPipe) id: number, @Body() dto: AddGroupMembersDto, @CurrentUser() actor: AuthUser) {
-    return this.chat.addGroupMembers(actor, id, dto);
+  addMembers(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AddGroupMembersDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.chat.addGroupMembers(actor, id, dto, schoolId);
+  }
+
+  @Delete('groups/:id/members/:userId')
+  @ResponseMessage('Member removed')
+  @ApiOperation({
+    summary: 'Remove a member from a group chat',
+    description:
+      'The person keeps the messages up to now and can no longer send; they see that the school removed them. 404 MEMBER_NOT_FOUND.',
+  })
+  @ApiEnvelope(ChatMemberDto, { isArray: true, message: 'Member removed' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  removeMember(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('userId', ParseIntPipe) userId: number,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.chat.removeGroupMember(actor, id, userId, schoolId);
   }
 
   @Delete('groups/:id')

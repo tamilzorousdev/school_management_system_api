@@ -23,13 +23,27 @@ import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
 import { EXPIRY_KINDS, ExpiryKind } from '../entities/expiry-alert.entity';
 import { TRANSPORT_MODES, TransportMode } from '../entities/student-transport.entity';
-import { VEHICLE_STATUSES, VehicleStatus } from '../entities/vehicle.entity';
+import {
+  FUEL_TYPES,
+  FuelType,
+  OWNERSHIPS,
+  Ownership,
+  VEHICLE_STATUSES,
+  VEHICLE_TYPES,
+  VehicleStatus,
+  VehicleType,
+} from '../entities/vehicle.entity';
+import { VERIFICATION_STATUSES, VerificationStatus } from '../../../shared/verification';
+import { FileDto } from '../../files/dto/file.dto';
+import { VEHICLE_DOCUMENT_TYPES, VehicleDocumentType } from '../entities/vehicle-document.entity';
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const REGISTRATION = /^[A-Z]{2}[ -]?\d{1,2}[ -]?[A-Z]{0,3}[ -]?\d{1,4}$/;
 const notNull = (_dto: object, value: unknown) => value !== null;
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 const trimToNull = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() || null : value);
+const upperToNull = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim().toUpperCase().replace(/\s+/g, '') || null : value;
 const upper = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toUpperCase().replace(/\s+/g, ' ') : value;
 
@@ -54,12 +68,71 @@ export class VehicleInputDto {
   @MaxLength(60)
   make_model?: string | null;
 
-  @ApiPropertyOptional({ example: 40, default: 40 })
+  @ApiPropertyOptional({
+    example: 40,
+    default: 40,
+    description: 'Seats for students; cannot go below the students already on its routes',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)
   @Max(100)
   capacity?: number;
+
+  @ApiPropertyOptional({ enum: VEHICLE_TYPES, default: 'bus' })
+  @IsOptional()
+  @IsIn(VEHICLE_TYPES)
+  vehicle_type?: VehicleType;
+
+  @ApiPropertyOptional({ enum: FUEL_TYPES, nullable: true })
+  @IsOptional()
+  @ValidateIf(notNull)
+  @IsIn(FUEL_TYPES)
+  fuel_type?: FuelType | null;
+
+  @ApiPropertyOptional({ example: 2019, nullable: true, type: Number })
+  @IsOptional()
+  @ValidateIf(notNull)
+  @IsInt()
+  @Min(1980)
+  @Max(2100)
+  manufacture_year?: number | null;
+
+  @ApiPropertyOptional({ example: 'MAT448123K1A12345', nullable: true, type: String })
+  @IsOptional()
+  @Transform(upperToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @Length(5, 30)
+  chassis_no?: string | null;
+
+  @ApiPropertyOptional({ example: '497TC81ABC123456', nullable: true, type: String })
+  @IsOptional()
+  @Transform(upperToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @Length(5, 30)
+  engine_no?: string | null;
+
+  @ApiPropertyOptional({ enum: OWNERSHIPS, default: 'school', description: 'contractor = hired bus' })
+  @IsOptional()
+  @IsIn(OWNERSHIPS)
+  ownership?: Ownership;
+
+  @ApiPropertyOptional({ example: 'Sri Murugan Travels', nullable: true, type: String })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(80)
+  contractor_name?: string | null;
+
+  @ApiPropertyOptional({ example: '9840012345', nullable: true, type: String })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf(notNull)
+  @Matches(/^[6-9]\d{9}$/, { message: 'contractor_mobile must be a 10-digit mobile number' })
+  contractor_mobile?: string | null;
 
   @ApiPropertyOptional({
     example: 2,
@@ -96,6 +169,21 @@ export class VehicleInputDto {
   @IsDateOnly('2027-09-30', true)
   permit_expiry?: string | null;
 
+  @IsDateOnly('2034-05-31', true)
+  rc_expiry?: string | null;
+
+  @IsDateOnly('2027-03-31', true)
+  road_tax_expiry?: string | null;
+
+  @IsDateOnly('2027-01-31', true)
+  speed_governor_expiry?: string | null;
+
+  @IsDateOnly('2027-02-28', true)
+  fire_extinguisher_expiry?: string | null;
+
+  @IsDateOnly('2026-12-31', true)
+  first_aid_expiry?: string | null;
+
   @ApiPropertyOptional({ enum: VEHICLE_STATUSES, default: 'active' })
   @IsOptional()
   @IsIn(VEHICLE_STATUSES)
@@ -104,11 +192,142 @@ export class VehicleInputDto {
 
 export class UpdateVehicleDto extends PartialType(VehicleInputDto) {}
 
+export const VEHICLE_FLAGS = ['not_road_worthy', 'expired', 'due_soon', 'nearly_full', 'contractor'] as const;
+export type VehicleFlag = (typeof VEHICLE_FLAGS)[number];
+
 export class VehicleQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: VEHICLE_STATUSES })
   @IsOptional()
   @IsIn(VEHICLE_STATUSES)
   status?: VehicleStatus;
+
+  @ApiPropertyOptional({ enum: VEHICLE_TYPES })
+  @IsOptional()
+  @IsIn(VEHICLE_TYPES)
+  vehicle_type?: VehicleType;
+
+  @ApiPropertyOptional({
+    enum: VEHICLE_FLAGS,
+    description:
+      'not_road_worthy: insurance, fitness or permit expired. expired / due_soon: any document. nearly_full: 90% of seats or more. contractor: hired buses.',
+  })
+  @IsOptional()
+  @IsIn(VEHICLE_FLAGS)
+  flag?: VehicleFlag;
+}
+
+export class AllowTodayDto {
+  @ApiProperty({ example: 'Insurance renewed today, copy comes tomorrow', description: 'Why it may run today' })
+  @Transform(trim)
+  @IsString()
+  @Length(5, 255)
+  reason: string;
+}
+
+export class AllowedTodayDto {
+  @ApiProperty({ example: '2026-11-16' })
+  on_date: string;
+
+  @ApiProperty({ example: 'Insurance renewed today, copy comes tomorrow' })
+  reason: string;
+
+  @ApiProperty({ type: RefDto, nullable: true })
+  by: RefDto | null;
+
+  @ApiProperty()
+  at: Date;
+}
+
+export class VehicleDocumentInputDto {
+  @ApiProperty({ enum: VEHICLE_DOCUMENT_TYPES, example: 'insurance' })
+  @IsIn(VEHICLE_DOCUMENT_TYPES)
+  type: VehicleDocumentType;
+
+  @ApiProperty({ example: 140, description: 'From POST /files (purpose vehicle_document)' })
+  @IsInt()
+  file_id: number;
+
+  @ApiPropertyOptional({ example: 'Insurance 2026-27', nullable: true, type: String })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(120)
+  title?: string | null;
+
+  @ApiPropertyOptional({
+    example: 'POL123456789',
+    nullable: true,
+    type: String,
+    description: 'Policy, permit or certificate number',
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(40)
+  number?: string | null;
+
+  @IsDateOnly('2027-11-15', true)
+  expiry_date?: string | null;
+}
+
+export class VehicleDocumentDto {
+  @ApiProperty({ example: 12 })
+  id: number;
+
+  @ApiProperty({ enum: VEHICLE_DOCUMENT_TYPES })
+  type: VehicleDocumentType;
+
+  @ApiProperty({ example: 'Insurance' })
+  title: string;
+
+  @ApiProperty({ nullable: true, type: String })
+  number: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: '2027-11-15' })
+  expiry_date: string | null;
+
+  @ApiProperty({ enum: VERIFICATION_STATUSES })
+  status: VerificationStatus;
+
+  @ApiProperty({ nullable: true, type: String })
+  remarks: string | null;
+
+  @ApiProperty({ type: RefDto, nullable: true })
+  verified_by: RefDto | null;
+
+  @ApiProperty({ nullable: true, type: Date })
+  verified_at: Date | null;
+
+  @ApiProperty({ type: FileDto, nullable: true })
+  file: FileDto | null;
+
+  @ApiProperty({ description: 'The newest copy of this type; older copies are history' })
+  current: boolean;
+
+  @ApiProperty()
+  created_at: Date;
+}
+
+export class VehicleInsightsDto {
+  @ApiProperty({ example: 6 })
+  total: number;
+
+  @ApiProperty({ example: 1, description: 'Insurance, fitness or permit expired' })
+  not_road_worthy: number;
+
+  @ApiProperty({ example: 2, description: 'Any document expired' })
+  expired: number;
+
+  @ApiProperty({ example: 3, description: 'Any document ends within 30 days' })
+  due_soon: number;
+
+  @ApiProperty({ example: 1, description: '90% of seats or more taken' })
+  nearly_full: number;
+
+  @ApiProperty({ example: 2 })
+  contractor: number;
 }
 
 export class LicenceInputDto {
@@ -349,8 +568,65 @@ export class VehicleDto {
   @ApiProperty({ nullable: true, type: String })
   permit_expiry: string | null;
 
-  @ApiProperty({ type: [ExpiryStateDto], description: 'Insurance, fitness, PUC and permit with days left' })
+  @ApiProperty({ nullable: true, type: String })
+  rc_expiry: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  road_tax_expiry: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  speed_governor_expiry: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  fire_extinguisher_expiry: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  first_aid_expiry: string | null;
+
+  @ApiProperty({ type: [ExpiryStateDto], description: 'Every bus document with days left' })
   expiries: ExpiryStateDto[];
+
+  @ApiProperty({ enum: VEHICLE_TYPES })
+  vehicle_type: VehicleType;
+
+  @ApiProperty({ enum: FUEL_TYPES, nullable: true })
+  fuel_type: FuelType | null;
+
+  @ApiProperty({ nullable: true, type: Number })
+  manufacture_year: number | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  chassis_no: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  engine_no: string | null;
+
+  @ApiProperty({ enum: OWNERSHIPS })
+  ownership: Ownership;
+
+  @ApiProperty({ nullable: true, type: String })
+  contractor_name: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  contractor_mobile: string | null;
+
+  @ApiProperty({ description: 'false when insurance, fitness or permit has expired; trips cannot start' })
+  road_worthy: boolean;
+
+  @ApiProperty({ type: [String], example: ['Fitness certificate'], description: 'Expired documents that stop trips' })
+  road_blockers: string[];
+
+  @ApiProperty({ type: AllowedTodayDto, nullable: true, description: 'Allowed to run today despite expired documents' })
+  allowed_today: AllowedTodayDto | null;
+
+  @ApiProperty({ example: 95 })
+  occupancy_percent: number;
+
+  @ApiProperty({ description: '90% of seats or more taken' })
+  nearly_full: boolean;
+
+  @ApiProperty({ description: 'More students than seats' })
+  over_capacity: boolean;
 
   @ApiProperty({ type: [RefDto], description: 'Routes this bus runs' })
   routes: RefDto[];

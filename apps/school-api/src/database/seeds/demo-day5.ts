@@ -96,7 +96,7 @@ export async function seedDemoDay5(manager: EntityManager, school: School): Prom
   const users = await manager.findBy(User, { mobile: In(['9000000007', '9000000008']), school_id: schoolId });
   const driver = users.find((user) => user.mobile === '9000000007');
   const attendant = users.find((user) => user.mobile === '9000000008');
-  const approval = { duty_approved_at: new Date(), duty_approved_until: addDays(today, 6) };
+  const approval = { duty_approved_at: new Date(), duty_approved_until: addDays(today, 200) };
   if (driver) {
     await manager.update(
       Staff,
@@ -108,7 +108,7 @@ export async function seedDemoDay5(manager: EntityManager, school: School): Prom
         licence_expiry: '2029-08-14',
         badge_no: 'PSV0912345',
         badge_expiry: '2027-08-14',
-        medical_fitness_expiry: addDays(today, 6),
+        medical_fitness_expiry: addDays(today, 200),
         police_verified_on: '2026-04-10',
         police_verification_expiry: '2028-04-09',
         ...approval,

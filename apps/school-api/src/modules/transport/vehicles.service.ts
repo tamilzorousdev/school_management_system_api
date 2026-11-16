@@ -8,6 +8,7 @@ import { todayIn } from '../../shared/dates';
 import { ROLES } from '../access/access.catalog';
 import { CREW_CHECKS, displayDate } from '../crew/crew.logic';
 import { CrewService } from '../crew/crew.service';
+import { readOverrides } from '../crew/overrides';
 import { TelematicsClient } from '../fleet/telematics.client';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Staff } from '../staff/entities/staff.entity';
@@ -20,22 +21,57 @@ import {
   PersonContactDto,
   UpdateVehicleDto,
   VehicleDto,
+  VehicleFlag,
   VehicleInputDto,
+  VehicleInsightsDto,
   VehicleQueryDto,
 } from './dto/transport.dto';
-import { AlertKind, ExpiryAlert, ExpiryKind } from './entities/expiry-alert.entity';
+import { AlertKind, ExpiryAlert, ExpiryKind, VEHICLE_EXPIRY_KINDS } from './entities/expiry-alert.entity';
 import { TransportRoute } from './entities/transport-route.entity';
+import { VEHICLE_EXPIRY_FIELDS } from './entities/vehicle-document.entity';
 import { Vehicle } from './entities/vehicle.entity';
-import { alertThreshold, daysBetween, EXPIRY_LABELS, expiryState, selfAlertThreshold } from './transport.logic';
+import {
+  alertThreshold,
+  daysBetween,
+  DUE_SOON_DAYS,
+  EXPIRY_LABELS,
+  expiryState,
+  NEARLY_FULL_PERCENT,
+  occupancy,
+  ROAD_KINDS,
+  roadBlockers,
+  selfAlertThreshold,
+  sendsSms,
+} from './transport.logic';
 
-const VEHICLE_DOCUMENTS: [ExpiryKind, keyof Vehicle][] = [
-  ['insurance', 'insurance_expiry'],
-  ['fitness', 'fitness_expiry'],
-  ['puc', 'puc_expiry'],
-  ['permit', 'permit_expiry'],
-];
+const VEHICLE_DOCUMENTS: [ExpiryKind, keyof Vehicle][] = VEHICLE_EXPIRY_KINDS.map((kind) => [
+  kind,
+  VEHICLE_EXPIRY_FIELDS[kind] as keyof Vehicle,
+]);
 
-type DueDocument = ExpiryDto & { school_id: number; user_id: number | null; approved: boolean };
+const STUDENTS_SQL = `(SELECT COUNT(*) FROM student_transport t JOIN transport_routes r ON r.id = t.route_id
+  WHERE r.vehicle_id = v.id AND r.deleted_at IS NULL AND t.deleted_at IS NULL)`;
+
+const anyExpiry = (kinds: readonly ExpiryKind[], condition: (column: string) => string) =>
+  `(${kinds.map((kind) => condition(`v.${VEHICLE_EXPIRY_FIELDS[kind as keyof typeof VEHICLE_EXPIRY_FIELDS]}`)).join(' OR ')})`;
+
+const FLAG_SQL: Record<VehicleFlag, string> = {
+  not_road_worthy: anyExpiry(ROAD_KINDS, (column) => `${column} < CAST(:today AS date)`),
+  expired: anyExpiry(VEHICLE_EXPIRY_KINDS, (column) => `${column} < CAST(:today AS date)`),
+  due_soon: anyExpiry(
+    VEHICLE_EXPIRY_KINDS,
+    (column) => `${column} BETWEEN CAST(:today AS date) AND CAST(:today AS date) + ${DUE_SOON_DAYS}`,
+  ),
+  nearly_full: `${STUDENTS_SQL} * 100 >= v.capacity * ${NEARLY_FULL_PERCENT}`,
+  contractor: `v.ownership = 'contractor'`,
+};
+
+type DueDocument = ExpiryDto & {
+  school_id: number;
+  user_id: number | null;
+  approved: boolean;
+  driver_user_id: number | null;
+};
 
 interface TelematicsDevice {
   id: number;
@@ -43,6 +79,12 @@ interface TelematicsDevice {
   name: string;
   vehicle_no: string | null;
   last_seen_at: Date | null;
+}
+
+function whenText(daysLeft: number, date: string): string {
+  if (daysLeft < 0) return `expired on ${date}`;
+  if (daysLeft === 0) return 'ends today';
+  return `ends on ${date} (${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left)`;
 }
 
 @Injectable()
@@ -62,14 +104,46 @@ export class VehiclesService {
   ) {}
 
   async list(schoolId: number, query: VehicleQueryDto): Promise<Paginated<VehicleDto>> {
-    const qb = this.vehicles.createQueryBuilder('v').where('v.school_id = :schoolId', { schoolId });
+    const qb = this.vehicles
+      .createQueryBuilder('v')
+      .where('v.school_id = :schoolId', { schoolId })
+      .setParameter('today', todayIn(this.app.timeZone));
     if (query.status) qb.andWhere('v.status = :status', { status: query.status });
+    if (query.vehicle_type) qb.andWhere('v.vehicle_type = :type', { type: query.vehicle_type });
+    if (query.flag) qb.andWhere(FLAG_SQL[query.flag]);
     const page = await listQuery(qb, query, {
       searchable: ['v.registration_no', 'v.name', 'v.make_model'],
       sortable: { name: 'v.name', registration_no: 'v.registration_no', created_at: 'v.created_at' },
       defaultSort: 'name',
     });
     return { ...page, items: await this.present(schoolId, page.items) };
+  }
+
+  async insights(schoolId: number): Promise<VehicleInsightsDto> {
+    const count = (flag?: VehicleFlag) => {
+      const qb = this.vehicles
+        .createQueryBuilder('v')
+        .where(`v.school_id = :schoolId AND v.status = 'active'`, { schoolId })
+        .setParameter('today', todayIn(this.app.timeZone));
+      if (flag) qb.andWhere(FLAG_SQL[flag]);
+      return qb.getCount();
+    };
+    const [total, notRoadWorthy, expired, dueSoon, nearlyFull, contractor] = await Promise.all([
+      count(),
+      count('not_road_worthy'),
+      count('expired'),
+      count('due_soon'),
+      count('nearly_full'),
+      count('contractor'),
+    ]);
+    return {
+      total,
+      not_road_worthy: notRoadWorthy,
+      expired,
+      due_soon: dueSoon,
+      nearly_full: nearlyFull,
+      contractor,
+    };
   }
 
   async get(schoolId: number, id: number): Promise<VehicleDto> {
@@ -86,6 +160,14 @@ export class VehiclesService {
         name: dto.name,
         make_model: dto.make_model ?? null,
         capacity: dto.capacity ?? 40,
+        vehicle_type: dto.vehicle_type ?? 'bus',
+        fuel_type: dto.fuel_type ?? null,
+        manufacture_year: dto.manufacture_year ?? null,
+        chassis_no: dto.chassis_no ?? null,
+        engine_no: dto.engine_no ?? null,
+        ownership: dto.ownership ?? 'school',
+        contractor_name: dto.ownership === 'contractor' ? (dto.contractor_name ?? null) : null,
+        contractor_mobile: dto.ownership === 'contractor' ? (dto.contractor_mobile ?? null) : null,
         device_id: device?.id ?? null,
         device_imei: device?.imei ?? null,
         driver_user_id: dto.driver_user_id ?? null,
@@ -94,6 +176,11 @@ export class VehiclesService {
         fitness_expiry: dto.fitness_expiry ?? null,
         puc_expiry: dto.puc_expiry ?? null,
         permit_expiry: dto.permit_expiry ?? null,
+        rc_expiry: dto.rc_expiry ?? null,
+        road_tax_expiry: dto.road_tax_expiry ?? null,
+        speed_governor_expiry: dto.speed_governor_expiry ?? null,
+        fire_extinguisher_expiry: dto.fire_extinguisher_expiry ?? null,
+        first_aid_expiry: dto.first_aid_expiry ?? null,
         status: dto.status ?? 'active',
       }),
     );
@@ -103,7 +190,20 @@ export class VehiclesService {
   async update(schoolId: number, id: number, dto: UpdateVehicleDto): Promise<VehicleDto> {
     const vehicle = await this.find(schoolId, id);
     await this.validate(schoolId, dto, id);
+    if (dto.capacity !== undefined && dto.capacity < vehicle.capacity) {
+      const students = await this.studentsOn(vehicle.id);
+      if (dto.capacity < students) {
+        throw AppException.badRequest(
+          `${students} students ride this bus. Move some to another bus before lowering the seats below ${students}.`,
+          'CAPACITY_BELOW_ASSIGNED',
+        );
+      }
+    }
     const changes: Partial<Vehicle> = { ...dto };
+    if ((dto.ownership ?? vehicle.ownership) === 'school') {
+      changes.contractor_name = null;
+      changes.contractor_mobile = null;
+    }
     if (dto.device_id !== undefined) {
       const device = await this.device(dto.device_id);
       changes.device_id = device?.id ?? null;
@@ -111,6 +211,13 @@ export class VehiclesService {
     }
     await this.vehicles.save(this.vehicles.merge(vehicle, changes));
     return this.get(schoolId, id);
+  }
+
+  async studentsOn(vehicleId: number): Promise<number> {
+    const [row] = await this.dataSource.query(`SELECT ${STUDENTS_SQL} AS students FROM vehicles v WHERE v.id = $1`, [
+      vehicleId,
+    ]);
+    return Number(row?.students ?? 0);
   }
 
   async remove(schoolId: number, id: number): Promise<void> {
@@ -243,6 +350,7 @@ export class VehiclesService {
             staff_id: null,
             user_id: null,
             approved: false,
+            driver_user_id: vehicle.driver_user_id,
             date,
             days_left: daysLeft,
           });
@@ -274,6 +382,7 @@ export class VehiclesService {
           staff_id: Number(row.staff_id),
           user_id: Number(row.user_id),
           approved: Boolean(row.approved),
+          driver_user_id: null,
           date,
           days_left: daysLeft,
         });
@@ -299,21 +408,45 @@ export class VehiclesService {
       roles: [ROLES.TRANSPORT_INCHARGE, ROLES.ADMIN],
       school_id: item.school_id,
     });
+    const schools: { id: number; name: string }[] = due.length
+      ? await this.dataSource.query(`SELECT id, name FROM schools WHERE id = ANY($1)`, [
+          [...new Set(due.map((item) => item.school_id))],
+        ])
+      : [];
     let sent = 0;
     for (const item of due) {
       const threshold = alertThreshold(item.days_left);
       if (threshold === null) continue;
       const data = {
+        school: schools.find((school) => Number(school.id) === item.school_id)?.name ?? '',
         document: item.label,
         subject: item.subject,
         date: displayDate(item.date),
         days: String(Math.max(item.days_left, 0)),
+        when: whenText(item.days_left, displayDate(item.date)),
       };
       if (await this.firstAlert(item, item.kind, threshold)) {
-        const template = item.user_id ? 'CREW_DOCUMENT_EXPIRY' : 'FLEET_DOCUMENT_EXPIRY';
+        const kind = item.user_id ? 'CREW' : 'FLEET';
+        const template = sendsSms(threshold) ? `${kind}_DOCUMENT_EXPIRY_URGENT` : `${kind}_DOCUMENT_EXPIRY`;
         sent += await this.alert(item, template, admins(item), data);
       }
-      if (!item.user_id) continue;
+      if (!item.user_id) {
+        const driverThreshold = selfAlertThreshold(item.days_left);
+        if (
+          item.driver_user_id &&
+          this.transport.crewExpiryAutoNotify &&
+          driverThreshold !== null &&
+          (await this.firstAlert(item, `${item.kind}_self`, driverThreshold))
+        ) {
+          sent += await this.alert(
+            item,
+            'BUS_DOCUMENT_EXPIRY_DRIVER',
+            { user_ids: [item.driver_user_id], school_id: item.school_id },
+            data,
+          );
+        }
+        continue;
+      }
       const crew = { user_ids: [item.user_id], school_id: item.school_id };
       const selfThreshold = selfAlertThreshold(item.days_left);
       if (
@@ -429,6 +562,13 @@ export class VehiclesService {
   private async present(schoolId: number, rows: Vehicle[]): Promise<VehicleDto[]> {
     if (!rows.length) return [];
     const today = todayIn(this.app.timeZone);
+    const allowed = await readOverrides(
+      this.dataSource,
+      schoolId,
+      'vehicle',
+      rows.map((row) => row.id),
+      today,
+    );
     const userIds = [
       ...new Set(rows.flatMap((row) => [row.driver_user_id, row.attendant_user_id]).filter((id): id is number => !!id)),
     ];
@@ -450,6 +590,9 @@ export class VehiclesService {
     };
     return rows.map((row) => {
       const own = routes.filter((route) => Number(route.vehicle_id) === row.id);
+      const students = own.reduce((sum, route) => sum + Number(route.students), 0);
+      const expiries = VEHICLE_DOCUMENTS.map(([kind, field]) => expiryState(kind, row[field] as string | null, today));
+      const blockers = roadBlockers(expiries);
       return {
         id: row.id,
         registration_no: row.registration_no,
@@ -463,9 +606,26 @@ export class VehiclesService {
         fitness_expiry: row.fitness_expiry,
         puc_expiry: row.puc_expiry,
         permit_expiry: row.permit_expiry,
-        expiries: VEHICLE_DOCUMENTS.map(([kind, field]) => expiryState(kind, row[field] as string | null, today)),
+        rc_expiry: row.rc_expiry,
+        road_tax_expiry: row.road_tax_expiry,
+        speed_governor_expiry: row.speed_governor_expiry,
+        fire_extinguisher_expiry: row.fire_extinguisher_expiry,
+        first_aid_expiry: row.first_aid_expiry,
+        expiries,
+        vehicle_type: row.vehicle_type,
+        fuel_type: row.fuel_type,
+        manufacture_year: row.manufacture_year,
+        chassis_no: row.chassis_no,
+        engine_no: row.engine_no,
+        ownership: row.ownership,
+        contractor_name: row.contractor_name,
+        contractor_mobile: row.contractor_mobile,
+        road_worthy: blockers.length === 0,
+        road_blockers: blockers,
+        allowed_today: allowed.get(row.id) ?? null,
+        ...occupancy(students, row.capacity),
         routes: own.map((route) => ({ id: Number(route.id), name: route.name })),
-        students: own.reduce((sum, route) => sum + Number(route.students), 0),
+        students,
         status: row.status,
       };
     });

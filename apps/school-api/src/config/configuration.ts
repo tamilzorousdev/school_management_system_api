@@ -107,7 +107,7 @@ export const telematicsConfig = registerAs('telematics', () => ({
 }));
 
 export const transportConfig = registerAs('transport', () => ({
-  crewExpiryAutoNotify: process.env.CREW_EXPIRY_AUTO_NOTIFY === 'true',
+  crewExpiryAutoNotify: process.env.CREW_EXPIRY_AUTO_NOTIFY !== 'false',
 }));
 
 export const videoConfig = registerAs('video', () => ({

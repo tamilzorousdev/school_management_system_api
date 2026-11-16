@@ -35,6 +35,9 @@ export const TEMPLATES = {
   CREW_DOCUMENT_EXPIRY: 'CREW_DOCUMENT_EXPIRY',
   CREW_DOCUMENT_EXPIRY_SELF: 'CREW_DOCUMENT_EXPIRY_SELF',
   CREW_BLOCKED: 'CREW_BLOCKED',
+  FLEET_DOCUMENT_EXPIRY_URGENT: 'FLEET_DOCUMENT_EXPIRY_URGENT',
+  CREW_DOCUMENT_EXPIRY_URGENT: 'CREW_DOCUMENT_EXPIRY_URGENT',
+  BUS_DOCUMENT_EXPIRY_DRIVER: 'BUS_DOCUMENT_EXPIRY_DRIVER',
   VEHICLE_FAULT: 'VEHICLE_FAULT',
   TRIP_NOT_BOARDED: 'TRIP_NOT_BOARDED',
   RESULT_PUBLISHED: 'RESULT_PUBLISHED',
@@ -877,6 +880,63 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{subject}} பணியில் இல்லை',
         body: '{{document}} {{date}} அன்று காலாவதியானது. புதுப்பித்து, சரிபார்த்து, மீண்டும் அனுமதிக்கும் வரை {{subject}} பேருந்தில் பணியாற்ற முடியாது.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FLEET_DOCUMENT_EXPIRY_URGENT,
+    category: 'transport',
+    push: true,
+    sms: 'always',
+    critical: true,
+    text: {
+      en: {
+        title: '{{document}} {{when}}: {{subject}}',
+        body: '{{document}} for {{subject}} {{when}}. Renew it to keep the bus on the road.',
+        sms_body: '{{school}}: {{document}} for bus {{subject}} {{when}}. Renew it to keep the bus on the road.',
+      },
+      ta: {
+        title: '{{document}}: {{subject}}',
+        body: '{{subject}} பேருந்தின் {{document}} {{date}} உடன் முடிகிறது. பேருந்து இயங்க புதுப்பிக்கவும்.',
+        sms_body: '{{school}}: {{subject}} பேருந்தின் {{document}} {{date}} உடன் முடிகிறது. புதுப்பிக்கவும்.',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.CREW_DOCUMENT_EXPIRY_URGENT,
+    category: 'transport',
+    push: true,
+    sms: 'always',
+    critical: true,
+    text: {
+      en: {
+        title: '{{subject}}: {{document}} {{when}}',
+        body: '{{subject}}’s {{document}} {{when}}. Get the renewed copy and verify it to keep them on duty.',
+        sms_body: '{{school}}: {{subject}}’s {{document}} {{when}}. Get the renewed copy to keep them on duty.',
+      },
+      ta: {
+        title: '{{subject}}: {{document}}',
+        body: '{{subject}} அவர்களின் {{document}} {{date}} உடன் முடிகிறது. பணியில் தொடர புதிய நகலைப் பெற்றுச் சரிபார்க்கவும்.',
+        sms_body: '{{school}}: {{subject}} அவர்களின் {{document}} {{date}} உடன் முடிகிறது. புதிய நகலைப் பெறவும்.',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_DOCUMENT_EXPIRY_DRIVER,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Your bus: {{document}} {{when}}',
+        body: '{{document}} for your bus {{subject}} {{when}}. Remind the transport office to renew it.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உங்கள் பேருந்து: {{document}}',
+        body: 'உங்கள் பேருந்து {{subject}} இன் {{document}} {{date}} உடன் முடிகிறது. புதுப்பிக்கப் போக்குவரத்து அலுவலகத்திற்கு நினைவூட்டவும்.',
         sms_body: null,
       },
     },

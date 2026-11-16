@@ -1,3 +1,4 @@
+import { GROUP_EVENTS, GroupEvent } from '../chat.logic';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
@@ -252,6 +253,25 @@ export class ChatMemberDto {
   joined_at: Date;
 }
 
+export class DirectoryChildDto {
+  @ApiProperty({ example: 57 })
+  id: number;
+
+  @ApiProperty({ example: 'Nila Narayanan' })
+  name: string;
+
+  @ApiProperty({ example: '7 - A' })
+  class_section: string;
+}
+
+export class DirectoryClassDto {
+  @ApiProperty({ example: '7 - A' })
+  class_section: string;
+
+  @ApiProperty({ example: true, description: 'Class teacher of this section; otherwise teaches a subject there' })
+  class_teacher: boolean;
+}
+
 export class ChatDirectoryUserDto {
   @ApiProperty({ example: 42 })
   id: number;
@@ -264,6 +284,20 @@ export class ChatDirectoryUserDto {
 
   @ApiPropertyOptional({ example: 'Teacher' })
   label?: string;
+
+  @ApiProperty({ type: [DirectoryChildDto], description: 'Parents: their children this year with class and section' })
+  children: DirectoryChildDto[];
+
+  @ApiProperty({ type: [DirectoryClassDto], description: 'Teachers: classes they lead or teach this year' })
+  classes: DirectoryClassDto[];
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Class teacher 7 - A · Teaches 3 - A · Parent of Nila Narayanan (7 - A)',
+    description: 'One line to show under the name',
+  })
+  detail: string | null;
 }
 
 export class ChatThreadDto {
@@ -276,7 +310,22 @@ export class ChatThreadDto {
   @ApiPropertyOptional({ example: 'Grade 6 Parents & Teachers', nullable: true })
   title: string | null;
 
-  @ApiPropertyOptional({ example: 8 })
+  @ApiPropertyOptional({ example: true, description: 'Groups: false after you left or were removed' })
+  is_member?: boolean;
+
+  @ApiPropertyOptional({ example: true, description: 'Groups: hide the message box when false' })
+  can_send?: boolean;
+
+  @ApiPropertyOptional({ example: false, description: 'Groups: you can remove members' })
+  is_admin?: boolean;
+
+  @ApiPropertyOptional({ nullable: true, type: Date, description: 'Groups: when you left or were removed' })
+  left_at?: Date | null;
+
+  @ApiPropertyOptional({ enum: ['left', 'removed'], nullable: true })
+  left_reason?: 'left' | 'removed' | null;
+
+  @ApiPropertyOptional({ example: 8, description: 'Current members' })
   member_count?: number;
 
   @ApiPropertyOptional({ type: [ChatMemberDto] })
@@ -338,8 +387,22 @@ export class ChatMessageDto {
   @ApiProperty({ enum: CHAT_PARTIES })
   sender_party: ChatParty;
 
-  @ApiProperty({ nullable: true, type: String, description: 'null when the school hid the message' })
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'null when the school hid the message. For kind system it is the line to show, already worded for you',
+  })
   body: string | null;
+
+  @ApiProperty({
+    enum: GROUP_EVENTS,
+    nullable: true,
+    description: 'Group notices (kind system): show body centred, not as a bubble',
+  })
+  event: GroupEvent | null;
+
+  @ApiProperty({ type: RefDto, nullable: true, description: 'Who was added, removed or made admin' })
+  event_user: RefDto | null;
 
   @ApiProperty({ type: FileDto, nullable: true })
   file: FileDto | null;
@@ -359,7 +422,7 @@ export class ChatMessageDto {
   @ApiProperty({ example: false })
   hidden: boolean;
 
-  @ApiProperty({ enum: CHAT_MESSAGE_KINDS, example: 'voice', description: 'text, image, file, voice or video' })
+  @ApiProperty({ enum: CHAT_MESSAGE_KINDS, example: 'voice', description: 'text, image, file, voice, video or system' })
   kind: ChatMessageKind;
 
   @ApiProperty({ example: 42, nullable: true, type: Number, description: 'Voice or video length in seconds' })

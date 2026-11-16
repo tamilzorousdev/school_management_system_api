@@ -329,7 +329,12 @@ const DOCUMENT_NAMES: Record<StaffDocumentType, string> = {
   other: 'Document',
 };
 
-async function sampleFile(manager: EntityManager, schoolId: number, title: string, owner: string): Promise<number> {
+export async function sampleFile(
+  manager: EntityManager,
+  schoolId: number,
+  title: string,
+  owner: string,
+): Promise<number> {
   const doc = new PDFDocument({ size: 'A5', margin: 40 });
   doc.fontSize(18).text(title).moveDown().fontSize(11).fillColor('#555555').text(`Sample document for ${owner}`);
   doc.text('Created by the demo seed for local testing.');

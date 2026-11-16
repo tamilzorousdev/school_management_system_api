@@ -1,25 +1,52 @@
 import { distanceMetres } from '../../shared/school-days';
-import { ExpiryKind } from './entities/expiry-alert.entity';
+import { ExpiryKind, VehicleExpiryKind } from './entities/expiry-alert.entity';
 
 export const DUE_SOON_DAYS = 30;
-export const ALERT_THRESHOLDS = [30, 7, 1, 0];
+export const ALERT_THRESHOLDS = [30, 15, 7, 1, 0];
+export const OVERDUE_REPEAT_DAYS = 3;
+export const SMS_THRESHOLDS = [7, 1, 0];
+export const SELF_ALERT_THRESHOLDS = [7, 1, 0];
+export const NEARLY_FULL_PERCENT = 90;
+export const ROAD_KINDS: VehicleExpiryKind[] = ['insurance', 'fitness', 'permit'];
 
 export const EXPIRY_LABELS: Record<ExpiryKind, string> = {
   insurance: 'Insurance',
   fitness: 'Fitness certificate',
-  puc: 'PUC certificate',
   permit: 'Permit',
+  puc: 'PUC certificate',
+  rc: 'Registration certificate (RC)',
+  road_tax: 'Road tax',
+  speed_governor: 'Speed governor certificate',
+  fire_extinguisher: 'Fire extinguisher refill',
+  first_aid: 'First aid kit',
   licence: 'Driving licence',
   badge: 'PSV badge',
   medical: 'Medical fitness',
   police: 'Police verification',
 };
 
-export const SELF_ALERT_THRESHOLDS = [7, 1, 0];
-
 export function selfAlertThreshold(daysLeft: number): number | null {
   const threshold = alertThreshold(daysLeft);
-  return threshold !== null && SELF_ALERT_THRESHOLDS.includes(threshold) ? threshold : null;
+  return threshold !== null && (threshold <= 0 || SELF_ALERT_THRESHOLDS.includes(threshold)) ? threshold : null;
+}
+
+export function sendsSms(threshold: number): boolean {
+  return SMS_THRESHOLDS.includes(threshold);
+}
+
+export function roadBlockers(expiries: { kind: ExpiryKind; label: string; state: string }[]): string[] {
+  return expiries
+    .filter((item) => (ROAD_KINDS as ExpiryKind[]).includes(item.kind) && item.state === 'expired')
+    .map((item) => item.label);
+}
+
+export function occupancy(students: number, capacity: number) {
+  const percent = capacity > 0 ? Math.round((students / capacity) * 100) : 0;
+  return {
+    occupancy_percent: percent,
+    nearly_full: percent >= NEARLY_FULL_PERCENT && students <= capacity,
+    over_capacity: students > capacity,
+  };
 }
 
 export interface Point {
@@ -39,7 +66,7 @@ export function expiryState(kind: ExpiryKind, date: string | null, today: string
 }
 
 export function alertThreshold(daysLeft: number): number | null {
-  if (daysLeft < 0) return 0;
+  if (daysLeft < 0) return 0 - Math.floor(-daysLeft / OVERDUE_REPEAT_DAYS) * OVERDUE_REPEAT_DAYS;
   const reached = ALERT_THRESHOLDS.filter((threshold) => daysLeft <= threshold);
   return reached.length ? Math.min(...reached) : null;
 }

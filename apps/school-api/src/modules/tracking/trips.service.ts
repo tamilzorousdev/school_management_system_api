@@ -5,7 +5,7 @@ import { AppException, AuthUser, paginate, Paginated } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { addDays, holidaySet, WEEKLY_OFF, weekday } from '../../shared/school-days';
-import { CrewService } from '../crew/crew.service';
+import { ClearanceService } from '../crew/clearance.service';
 import { TelematicsClient } from '../fleet/telematics.client';
 import { RouteStop } from '../transport/entities/route-stop.entity';
 import { StudentTransport } from '../transport/entities/student-transport.entity';
@@ -59,7 +59,7 @@ export class TripsService {
     @InjectRepository(TripEvent) private readonly events: Repository<TripEvent>,
     @InjectRepository(TripBoarding) private readonly boardings: Repository<TripBoarding>,
     private readonly telematics: TelematicsClient,
-    private readonly crew: CrewService,
+    private readonly clearance: ClearanceService,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
@@ -77,7 +77,7 @@ export class TripsService {
     if (!vehicle.device_id) {
       throw AppException.badRequest('Fit a GPS tracker to this bus in Buses and routes first', 'NO_TRACKER');
     }
-    await this.crew.assertOnDuty(schoolId, [vehicle.driver_user_id, vehicle.attendant_user_id]);
+    await this.clearance.assertCanRun(schoolId, vehicle);
     const stops = await this.dataSource.getRepository(RouteStop).find({ where: { route_id: route.id } });
     if (!stops.length) throw AppException.badRequest('Add stops to this route first', 'ROUTE_HAS_NO_STOPS');
     const [school] = await this.dataSource.query(

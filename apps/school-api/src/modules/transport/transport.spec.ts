@@ -1,5 +1,14 @@
 import { passengerRef } from './routes.service';
-import { alertThreshold, autoSequence, daysBetween, expiryState, pathKm } from './transport.logic';
+import {
+  alertThreshold,
+  autoSequence,
+  daysBetween,
+  expiryState,
+  occupancy,
+  pathKm,
+  roadBlockers,
+  sendsSms,
+} from './transport.logic';
 
 const school = { lat: 13.0878, lng: 80.2101 };
 
@@ -56,14 +65,41 @@ describe('expiry', () => {
     expect(expiryState('permit', null, '2026-11-03').state).toBe('missing');
   });
 
-  it('alerts at 30, 7 and 1 days and on the day', () => {
+  it('alerts at 30, 15, 7 and 1 days, on the day, then every 3 days while expired', () => {
     expect(alertThreshold(45)).toBeNull();
     expect(alertThreshold(30)).toBe(30);
-    expect(alertThreshold(12)).toBe(30);
+    expect(alertThreshold(20)).toBe(30);
+    expect(alertThreshold(12)).toBe(15);
     expect(alertThreshold(7)).toBe(7);
     expect(alertThreshold(1)).toBe(1);
     expect(alertThreshold(0)).toBe(0);
-    expect(alertThreshold(-4)).toBe(0);
+    expect(alertThreshold(-2)).toBe(0);
+    expect(alertThreshold(-3)).toBe(-3);
+    expect(alertThreshold(-4)).toBe(-3);
+    expect(alertThreshold(-6)).toBe(-6);
+  });
+
+  it('sends SMS only at 7 days, 1 day and on the expiry day', () => {
+    expect([30, 15, 7, 1, 0, -3].filter(sendsSms)).toEqual([7, 1, 0]);
+  });
+});
+
+describe('vehicle master rules', () => {
+  it('stops trips only for expired insurance, fitness or permit', () => {
+    const expiries = [
+      expiryState('insurance', '2027-01-01', '2026-11-16'),
+      expiryState('fitness', '2026-11-10', '2026-11-16'),
+      expiryState('puc', '2026-11-01', '2026-11-16'),
+      expiryState('permit', null, '2026-11-16'),
+    ];
+    expect(roadBlockers(expiries)).toEqual(['Fitness certificate']);
+  });
+
+  it('flags a bus as nearly full at 90% of its seats', () => {
+    expect(occupancy(36, 40)).toEqual({ occupancy_percent: 90, nearly_full: true, over_capacity: false });
+    expect(occupancy(30, 40)).toMatchObject({ nearly_full: false });
+    expect(occupancy(42, 40)).toMatchObject({ nearly_full: false, over_capacity: true });
+    expect(occupancy(0, 0).occupancy_percent).toBe(0);
   });
 });
 

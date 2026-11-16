@@ -629,9 +629,33 @@ Crew are staff rows whose user has the `DRIVER` or `ATTENDANT` role. Permission 
 
 **Checks.** Drivers: driving licence, PSV badge, medical fitness, police verification. Attendants: medical fitness, police verification. A check is clear when its newest document is verified and its date is today or later.
 
-**Duty status.** `pending` until approved; `approved` while every check stays clear; `blocked` when an approved member's check fails (a date passes or a document is rejected). Only approved crew can be put on a bus (`driver_user_id` / `attendant_user_id` field error) or start a trip (403 `CREW_NOT_APPROVED`). `GET /admin/transport/drivers` now carries `duty_status`.
+**Duty status.** `pending` until approved; `approved` while every check stays clear; `blocked` when an approved member's check fails (a date passes or a document is rejected). Only approved crew can be put on a bus (`driver_user_id` / `attendant_user_id` field error) or start a trip (403 `CREW_NOT_APPROVED`, unless allowed for today). `GET /admin/transport/drivers` now carries `duty_status`.
 
-**Expiry alerts** (07:00 daily, `POST /admin/transport/expiries/check` to run now). Admins and the transport in-charge get `CREW_DOCUMENT_EXPIRY` at 30, 7, 1 and 0 days, and `CREW_BLOCKED` when an approved member's date passes. The crew member gets `CREW_DOCUMENT_EXPIRY_SELF` at 7, 1 and 0 days only when `CREW_EXPIRY_AUTO_NOTIFY=true`; otherwise the admin sends it with the remind calls. `GET /admin/transport/expiries` rows have `staff_id` for crew documents.
+**Allow for today.** `POST /admin/crew/{id}/allow-today` `{ "reason": "Medical renewal appointment tomorrow" }` (5–255 characters) lets a crew member who is not cleared start trips until midnight. It returns `{ on_date, reason, by, at }` and shows as `allowed_today` on `GET /admin/crew/{id}`. Sending it again the same day replaces the reason. 404 `CREW_NOT_FOUND`.
+
+## Buses: vehicle master (admin web)
+
+Permission `fleet.view` to read, `fleet.manage` to change.
+
+**Master details** on `POST`/`PATCH /admin/transport/vehicles`: `vehicle_type` (`bus`, `mini_bus`, `van`, `car`), `fuel_type` (`diesel`, `petrol`, `cng`, `electric`), `manufacture_year`, `chassis_no`, `engine_no`, `ownership` (`school` or `contractor`, with `contractor_name` and `contractor_mobile`). Lowering `capacity` below the students on the bus's routes gives 400 `CAPACITY_BELOW_ASSIGNED`.
+
+**Documents and dates.** Nine dated documents: `insurance`, `fitness`, `permit`, `puc`, `rc`, `road_tax`, `speed_governor`, `fire_extinguisher`, `first_aid` (each has a `<kind>_expiry` field on the bus), plus `other`. `expiries` on every bus lists all nine with `days_left` and `state`.
+
+| Call | Use |
+|---|---|
+| `GET /admin/transport/vehicles/{id}/documents` | Newest first; `current` is true for the newest copy of each type, older copies are the renewal history |
+| `POST /admin/transport/vehicles/{id}/documents` | `{ type, file_id, title?, number?, expiry_date }` (upload with `POST /files`, purpose `vehicle_document`). `expiry_date` is required except for `other` and becomes the bus's date, so a renewal updates the alerts and road-worthiness at once. Starts as `pending` |
+| `POST …/documents/{documentId}/verify` | `{ status: "verified" \| "rejected", remarks }` (remarks required to reject) |
+| `DELETE …/documents/{documentId}` | Removes a wrong upload; the bus date stays |
+| `GET /admin/transport/vehicles/insights` | `{ total, not_road_worthy, expired, due_soon, nearly_full, contractor }` for active buses |
+| `GET /admin/transport/vehicles?flag=` | `not_road_worthy`, `expired`, `due_soon`, `nearly_full`, `contractor`; also `vehicle_type` |
+| `POST /admin/transport/vehicles/{id}/allow-today` | `{ reason }`: lets a bus that is not road-worthy run trips until midnight; shows as `allowed_today` on the bus |
+
+**Road-worthy.** A bus is `road_worthy: false` when insurance, fitness or permit has expired; `road_blockers` names them. Trips cannot start on it (403 `VEHICLE_NOT_ROADWORTHY`) unless it is allowed for today. Other documents (PUC, RC, road tax and the rest) raise alerts but do not stop trips. Missing dates do not stop trips.
+
+**Seats.** Each bus has `students`, `occupancy_percent`, `nearly_full` (90% or more) and `over_capacity`.
+
+**Expiry alerts (buses and crew, one rule).** 07:00 daily, or `POST /admin/transport/expiries/check` to run now. Admins and the transport in-charge get an alert at 30, 15, 7 and 1 days before, on the day, then every 3 days while it stays expired (in-app and push). At 7 days, 1 day and on the expiry day the alert is `FLEET_DOCUMENT_EXPIRY_URGENT` / `CREW_DOCUMENT_EXPIRY_URGENT`, which also goes by SMS; the others are `FLEET_DOCUMENT_EXPIRY` / `CREW_DOCUMENT_EXPIRY` with no SMS. AO is not alerted. `CREW_BLOCKED` goes when an approved member's date passes. Drivers and attendants get `CREW_DOCUMENT_EXPIRY_SELF` for their own documents, and the bus driver gets `BUS_DOCUMENT_EXPIRY_DRIVER` for their bus, at 7, 1 and 0 days and every 3 days after; set `CREW_EXPIRY_AUTO_NOTIFY=false` to stop these. `GET /admin/transport/expiries` rows have `staff_id` for crew documents.
 
 ## Live bus
 
@@ -1097,6 +1121,23 @@ Socket events: `chat.deleted { thread_id, message_id, deleted_at }`, `chat.resto
 | Office (Chat audit) | `POST /admin/chat/groups` | `POST /admin/chat/groups/{id}/members` | `GET /admin/chat/groups/{id}/members` | `DELETE /admin/chat/groups/{id}` |
 
 Messages in a group use the normal thread routes (`…/chat/threads/{id}/messages`). **Delete:** in the apps only the person who created the group can delete it (`403 NOT_GROUP_CREATOR`); the office can delete any group in its school. The group disappears from every member's list at once (socket event `chat.group_deleted { thread_id, title }`: remove it from the screen); its messages are kept for the office and the deletion is in the audit log. Deleting again gives `404 GROUP_NOT_FOUND`.
+
+**Directory.** `GET …/chat/directory?search=` rows also carry `children` (parents: `{ id, name, class_section }` this year), `classes` (teachers: `{ class_section, class_teacher }` this year) and `detail`, one line to show under the name, for example "Class teacher 7 - A · Teaches 3 - A · Parent of Harini Narayanan (7 - A)".
+
+**Remove a member.** `DELETE /mobile/teacher/chat/groups/{id}/members/{userId}` (parent: `/mobile/parent/chat/groups/…`, office: `/admin/chat/groups/{id}/members/{userId}`) returns the current members. In the apps only the group admin can remove (`403 NOT_GROUP_ADMIN`); `400 USE_LEAVE_GROUP` for yourself, `404 MEMBER_NOT_FOUND` when they are not in the group.
+
+**Leave.** `POST /mobile/teacher/chat/groups/{id}/leave` (parent: `/mobile/parent/chat/groups/{id}/leave`) returns the group as you now see it. When the group admin leaves, the longest-standing member becomes admin. Leaving again gives `403 NOT_GROUP_MEMBER`.
+
+**Group notices.** Adding, removing, leaving and a new admin each post a message with `kind: "system"`, `event` (`member_added`, `member_removed`, `member_left`, `admin_changed`) and `event_user`. `body` is already worded for whoever reads it; show it centred, not as a bubble. Notices cannot be edited, deleted or reported (`400 SYSTEM_MESSAGE`).
+
+| Event | The person it is about | The person who did it | Everyone else |
+|---|---|---|---|
+| Removed | "Priya removed you from this group. You are no longer a member of this group, so you cannot send or receive messages here." | "You removed Lakshmi" | "Priya removed Lakshmi" |
+| Left | "You left this group. You are no longer a member of this group, so you cannot send or receive messages here." | | "Arun left the group" |
+| Added | "Priya added you" | "You added Lakshmi" | "Priya added Lakshmi" |
+| New admin | "You are now the group admin" | | "Lakshmi is now the group admin" |
+
+**After leaving or being removed** the group stays in your list with `is_member: false`, `can_send: false`, `left_reason` (`left`/`removed`) and `left_at`; the list preview is your own notice. You see the messages up to that moment and nothing after; sending gives `403 NOT_GROUP_MEMBER` with the same "You are no longer a member" text. Hide the message box when `can_send` is false. If someone adds you back you see "… added you" and only messages from then on. Members lists show current members only. Socket events: `chat.message` (each person gets the notice in their own wording) and `chat.members_changed { thread_id, by_user_id, added_user_ids, gone_user_id }`.
 ## Push notification data (tap routing)
 
 **Automatic pushes can be switched off.** With `PUSH_AUTO=false` the API sends no push on its own: every notification is still saved in the app's notification list (`GET /me/notifications`), and its push row is marked `skipped` ("Automatic push is off"), with no SMS fallback because of it. Pushes only go out when the app asks for one:

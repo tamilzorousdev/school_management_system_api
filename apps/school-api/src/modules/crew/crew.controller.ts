@@ -18,6 +18,8 @@ import { VerifyDocumentDto } from '../../shared/verification';
 import { PERMISSIONS } from '../access/access.catalog';
 import { StaffDocumentInputDto } from '../staff/dto/staff-input.dto';
 import { StaffDocumentDto } from '../staff/dto/staff-response.dto';
+import { AllowedTodayDto, AllowTodayDto } from '../transport/dto/transport.dto';
+import { ClearanceService } from './clearance.service';
 import { CrewService } from './crew.service';
 import {
   CreateCrewDto,
@@ -36,7 +38,10 @@ import {
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
 @Controller('admin/crew')
 export class CrewController {
-  constructor(private readonly crew: CrewService) {}
+  constructor(
+    private readonly crew: CrewService,
+    private readonly clearance: ClearanceService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
@@ -133,6 +138,26 @@ export class CrewController {
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   approve(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @CurrentUser() actor: AuthUser) {
     return this.crew.approve(schoolId, id, actor);
+  }
+
+  @Post(':id/allow-today')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Allowed on duty today')
+  @ApiOperation({
+    summary: 'Let a crew member who is not cleared work today only, with a written reason',
+    description:
+      'Trips can start with them until midnight. Saved with who allowed it; the same day again replaces the reason.',
+  })
+  @ApiEnvelope(AllowedTodayDto, { message: 'Allowed on duty today' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  allowToday(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: AllowTodayDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.clearance.allowCrew(schoolId, id, dto.reason, actor);
   }
 
   @Post(':id/remind')
