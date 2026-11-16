@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequireRoles, ResponseMessage } from '@app/common';
 import { ROLES } from '../access/access.catalog';
@@ -64,6 +64,20 @@ export class MobileTeacherChatController {
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN)
   addMembers(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: AddGroupMembersDto) {
     return this.chat.addGroupMembers(user, id, dto);
+  }
+
+  @Delete('groups/:id')
+  @ResponseMessage('Group deleted')
+  @ApiOperation({
+    summary: 'Delete a group I created',
+    description:
+      'Only the person who created the group can delete it (403 NOT_GROUP_CREATOR). It disappears for every member (socket event chat.group_deleted); the office keeps the messages.',
+  })
+  @ApiEnvelope(undefined, { message: 'Group deleted' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  async deleteGroup(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    await this.chat.deleteGroup(user, id, null);
+    return null;
   }
 
   @Get('groups/:id/members')
@@ -258,6 +272,20 @@ export class MobileParentChatController {
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN)
   addMembers(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: AddGroupMembersDto) {
     return this.chat.addGroupMembers(user, id, dto);
+  }
+
+  @Delete('chat/groups/:id')
+  @ResponseMessage('Group deleted')
+  @ApiOperation({
+    summary: 'Delete a group I created',
+    description:
+      'Only the person who created the group can delete it (403 NOT_GROUP_CREATOR). It disappears for every member (socket event chat.group_deleted); the office keeps the messages.',
+  })
+  @ApiEnvelope(undefined, { message: 'Group deleted' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  async deleteGroup(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    await this.chat.deleteGroup(user, id, null);
+    return null;
   }
 
   @Get('chat/groups/:id/members')

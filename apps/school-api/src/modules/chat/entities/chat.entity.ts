@@ -219,6 +219,7 @@ export const CHAT_AUDIT_ACTIONS = [
   'deleted_for_me',
   'cleared_chat',
   'edited_message',
+  'deleted_group',
 ] as const;
 export type ChatAuditAction = (typeof CHAT_AUDIT_ACTIONS)[number];
 

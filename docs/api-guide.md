@@ -162,6 +162,7 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 | `NO_RECIPIENTS` | 400 | Emergency broadcast: nobody matches the chosen audience |
 | `AUDIENCE_INVALID` | 400 | Emergency broadcast: a chosen class, section or student is not in this school |
 | `STILL_SENDING` | 409 | Emergency resend while the broadcast is still going out |
+| `NOT_GROUP_CREATOR` | 403 | Group chat delete: only the person who created the group can delete it in the apps |
 | `RATING_CLOSED` | 403 | Parent rating: the school has teacher ratings off, or today is outside the academic year |
 | `NOT_CHILD_TEACHER` | 400 | Parent rating: the teacher does not teach this child |
 | `ALREADY_RATED` | 409 | Parent rating: already rated this teacher in this window; the message says when the next window opens |
@@ -1072,6 +1073,16 @@ Same paths for both apps: teacher under `/mobile/teacher/chat/threads/{id}/…`,
 Socket events: `chat.deleted { thread_id, message_id, deleted_at }`, `chat.restored` (the message), `chat.edited` (the message). Every message now has `kind` (text, image, file, voice, video), `duration_seconds`, `deleted`, `deleted_at`, `can_delete_for_everyone`, `undo_until`. The office always sees the original in Chat audit with `deleted_by` and `deleted_for_me_by`, and every text an edit replaced in `earlier_versions` (`body`, `replaced_at`, `edited_by`, oldest first); teacher and parent see only the latest text. Clears and edits appear in the audit log.
 
 **Voice and video.** Upload with `POST /files` (multipart `file`, `purpose: chat_media`), then send `{ file_id, duration_seconds }`. Voice: m4a, aac, mp3, ogg, wav, webm, 3gp, up to 25 MB, no length limit. Video: mp4, mov, 3gp, webm, up to 25 MB and 120 seconds (`duration_seconds` required; `400 VIDEO_TOO_LONG`). Images and documents keep the `FILE_MAX_MB` limit.
+
+### Group chats
+
+| Who | Create | Add members | Members | Delete |
+|---|---|---|---|---|
+| Teacher | `POST /mobile/teacher/chat/groups` `{ name, member_user_ids }` | `POST /mobile/teacher/chat/groups/{id}/members` `{ user_ids }` | `GET …/groups/{id}/members` | `DELETE /mobile/teacher/chat/groups/{id}` |
+| Parent | `POST /mobile/parent/chat/groups` | `POST /mobile/parent/chat/groups/{id}/members` | `GET …/groups/{id}/members` | `DELETE /mobile/parent/chat/groups/{id}` |
+| Office (Chat audit) | `POST /admin/chat/groups` | `POST /admin/chat/groups/{id}/members` | `GET /admin/chat/groups/{id}/members` | `DELETE /admin/chat/groups/{id}` |
+
+Messages in a group use the normal thread routes (`…/chat/threads/{id}/messages`). **Delete:** in the apps only the person who created the group can delete it (`403 NOT_GROUP_CREATOR`); the office can delete any group in its school. The group disappears from every member's list at once (socket event `chat.group_deleted { thread_id, title }`: remove it from the screen); its messages are kept for the office and the deletion is in the audit log. Deleting again gives `404 GROUP_NOT_FOUND`.
 ## Push notification data (tap routing)
 
 **Automatic pushes can be switched off.** With `PUSH_AUTO=false` the API sends no push on its own: every notification is still saved in the app's notification list (`GET /me/notifications`), and its push row is marked `skipped` ("Automatic push is off"), with no SMS fallback because of it. Pushes only go out when the app asks for one:

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
@@ -63,6 +63,24 @@ export class ChatAuditController {
   @ApiEnvelope(ChatMemberDto, { isArray: true, message: 'Members added' })
   addMembers(@Param('id', ParseIntPipe) id: number, @Body() dto: AddGroupMembersDto, @CurrentUser() actor: AuthUser) {
     return this.chat.addGroupMembers(actor, id, dto);
+  }
+
+  @Delete('groups/:id')
+  @ResponseMessage('Group deleted')
+  @ApiOperation({
+    summary: 'Delete a group chat',
+    description:
+      'The group disappears for every member (socket event chat.group_deleted); messages are kept and the deletion is in the audit log. 404 GROUP_NOT_FOUND.',
+  })
+  @ApiEnvelope(undefined, { message: 'Group deleted' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  async deleteGroup(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    await this.chat.deleteGroup(actor, id, schoolId);
+    return null;
   }
 
   @Get('groups/:id/members')

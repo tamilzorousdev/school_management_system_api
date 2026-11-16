@@ -54,6 +54,9 @@ const VIDEO_TYPES: Record<string, string> = {
   'video/webm': '.webm',
 };
 export const MEDIA_MAX_MB = 25;
+export const pdfImage = (buffer: Buffer, background = '#ffffff') =>
+  sharp(buffer).flatten({ background }).jpeg({ quality: 85 }).toBuffer();
+
 const MAX_IMAGE_SIDE = 1600;
 const THUMB_SIDE = 320;
 
@@ -186,9 +189,7 @@ export class FilesService {
       const stream = await this.storage.read(record.storage_key);
       const chunks: Buffer[] = [];
       for await (const chunk of stream) chunks.push(Buffer.from(chunk as Buffer));
-      const image = sharp(Buffer.concat(chunks));
-      if (options.background) image.flatten({ background: options.background });
-      return await image.jpeg({ quality: 85 }).toBuffer();
+      return await pdfImage(Buffer.concat(chunks), options.background);
     } catch {
       return null;
     }

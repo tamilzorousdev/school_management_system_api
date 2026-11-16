@@ -743,6 +743,26 @@ export class ChatService {
     return this.groupMembers(thread.id);
   }
 
+  async deleteGroup(actor: AuthUser, threadId: number, schoolId: number | null): Promise<void> {
+    const thread = await this.threads.findOneBy({ id: threadId });
+    if (!thread || !thread.is_group || (schoolId !== null && thread.school_id !== schoolId)) {
+      throw AppException.notFound('Group conversation not found', 'GROUP_NOT_FOUND');
+    }
+    if (schoolId === null) {
+      const [member] = (await this.dataSource.query(
+        `SELECT role FROM chat_group_members WHERE thread_id = $1 AND user_id = $2`,
+        [thread.id, actor.id],
+      )) as { role: string }[];
+      if (member?.role !== 'creator') {
+        throw AppException.forbidden('Only the person who created this group can delete it', 'NOT_GROUP_CREATOR');
+      }
+    }
+    const memberIds = await this.threadMemberIds(thread);
+    await this.threads.softDelete(thread.id);
+    await this.log(thread, actor.id, 'deleted_group', null, thread.title);
+    this.realtime.toUsers(memberIds, 'chat.group_deleted', { thread_id: thread.id, title: thread.title });
+  }
+
   async groupMembers(threadId: number): Promise<ChatMemberDto[]> {
     const rows: { id: number; user_id: number; role: string; name: string; created_at: Date }[] =
       await this.dataSource.query(
