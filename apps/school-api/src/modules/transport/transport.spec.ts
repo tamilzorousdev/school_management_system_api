@@ -7,7 +7,11 @@ import {
   occupancy,
   pathKm,
   roadBlockers,
+  seatCheck,
   sendsSms,
+  stopForTrip,
+  stopsOf,
+  tripRiders,
 } from './transport.logic';
 
 const school = { lat: 13.0878, lng: 80.2101 };
@@ -108,5 +112,42 @@ describe('passengerRef', () => {
     const first = passengerRef();
     expect(first).toMatch(/^P[0-9a-f]{18}$/);
     expect(passengerRef()).not.toBe(first);
+  });
+});
+
+describe('stopForTrip', () => {
+  it('uses the drop stop on the evening trip only when one is set', () => {
+    const split = { stop_id: 4, drop_stop_id: 7, mode: 'both' as const };
+    expect(stopForTrip(split, 'pickup')).toBe(4);
+    expect(stopForTrip(split, 'drop')).toBe(7);
+    expect(stopForTrip({ ...split, drop_stop_id: null }, 'drop')).toBe(4);
+  });
+
+  it('lists the stops a rider uses for each trip', () => {
+    expect(stopsOf({ stop_id: 4, drop_stop_id: 7, mode: 'both' })).toEqual({ pickup: 4, drop: 7 });
+    expect(stopsOf({ stop_id: 4, drop_stop_id: null, mode: 'pickup' })).toEqual({ pickup: 4, drop: null });
+    expect(stopsOf({ stop_id: 4, drop_stop_id: null, mode: 'drop' })).toEqual({ pickup: null, drop: 4 });
+  });
+});
+
+describe('seatCheck', () => {
+  it('counts the morning and evening trips separately', () => {
+    expect(tripRiders(['both', 'pickup', 'drop'])).toEqual({ pickup: 2, drop: 2 });
+  });
+
+  it('lets a pickup-only and a drop-only student share a seat', () => {
+    expect(seatCheck(1, tripRiders(['pickup', 'drop']))).toBeNull();
+  });
+
+  it('names the trip that is over capacity', () => {
+    expect(seatCheck(2, tripRiders(['both', 'both', 'pickup']))).toBe('2 seats, but the morning trip would carry 3');
+    expect(seatCheck(2, tripRiders(['both', 'both', 'drop']))).toBe('2 seats, but the evening trip would carry 3');
+    expect(seatCheck(1, tripRiders(['both', 'both']))).toBe(
+      '1 seats, but the morning trip would carry 2 and the evening trip would carry 2',
+    );
+  });
+
+  it('allows a full bus exactly at capacity', () => {
+    expect(seatCheck(3, tripRiders(['both', 'both', 'both']))).toBeNull();
   });
 });

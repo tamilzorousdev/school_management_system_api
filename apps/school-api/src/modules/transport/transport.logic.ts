@@ -49,6 +49,48 @@ export function occupancy(students: number, capacity: number) {
   };
 }
 
+export type TripKind = 'pickup' | 'drop';
+export type RiderMode = 'both' | 'pickup' | 'drop';
+
+export interface RiderStops {
+  stop_id: number;
+  drop_stop_id: number | null;
+  mode: RiderMode;
+}
+
+export function ridesTrip(mode: RiderMode, kind: TripKind): boolean {
+  return mode === 'both' || mode === kind;
+}
+
+export function stopForTrip(row: RiderStops, kind: TripKind): number {
+  return kind === 'drop' && row.drop_stop_id ? row.drop_stop_id : row.stop_id;
+}
+
+export function stopsOf(row: RiderStops): { pickup: number | null; drop: number | null } {
+  return {
+    pickup: ridesTrip(row.mode, 'pickup') ? row.stop_id : null,
+    drop: ridesTrip(row.mode, 'drop') ? stopForTrip(row, 'drop') : null,
+  };
+}
+
+export const STOP_FOR_TRIP_SQL = (alias: string, kindParam: string) =>
+  `(CASE WHEN ${kindParam} = 'drop' AND ${alias}.drop_stop_id IS NOT NULL THEN ${alias}.drop_stop_id ELSE ${alias}.stop_id END)`;
+
+export function tripRiders(modes: RiderMode[]): { pickup: number; drop: number } {
+  return {
+    pickup: modes.filter((mode) => ridesTrip(mode, 'pickup')).length,
+    drop: modes.filter((mode) => ridesTrip(mode, 'drop')).length,
+  };
+}
+
+export function seatCheck(capacity: number, riders: { pickup: number; drop: number }): string | null {
+  const over = [
+    riders.pickup > capacity ? `the morning trip would carry ${riders.pickup}` : null,
+    riders.drop > capacity ? `the evening trip would carry ${riders.drop}` : null,
+  ].filter(Boolean);
+  return over.length ? `${capacity} seats, but ${over.join(' and ')}` : null;
+}
+
 export interface Point {
   lat: number;
   lng: number;

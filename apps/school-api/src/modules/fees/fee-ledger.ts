@@ -117,8 +117,12 @@ export async function generateInvoices(manager: EntityManager, input: GenerateIn
   const riders = new Map<number, { stop: string; monthly_fee: number }>();
   if (transportHead && pending.length) {
     const rows: { student_id: number; stop: string; monthly_fee: string; start_date: string }[] = await manager.query(
-      `SELECT st.student_id, rs.name AS stop, rs.monthly_fee, to_char(st.start_date, 'YYYY-MM-DD') AS start_date
+      `SELECT st.student_id,
+              CASE WHEN ds.id IS NOT NULL AND ds.id <> rs.id THEN rs.name || ' / ' || ds.name ELSE rs.name END AS stop,
+              GREATEST(rs.monthly_fee, COALESCE(ds.monthly_fee, 0)) AS monthly_fee,
+              to_char(st.start_date, 'YYYY-MM-DD') AS start_date
        FROM student_transport st JOIN route_stops rs ON rs.id = st.stop_id AND rs.deleted_at IS NULL
+       LEFT JOIN route_stops ds ON ds.id = st.drop_stop_id AND ds.deleted_at IS NULL
        WHERE st.school_id = $1 AND st.deleted_at IS NULL AND st.student_id = ANY($2) AND st.start_date <= $3`,
       [schoolId, pending.map((student) => student.id), latestDue],
     );

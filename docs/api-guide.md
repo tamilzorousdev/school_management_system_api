@@ -328,7 +328,7 @@ If the school replaces a lost card, the old `qr_token` stops working. Fetch the 
 | `POST /mobile/parent/children/{id}/leaves/{leaveId}/cancel` | Cancel while it is still pending |
 
 | `GET /mobile/parent/children/{id}/achievements` | Achievements the school shares, newest first |
-| `GET /mobile/parent/children/{id}/transport` | Bus card: route, stop with `pickup_time` and `drop_time`, bus registration, driver and attendant with mobile, `monthly_fee`. `null` when the child does not use the bus |
+| `GET /mobile/parent/children/{id}/transport` | Bus card: route, `stop` (pickup, or the only stop) with `pickup_time` and `drop_time`, `drop_stop` (evening stop when it differs, else `null`), bus registration, driver and attendant with mobile, `monthly_fee` (the higher of the two stops). `null` when the child does not use the bus |
 
 When the class teacher marks the child absent for today's morning attendance, the parent gets a `STUDENT_ABSENT` push (once per day) and an in-app notification. The parent is told again when a leave request is approved or rejected (`LEAVE_STATUS`).
 
@@ -656,6 +656,24 @@ Permission `fleet.view` to read, `fleet.manage` to change.
 **Seats.** Each bus has `students`, `occupancy_percent`, `nearly_full` (90% or more) and `over_capacity`.
 
 **Expiry alerts (buses and crew, one rule).** 07:00 daily, or `POST /admin/transport/expiries/check` to run now. Admins and the transport in-charge get an alert at 30, 15, 7 and 1 days before, on the day, then every 3 days while it stays expired (in-app and push). At 7 days, 1 day and on the expiry day the alert is `FLEET_DOCUMENT_EXPIRY_URGENT` / `CREW_DOCUMENT_EXPIRY_URGENT`, which also goes by SMS; the others are `FLEET_DOCUMENT_EXPIRY` / `CREW_DOCUMENT_EXPIRY` with no SMS. AO is not alerted. `CREW_BLOCKED` goes when an approved member's date passes. Drivers and attendants get `CREW_DOCUMENT_EXPIRY_SELF` for their own documents, and the bus driver gets `BUS_DOCUMENT_EXPIRY_DRIVER` for their bus, at 7, 1 and 0 days and every 3 days after; set `CREW_EXPIRY_AUTO_NOTIFY=false` to stop these. `GET /admin/transport/expiries` rows have `staff_id` for crew documents.
+
+## Student transport (admin web)
+
+Permission `fleet.view` to read, `fleet.manage` to change. A student has one route, a pickup `stop` and optionally a different `drop_stop` on the same route (only with `mode: both`).
+
+| Call | Use |
+|---|---|
+| `PUT /admin/students/{id}/transport` | `{ route_id, stop_id, drop_stop_id?, mode?, start_date? }`. Assigns or moves the student. `drop_stop_id` must be on the same route and only with `mode: both` (field error otherwise); the same stop as `stop_id` is stored as no separate drop stop |
+| `DELETE /admin/students/{id}/transport` | Takes the student off the bus |
+| `GET /admin/students/{id}/transport` | Current assignment with `stop`, `drop_stop`, `monthly_fee`, or `null` |
+| `GET /admin/students/{id}/transport/history` | Assignments, moves and removals, newest first: `{ action, from, to, mode, by, at }` |
+| `POST /admin/transport/routes/{id}/stops/{stopId}/students` | Bulk: `{ student_ids, mode? }` put on this stop for both trips (clears any separate drop stop) |
+| `GET /admin/transport/students` | Paged riders. Filters `route_id`, `stop_id` (pickup or drop), `class_id`, `section_id`, `mode`. Sort `name`, `admission_no`, `class`, `stop`, `created_at` |
+| `GET /admin/transport/routes/{id}/roster` | Route list: stops in order, each with `pickup_students` and `drop_students` (name, admission no, class, mode, guardian name and mobile), plus `morning_riders`/`evening_riders` for the route and `bus_morning_riders`/`bus_evening_riders` for the whole bus |
+
+**Seats.** Counted per trip across every active route of the bus: morning riders (`both` + `pickup`) and evening riders (`both` + `drop`) must each fit `capacity`. Only active students count. A pickup-only and a drop-only student share one seat. Over capacity returns 409 `BUS_FULL` naming the trip. Giving a route a different bus checks the new bus the same way.
+
+**Notifications** on every assign, move and removal: parents with alerts on get `TRANSPORT_ASSIGNED` (route, pickup and drop with times) or `TRANSPORT_REMOVED`; the driver and attendant of the old and new bus get `BUS_RIDER_CHANGED`. Drop trips use the drop stop for `BUS_APPROACHING`/`BUS_ARRIVED`, the child bus card, boarding and the trip rider list.
 
 ## Live bus
 
@@ -1175,7 +1193,7 @@ Every push (OneSignal `additionalData`) has `category`, `template` and `notifica
 
 ## Driver app
 
-Driver and Attendant roles. `GET /mobile/driver/duty` returns my bus and its routes, each with stops in travel order (`lat`, `lng`, `geofence_radius_m`, pickup and drop times) and the students at each stop (`full_name`, `class_section`, `mode` both/pickup/drop, `passenger_ref`). `passenger_ref` is the opaque id the bus tracking system uses; it is never the student id. Sign in as 9000000007 (driver) or 9000000008 (attendant).
+Driver and Attendant roles. `GET /mobile/driver/duty` returns my bus and its routes, each with stops in travel order (`lat`, `lng`, `geofence_radius_m`, pickup and drop times) and the students at each stop (`full_name`, `class_section`, `mode` both/pickup/drop, `passenger_ref`, and `for`: `pickup` when they only get on here, `drop` when they only get off here, `both` otherwise). A student with a separate evening stop appears at both stops. `passenger_ref` is the opaque id the bus tracking system uses; it is never the student id. Sign in as 9000000007 (driver) or 9000000008 (attendant).
 
 ## Files
 

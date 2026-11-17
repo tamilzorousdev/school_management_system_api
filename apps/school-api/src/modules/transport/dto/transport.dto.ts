@@ -22,6 +22,7 @@ import { ListQueryDto } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
 import { EXPIRY_KINDS, ExpiryKind } from '../entities/expiry-alert.entity';
+import { TRANSPORT_CHANGE_ACTIONS, TransportChangeAction } from '../entities/student-transport-change.entity';
 import { TRANSPORT_MODES, TransportMode } from '../entities/student-transport.entity';
 import {
   FUEL_TYPES,
@@ -453,6 +454,17 @@ export class AssignTransportDto {
   @IsIn(TRANSPORT_MODES)
   mode?: TransportMode;
 
+  @ApiPropertyOptional({
+    example: 7,
+    nullable: true,
+    type: Number,
+    description: 'Evening drop stop when it differs from stop_id. Same route, mode both only.',
+  })
+  @IsOptional()
+  @ValidateIf((_object: unknown, value: unknown) => value !== null)
+  @IsInt()
+  drop_stop_id?: number | null;
+
   @IsDateOnly('2026-11-09', true)
   start_date?: string;
 }
@@ -478,11 +490,28 @@ export class StudentTransportQueryDto extends ListQueryDto {
   @IsInt()
   route_id?: number;
 
-  @ApiPropertyOptional({ example: 4 })
+  @ApiPropertyOptional({ example: 4, description: 'Matches the pickup stop or the drop stop' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   stop_id?: number;
+
+  @ApiPropertyOptional({ example: 6 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  class_id?: number;
+
+  @ApiPropertyOptional({ example: 14 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  section_id?: number;
+
+  @ApiPropertyOptional({ enum: TRANSPORT_MODES })
+  @IsOptional()
+  @IsIn(TRANSPORT_MODES)
+  mode?: TransportMode;
 }
 
 export class ExpiryQueryDto {
@@ -822,8 +851,15 @@ export class StudentTransportDto {
   @ApiProperty({ type: RefDto })
   route: RefDto;
 
-  @ApiProperty({ type: TransportStopRefDto })
+  @ApiProperty({ type: TransportStopRefDto, description: 'Pickup stop, or the only stop' })
   stop: TransportStopRefDto;
+
+  @ApiProperty({
+    type: TransportStopRefDto,
+    nullable: true,
+    description: 'Evening drop stop when it differs from stop',
+  })
+  drop_stop: TransportStopRefDto | null;
 
   @ApiProperty({ enum: TRANSPORT_MODES })
   mode: TransportMode;
@@ -834,7 +870,7 @@ export class StudentTransportDto {
   @ApiProperty({ example: 'P7f3a9c2e1b4d', description: 'Opaque id the bus system uses; never a student id' })
   passenger_ref: string;
 
-  @ApiProperty({ example: 1200 })
+  @ApiProperty({ example: 1200, description: 'The higher fee of the pickup and drop stops' })
   monthly_fee: number;
 }
 
@@ -887,8 +923,11 @@ export class ParentTransportDto {
   @ApiProperty({ type: RefDto })
   route: RefDto;
 
-  @ApiProperty({ type: StopDto })
+  @ApiProperty({ type: StopDto, description: 'Pickup stop, or the only stop' })
   stop: StopDto;
+
+  @ApiProperty({ type: StopDto, nullable: true, description: 'Evening drop stop when it differs from stop' })
+  drop_stop: StopDto | null;
 
   @ApiProperty({ enum: TRANSPORT_MODES })
   mode: TransportMode;
@@ -912,6 +951,12 @@ export class DriverStopStudentDto extends TransportStudentRefDto {
 
   @ApiProperty({ enum: TRANSPORT_MODES })
   mode: TransportMode;
+
+  @ApiProperty({
+    enum: ['both', 'pickup', 'drop'],
+    description: 'Which trip this student uses this stop for',
+  })
+  for: 'both' | 'pickup' | 'drop';
 }
 
 export class DriverStopDto extends StopDto {
@@ -939,4 +984,104 @@ export class DriverDutyDto {
 
   @ApiProperty({ type: [DriverRouteDto] })
   routes: DriverRouteDto[];
+}
+
+export class RosterStudentDto extends TransportStudentRefDto {
+  @ApiProperty({ enum: TRANSPORT_MODES })
+  mode: TransportMode;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Lakshmi Narayanan' })
+  guardian_name: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: '9000000005' })
+  guardian_mobile: string | null;
+}
+
+export class RosterStopDto {
+  @ApiProperty({ example: 4 })
+  id: number;
+
+  @ApiProperty({ example: 1 })
+  sequence: number;
+
+  @ApiProperty({ example: 'Anna Nagar Tower' })
+  name: string;
+
+  @ApiProperty({ nullable: true, type: String })
+  landmark: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: '07:40' })
+  pickup_time: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: '16:10' })
+  drop_time: string | null;
+
+  @ApiProperty({ type: [RosterStudentDto], description: 'Students who get on here in the morning' })
+  pickup_students: RosterStudentDto[];
+
+  @ApiProperty({ type: [RosterStudentDto], description: 'Students who get off here in the evening' })
+  drop_students: RosterStudentDto[];
+}
+
+export class RouteRosterDto {
+  @ApiProperty({ example: 1 })
+  id: number;
+
+  @ApiProperty({ example: 'R1' })
+  code: string;
+
+  @ApiProperty({ example: 'Anna Nagar - School' })
+  name: string;
+
+  @ApiProperty({ type: RouteVehicleDto, nullable: true })
+  vehicle: RouteVehicleDto | null;
+
+  @ApiProperty({ example: 34, description: 'Students on the morning trip of this route' })
+  morning_riders: number;
+
+  @ApiProperty({ example: 31, description: 'Students on the evening trip of this route' })
+  evening_riders: number;
+
+  @ApiProperty({ example: 38, description: 'Morning riders across every route of this bus' })
+  bus_morning_riders: number;
+
+  @ApiProperty({ example: 36, description: 'Evening riders across every route of this bus' })
+  bus_evening_riders: number;
+
+  @ApiProperty({ type: [RosterStopDto] })
+  stops: RosterStopDto[];
+}
+
+export class TransportChangePlaceDto {
+  @ApiProperty({ type: RefDto })
+  route: RefDto;
+
+  @ApiProperty({ type: RefDto })
+  stop: RefDto;
+
+  @ApiProperty({ type: RefDto, nullable: true })
+  drop_stop: RefDto | null;
+}
+
+export class TransportChangeDto {
+  @ApiProperty({ example: 5 })
+  id: number;
+
+  @ApiProperty({ enum: TRANSPORT_CHANGE_ACTIONS })
+  action: TransportChangeAction;
+
+  @ApiProperty({ type: TransportChangePlaceDto, nullable: true })
+  from: TransportChangePlaceDto | null;
+
+  @ApiProperty({ type: TransportChangePlaceDto, nullable: true })
+  to: TransportChangePlaceDto | null;
+
+  @ApiProperty({ enum: TRANSPORT_MODES, nullable: true })
+  mode: TransportMode | null;
+
+  @ApiProperty({ type: RefDto, nullable: true, description: 'Who made the change' })
+  by: RefDto | null;
+
+  @ApiProperty({ example: '2026-11-17T10:12:00.000+05:30' })
+  at: Date;
 }

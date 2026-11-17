@@ -19,6 +19,10 @@ export class StudentTransport extends SchoolScopedEntity {
   @Column({ type: 'int' })
   stop_id: number;
 
+  @Index('IDX_student_transport_drop_stop', { where: 'drop_stop_id IS NOT NULL' })
+  @Column({ type: 'int', nullable: true })
+  drop_stop_id: number | null;
+
   @Column({ type: 'varchar', length: 10, default: 'both' })
   mode: TransportMode;
 

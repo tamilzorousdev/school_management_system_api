@@ -32,6 +32,9 @@ export const TEMPLATES = {
   FEE_DUE: 'FEE_DUE',
   FEE_OVERDUE: 'FEE_OVERDUE',
   FLEET_DOCUMENT_EXPIRY: 'FLEET_DOCUMENT_EXPIRY',
+  TRANSPORT_ASSIGNED: 'TRANSPORT_ASSIGNED',
+  TRANSPORT_REMOVED: 'TRANSPORT_REMOVED',
+  BUS_RIDER_CHANGED: 'BUS_RIDER_CHANGED',
   CREW_DOCUMENT_EXPIRY: 'CREW_DOCUMENT_EXPIRY',
   CREW_DOCUMENT_EXPIRY_SELF: 'CREW_DOCUMENT_EXPIRY_SELF',
   CREW_BLOCKED: 'CREW_BLOCKED',
@@ -823,6 +826,63 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{document}} {{date}} அன்று முடிகிறது: {{subject}}',
         body: '{{subject}} க்கான {{document}} {{date}} வரை மட்டுமே செல்லும் ({{days}} நாட்கள் உள்ளன). பேருந்து இயங்க புதுப்பிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.TRANSPORT_ASSIGNED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}}’s bus stop',
+        body: '{{student}} is on {{route}}. Pickup: {{pickup}}. Drop: {{drop}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்து நிறுத்தம்',
+        body: '{{student}} {{route}} வழியில் உள்ளார். ஏறும் இடம்: {{pickup}}. இறங்கும் இடம்: {{drop}}.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.TRANSPORT_REMOVED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}} is off the school bus',
+        body: '{{student}} no longer uses the school bus on {{route}}. Contact the transport office if this is not right.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பள்ளிப் பேருந்தில் இல்லை',
+        body: '{{student}} இனி {{route}} பள்ளிப் பேருந்தைப் பயன்படுத்தமாட்டார். தவறு என்றால் போக்குவரத்து அலுவலகத்தைத் தொடர்பு கொள்ளவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_RIDER_CHANGED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Rider update: {{student}}',
+        body: '{{student}} ({{class}}): {{detail}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'பயணி மாற்றம்: {{student}}',
+        body: '{{student}} ({{class}}): {{detail}}.',
         sms_body: null,
       },
     },
