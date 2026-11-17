@@ -7,6 +7,7 @@ import { todayIn } from '../../shared/dates';
 import { addDays, holidaySet, WEEKLY_OFF, weekday } from '../../shared/school-days';
 import { ClearanceService } from '../crew/clearance.service';
 import { AWAY_FOR_TRIP_SQL, awayLookup } from '../../shared/student-away';
+import { routeIdsRunBy, vehicleOnDay } from '../transport/bus-swaps';
 import { STOP_FOR_TRIP_SQL, stopForTrip } from '../transport/transport.logic';
 import { TelematicsClient } from '../fleet/telematics.client';
 import { RouteStop } from '../transport/entities/route-stop.entity';
@@ -86,21 +87,31 @@ export class TripsService {
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
-  async start(schoolId: number, dto: { route_id: number; kind: TripKind }, actor: AuthUser, vehicleId?: number) {
+  async start(
+    schoolId: number,
+    dto: { route_id: number; kind: TripKind },
+    actor: AuthUser,
+    vehicleId?: number,
+    handover?: { vehicleId: number; stopIds: number[]; fromTripId: number },
+  ) {
     const route = await this.dataSource
       .getRepository(TransportRoute)
       .findOneBy({ id: dto.route_id, school_id: schoolId });
     if (!route || !route.is_active) throw AppException.notFound('Route not found or not running', 'ROUTE_NOT_FOUND');
-    if (vehicleId !== undefined && route.vehicle_id !== vehicleId) {
+    const busToday = handover
+      ? handover.vehicleId
+      : await vehicleOnDay(this.dataSource, route, todayIn(this.app.timeZone));
+    if (!handover && vehicleId !== undefined && busToday !== vehicleId) {
       throw AppException.forbidden('This route is not run by your bus', 'NOT_YOUR_ROUTE');
     }
-    if (!route.vehicle_id) throw AppException.badRequest('Give this route a bus first', 'ROUTE_HAS_NO_BUS');
-    const vehicle = await this.dataSource.getRepository(Vehicle).findOneByOrFail({ id: route.vehicle_id });
+    if (!busToday) throw AppException.badRequest('Give this route a bus first', 'ROUTE_HAS_NO_BUS');
+    const vehicle = await this.dataSource.getRepository(Vehicle).findOneByOrFail({ id: busToday });
     if (!vehicle.device_id) {
       throw AppException.badRequest('Fit a GPS tracker to this bus in Buses and routes first', 'NO_TRACKER');
     }
     await this.clearance.assertCanRun(schoolId, vehicle);
-    const stops = await this.dataSource.getRepository(RouteStop).find({ where: { route_id: route.id } });
+    const allStops = await this.dataSource.getRepository(RouteStop).find({ where: { route_id: route.id } });
+    const stops = handover ? allStops.filter((stop) => handover.stopIds.includes(stop.id)) : allStops;
     if (!stops.length) throw AppException.badRequest('Add stops to this route first', 'ROUTE_HAS_NO_STOPS');
     const [school] = await this.dataSource.query(
       `SELECT code, name, latitude, longitude, geofence_radius_m FROM schools WHERE id = $1`,
@@ -126,6 +137,7 @@ export class TripsService {
         status: 'active',
         started_by: actor.id,
         started_at: new Date(),
+        handover_of: handover?.fromTripId ?? null,
         stops: ordered.map((stop) => ({
           stop_id: stop.id,
           name: stop.name,
@@ -186,6 +198,22 @@ export class TripsService {
     }
     await this.markEnded(trip, reason, new Date());
     return this.detail(schoolId, tripId);
+  }
+
+  async closeForHandover(trip: TransportTrip, newTripId: number): Promise<void> {
+    await this.trips.update(trip.id, {
+      flags_sent_at: new Date(),
+      not_boarded_sent_at: new Date(),
+      replaced_by: newTripId,
+    });
+    if (trip.telematics_trip_id) {
+      await this.telematics
+        .post(`/trips/${trip.telematics_trip_id}/end`, { reason: 'breakdown' })
+        .catch((error: Error) =>
+          this.logger.warn(`Ending telematics trip ${trip.telematics_trip_id}: ${error.message}`),
+        );
+    }
+    await this.markEnded(trip, 'breakdown', new Date());
   }
 
   async markEnded(trip: TransportTrip, reason: string, at: Date): Promise<boolean> {
@@ -265,9 +293,12 @@ export class TripsService {
     const vehicle = await this.crewVehicle(user);
     if (!vehicle) return { vehicle: null, has_tracker: false, active_trip: null, routes: [] };
     const today = todayIn(this.app.timeZone);
-    const routes = await this.dataSource
-      .getRepository(TransportRoute)
-      .find({ where: { vehicle_id: vehicle.id, is_active: true }, order: { code: 'ASC' } });
+    const routeIds = await routeIdsRunBy(this.dataSource, vehicle.school_id, vehicle.id, today);
+    const routes = routeIds.length
+      ? (await this.dataSource.getRepository(TransportRoute).findBy({ id: In(routeIds) })).sort((a, b) =>
+          a.code.localeCompare(b.code),
+        )
+      : [];
     const trips = await this.trips.find({
       where: { vehicle_id: vehicle.id, trip_date: today },
       order: { started_at: 'ASC' },
@@ -428,9 +459,8 @@ export class TripsService {
       .findOneBy({ school_id: schoolId, student_id: studentId });
     if (!assignment) return null;
     const route = await this.dataSource.getRepository(TransportRoute).findOneByOrFail({ id: assignment.route_id });
-    const vehicle = route.vehicle_id
-      ? await this.dataSource.getRepository(Vehicle).findOneBy({ id: route.vehicle_id })
-      : null;
+    const busToday = await vehicleOnDay(this.dataSource, route, todayIn(this.app.timeZone));
+    const vehicle = busToday ? await this.dataSource.getRepository(Vehicle).findOneBy({ id: busToday }) : null;
     const today = todayIn(this.app.timeZone);
     const candidates = await this.trips.find({
       where: { route_id: route.id, trip_date: today },
@@ -644,6 +674,12 @@ export class TripsService {
         destination_eta_seconds: row.status === 'active' ? row.destination_eta_seconds : null,
         stops_done: row.stops.filter((stop) => stop.status === 'departed' || stop.status === 'skipped').length,
         stops_total: row.stops.length,
+        delay:
+          row.delay_minutes && row.delayed_at
+            ? { minutes: row.delay_minutes, reason: row.delay_reason, at: row.delayed_at }
+            : null,
+        handover_of: row.handover_of,
+        replaced_by: row.replaced_by,
       };
     });
   }

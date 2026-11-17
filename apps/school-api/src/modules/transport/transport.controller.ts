@@ -62,6 +62,9 @@ import {
   VehicleInputDto,
   VehicleInsightsDto,
   VehicleQueryDto,
+  BusSwapDto,
+  BusSwapInputDto,
+  BusSwapQueryDto,
 } from './dto/transport.dto';
 import { RoutesService } from './routes.service';
 import { VehicleDocumentsService } from './vehicle-documents.service';
@@ -337,6 +340,51 @@ export class TransportController {
   @ApiErrors(HttpStatus.NOT_FOUND)
   roster(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
     return this.routes.roster(schoolId, id);
+  }
+
+  @Get('bus-swaps')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({ summary: 'Routes run by a different bus for a day: today and later, or one date' })
+  @ApiEnvelope(BusSwapDto, { isArray: true })
+  swaps(@SchoolId() schoolId: number, @Query() query: BusSwapQueryDto) {
+    return this.routes.listSwaps(schoolId, query.date);
+  }
+
+  @Put('routes/:id/swap')
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Bus changed for the day')
+  @ApiOperation({
+    summary: 'Run this route with another bus for one day (breakdown), then it goes back to its usual bus',
+    description:
+      'date defaults to today, up to 30 days ahead; sending again for the same day replaces it. The other bus must be free at the route times (409 BUS_TIME_CLASH / CREW_TIME_CLASH). Parents of the route and the driver and attendant of both buses get a push with the reason. 400 SAME_BUS, ROUTE_INACTIVE.',
+  })
+  @ApiEnvelope(BusSwapDto, { message: 'Bus changed for the day' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  swapBus(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: BusSwapInputDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.routes.swapBus(schoolId, id, dto, actor);
+  }
+
+  @Delete('routes/:id/swap')
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Back to the usual bus')
+  @ApiOperation({
+    summary: 'Undo the bus change for a day (date defaults to today); parents are told',
+    description: '404 SWAP_NOT_FOUND.',
+  })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  async clearSwap(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: BusSwapQueryDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    await this.routes.clearSwap(schoolId, id, query.date, actor);
+    return null;
   }
 
   @Post('routes')

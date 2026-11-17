@@ -425,7 +425,13 @@ Staff leave status moves `pending_hod` → `pending_principal` → `approved` (o
 
 ### Emergency broadcast
 
-An urgent message from the school office to all parents, all staff, everyone, or the parents of chosen classes, sections or students (optionally with their teachers). School admin, Principal and AO can send it (`emergency.send`) and see the history (`emergency.view`).
+An urgent message from the school office to all parents, all staff, everyone, or the parents of chosen classes, sections or students (optionally with their teachers). School admin, Principal and AO can send it (`emergency.send`) and see the history (`emergency.view`). School admin and Principal also have `emergency.approve`.
+
+**Approval.** A broadcast to the whole school (`everyone`, `parents`, `staff`) or with SMS, sent by someone without `emergency.approve` (for example the AO), waits with `status: pending_approval`; admins and the principal get `EMERGENCY_APPROVAL_NEEDED` (push). Approving sends it (or schedules it for its `send_at`); rejecting needs a note. The sender gets `EMERGENCY_REVIEWED`.
+
+**Schedule and expiry.** `send_at` sends later (1 minute to 60 days ahead, `status: scheduled`). `expires_in { value, unit }` with `unit` = `seconds`, `minutes`, `hours`, `days`, `months` or `years` (5 seconds up to 5 years) takes it off every screen when the time is up, counted from when it goes out: pushes and SMS not sent yet are dropped, the push carries a time-to-live so phones that were offline do not get it late, the in-app notification leaves the bell list (`status: expired`), and apps get the socket event `emergency.ended { broadcast_id, reason, ended_at }`. Messages already in a phone's notification tray stay there. `POST /{id}/end` does the same at once (End now). A follow-up with `category: all_clear` ends the broadcast it follows up.
+
+Every broadcast has `state`: `pending_approval`, `scheduled`, `active` (on screen), `expired`, `ended`, `rejected` or `cancelled`, plus `send_at`, `expiry { value, unit, label }`, `expires_at`, `ended_at`, `end_reason` (`expired`, `ended`, `all_clear`), `ended_by`, `reviewed_by`, `reviewed_at`, `review_note`.
 
 **How it is delivered.** On send, the API saves one row per person first (a parent with several children gets one message that lists them), then delivers in the background: an in-app notification at once (category `alert`), a live socket event `emergency.alert { broadcast_id, title, message, category, severity, sent_at }` to everyone with the app open, push to app users and SMS to every mobile number, including parents without the app. Push and SMS each get up to 3 tries (10 s, 30 s, 90 s apart); after a restart the API carries on with whatever was not sent. Tamil readers get the Tamil title and message when given. Push follows `PUSH_AUTO`: while it is `false` the push is marked not sent and the in-app, socket and SMS still go out. SMS goes through Kafka with template `school_emergency_broadcast` (`_ta` for Tamil), variables `school`, `title`, `message`, `name`.
 
@@ -433,24 +439,29 @@ An urgent message from the school office to all parents, all staff, everyone, or
 
 | Call | What it does |
 |---|---|
-| `GET /templates` | Ready-made messages in English and Tamil (rain holiday, early closure, security, transport delay, health, all clear) |
+| `GET /templates?all=` | The school's ready messages in English and Tamil (`id`, `is_active`, `sort_order`, …). A school starts with rain holiday, early closure, security, transport delay, health and all clear; `all=true` also lists switched-off ones |
+| `POST /templates`, `PATCH /templates/{id}`, `DELETE /templates/{id}` | Add, change (`is_active: false` hides it), remove a ready message. 404 `TEMPLATE_NOT_FOUND` |
 | `POST /preview` `{ audience, class_ids?, section_ids?, student_ids?, include_teachers? }` | People it will reach: `recipients`, `parents`, `staff`, `with_app`, `with_mobile`, `sms_only`, `unreachable` |
-| `POST` `{ audience, …, title, message, title_ta?, message_ta?, category, severity?, channels?: ["push","sms"], client_id?, follow_up_of? }` | Sends now (201). `audience` = `everyone`, `parents`, `staff`, `classes`, `sections`, `students`. `category` = `weather`, `school_closed`, `security`, `health`, `transport`, `all_clear`, `other`. `severity` = `info`, `warning`, `critical` (default). `client_id` stops a double click sending twice. `follow_up_of` links an all clear to the original |
-| `GET` | History, paged: `search`, `category`, `status` (`sending`, `sent`, `partly_failed`), `from`, `to`, `sort=sent_at|title` |
+| `POST` `{ audience, …, title, message, title_ta?, message_ta?, category, severity?, channels?: ["push","sms"], client_id?, follow_up_of?, expires_in?: { value, unit }, send_at? }` | Sends now, later or for approval (201). `audience` = `everyone`, `parents`, `staff`, `classes`, `sections`, `students`. `category` = `weather`, `school_closed`, `security`, `health`, `transport`, `all_clear`, `other`. `severity` = `info`, `warning`, `critical` (default). `client_id` stops a double click sending twice. `follow_up_of` links an all clear to the original |
+| `GET` | History, paged: `search`, `category`, `status`, `state` (`active`, `expired`, `ended`, `scheduled`, `pending_approval`, `rejected`, `cancelled`), `from`, `to`, `sort=sent_at|title` |
 | `GET /{id}` | One broadcast with `audience_label` and `counts`: `total`, `parents`, `staff`, `in_app`, `push` and `sms` (`pending`, `sending`, `sent`, `failed`, `skipped`), `reached`, `read`, `acknowledged` and the two percentages. Poll while `status` is `sending` |
 | `GET /{id}/recipients` | Paged people with `push_status`, `sms_status` and the reason when not sent, `read_at`, `acknowledged_at`, and their children. `filter` = `all`, `failed`, `not_read`, `not_acknowledged`, `sms_only`, `unreachable`; `search` = name, mobile or child |
-| `POST /{id}/resend` `{ target: "failed" | "not_acknowledged" }` | Sends again to those it failed for, or by push and SMS to everyone who has not acknowledged (409 `STILL_SENDING` while it is still going out) |
+| `POST /{id}/resend` `{ target: "failed" | "not_acknowledged", channels?: ["sms"] }` | Sends again to those it failed for, or to everyone who has not acknowledged; `channels` limits it, for example SMS only to people who have not seen it. 409 `STILL_SENDING`, `NOT_SENT_YET`, `NOT_ACTIVE` once it has ended |
+| `POST /{id}/approve` `{ note? }`, `POST /{id}/reject` `{ note }` | `emergency.approve` only. 409 `NOT_PENDING_APPROVAL` |
+| `POST /{id}/cancel` | Cancel a scheduled or waiting broadcast. 409 `NOT_CANCELLABLE` |
+| `POST /{id}/end` | End now. 409 `NOT_ACTIVE` |
+| `DELETE /{id}` | `emergency.approve`: remove an expired, ended, cancelled or rejected broadcast from the history and the counts (kept in the database). 409 `STILL_ACTIVE` |
 | `GET /insights` | This month: broadcasts, people, reached % and acknowledged %, broadcasts still sending, and the last broadcast |
 
 **Parent and Staff apps (`/me/emergency-broadcasts`).**
 
 | Call | What it does |
 |---|---|
-| `GET /me/emergency-broadcasts?pending=true` | My emergency messages, newest first, in my language; `pending=true` only the ones I have not acknowledged. Call it on app open and show any pending one as a full-screen alert |
+| `GET /me/emergency-broadcasts?pending=true&include_ended=` | My emergency messages still on screen, newest first, in my language; `pending=true` only the ones I have not acknowledged; `include_ended=true` adds expired and ended ones (history). Call it on app open and show any pending one as a full-screen alert |
 | `GET /me/emergency-broadcasts/{id}` | One message; opening it marks it read (and its in-app notification) |
 | `POST /me/emergency-broadcasts/{id}/acknowledge` | The "I have seen this" button; safe to press twice |
 
-Each item has `title`, `message`, `category`, `severity`, `school`, `students` (my children it is about, for parents), `sent_at`, `read_at`, `acknowledged_at` and `follow_up_of`. The push has `category: "alert"` and `broadcast_id`.
+Each item has `title`, `message`, `category`, `severity`, `school`, `students` (my children it is about, for parents), `sent_at`, `read_at`, `acknowledged_at`, `follow_up_of`, `is_active`, `expires_at`, `ended_at` and `end_reason`. Hide the red strip and close the full-screen alert when `is_active` is false, at `expires_at`, or on the `emergency.ended` socket event. The push has `category: "alert"` and `broadcast_id`; the in-app notification `data` also has `expires_at` when one is set.
 
 ### Digital signature (sign on screen or photo)
 
@@ -714,6 +725,14 @@ Errors are `400 VALIDATION_FAILED` with `field` `items.N.pickup_time` or `items.
 | `GET /admin/transport/driver-ratings/summary` | Each driver of an active bus (and anyone rated): `average`, `count`, `month_average`, `month_count`, `low_count`, `distribution` (1 to 5 star counts) and `top_tags`. Lowest average first. Permission `fleet.view` |
 | `GET /admin/transport/driver-ratings?driver_user_id&vehicle_id&rating&low=true&from&to&search&sort` | The ratings with driver, bus, student, parent, chips and comment. search: driver, parent or student name, or comment. sort: `updated_at` (default), `created_at`, `rating` |
 | `GET /admin/transport/driver-ratings/insights` | `average`, `count`, `month_count`, `month_low`, `drivers_rated` |
+
+**Reason for a change.** `PATCH /admin/transport/routes/{id}` and `PUT /admin/transport/routes/{id}/stops` take an optional `reason` (up to 200 letters, for example "Road work on 2nd Avenue"). Parents read it at the end of their note ("… Reason: Road work on 2nd Avenue") and the route history keeps it in `reason`.
+
+**Bus for a day (breakdown).** `PUT /admin/transport/routes/{id}/swap { vehicle_id, date?, reason? }` runs the route with another bus on one day (today by default, up to 30 days ahead; sending again for the same day replaces it); the next day the usual bus is back without any step. The other bus must be free at the route times (409 `BUS_TIME_CLASH`, `CREW_TIME_CLASH`); in an emergency send `force: true` to change anyway: the answer has `warning`, and the parents of the route that bus also runs get a note that it may be late. 400 `SAME_BUS`, `ROUTE_INACTIVE`. Parents of the route and the driver and attendant of both buses get `BUS_SWAPPED` (push) with the reason, and the route history gets a `bus_swapped` entry. On that day the swap bus's driver sees the route on the home screen, roster and student lists and can start its trips; the parent's transport card and live bus show the swap bus. `DELETE /admin/transport/routes/{id}/swap?date=` undoes it (parents get a note; 404 `SWAP_NOT_FOUND`). `GET /admin/transport/bus-swaps?date=` lists swaps from today on (or for one date). Route list items have `swap_today { vehicle, reason }`.
+
+**Breakdown on the road (hand-over).** `POST /admin/transport/trips/{id}/handover { vehicle_id, reason?, keep_for_today? }` on a running trip: a new trip starts on the other bus for the stops not passed yet (the bus needs a GPS tracker and must not be on another trip; its crew must be cleared), the children already on board are copied to it, and the old trip ends with `end_reason: breakdown` without the left-on-bus and missed-bus alerts. Parents of children on board get `BUS_HANDOVER_ONBOARD` ("Kavin is moving to Bus 2"), parents still waiting, both crews and the office get `BUS_HANDOVER`, and screens following the old trip get `trip.event` with `type: trip.handover` and `new_trip_id`. `keep_for_today` also runs the route with the new bus for the rest of the day (a bus for a day, changed anyway). Trips have `handover_of` (the trip it took over from) and `replaced_by`. Answer: `old_trip`, `new_trip`, `on_board`, `waiting`, `parents_told`, `warning`. 409 `TRIP_ENDED`, `TRIP_ALREADY_ACTIVE`; 400 `SAME_BUS`, `NO_TRACKER`.
+
+**Bus delayed (driver app, Module 2).** `POST /mobile/driver/trips/{id}/delay { minutes: 5-180, reason? }` while the trip runs: parents of that trip and the transport office get `BUS_DELAYED` (push, "Bus 1 is running about 20 minutes late"), live screens get `trip.event` with `type: trip.delayed`, and the trip shows `delay { minutes, reason, at }`. Once every 3 minutes (429 `DELAY_TOO_SOON`); 409 `TRIP_ENDED`, 403 `NOT_YOUR_TRIP`.
 
 **Route list.** `GET /admin/transport/routes` items also have `morning_riders` and `evening_riders` (active students on each trip) next to `students`, so cards can show "Morning 23/40 · Evening 19/40".
 

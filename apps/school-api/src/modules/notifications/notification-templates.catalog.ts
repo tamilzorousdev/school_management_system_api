@@ -63,6 +63,12 @@ export const TEMPLATES = {
   TEACHER_RATED: 'TEACHER_RATED',
   STUDENT_FEEDBACK: 'STUDENT_FEEDBACK',
   EMERGENCY_BROADCAST: 'EMERGENCY_BROADCAST',
+  EMERGENCY_APPROVAL_NEEDED: 'EMERGENCY_APPROVAL_NEEDED',
+  EMERGENCY_REVIEWED: 'EMERGENCY_REVIEWED',
+  BUS_SWAPPED: 'BUS_SWAPPED',
+  BUS_DELAYED: 'BUS_DELAYED',
+  BUS_HANDOVER: 'BUS_HANDOVER',
+  BUS_HANDOVER_ONBOARD: 'BUS_HANDOVER_ONBOARD',
   PARENT_SIGNATURE_CHANGED: 'PARENT_SIGNATURE_CHANGED',
   SIGNATURE_SET_BY_SCHOOL: 'SIGNATURE_SET_BY_SCHOOL',
 } as const;
@@ -148,6 +154,120 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
         title: '{{title}}',
         body: '{{message}}',
         sms_body: '{{school}}: {{title}}. {{message}}',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.EMERGENCY_APPROVAL_NEEDED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: 'Emergency broadcast waiting for approval',
+        body: '{{sender}} wants to send "{{title}}" to {{audience}}. Open Emergency broadcast to approve or reject it.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'அவசர அறிவிப்பு ஒப்புதலுக்காகக் காத்திருக்கிறது',
+        body: '{{sender}} "{{title}}" அறிவிப்பை {{audience}}-க்கு அனுப்ப விரும்புகிறார். ஒப்புதல் அளிக்க அல்லது நிராகரிக்க அவசர அறிவிப்பைத் திறக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.EMERGENCY_REVIEWED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Your emergency broadcast was {{decision}}',
+        body: '"{{title}}" was {{decision}} by {{reviewer}}. {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உங்கள் அவசர அறிவிப்பு {{decision_ta}}',
+        body: '"{{title}}" அறிவிப்பை {{reviewer}} {{decision_ta}}. {{note}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_SWAPPED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: 'Different bus on {{route}} {{when}}',
+        body: '{{bus}} will run {{route}} {{when}} instead of {{old_bus}}. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{route}} வழித்தடத்தில் {{when_ta}} வேறு பேருந்து',
+        body: '{{when_ta}} {{route}} வழித்தடத்தில் {{old_bus}}-க்குப் பதிலாக {{bus}} இயங்கும். {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_DELAYED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: '{{bus}} is running about {{minutes}} minutes late',
+        body: 'The {{trip}} on {{route}} is delayed by about {{minutes}} minutes. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} சுமார் {{minutes}} நிமிடம் தாமதம்',
+        body: '{{route}} வழித்தட {{trip_ta}} பேருந்து சுமார் {{minutes}} நிமிடம் தாமதமாக வருகிறது. {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_HANDOVER,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: '{{new_bus}} takes over {{route}}',
+        body: '{{old_bus}} broke down on the {{trip}}, so {{new_bus}} takes over and comes to the stops that are left. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{route}} வழித்தடத்தில் {{new_bus}} மாற்றுப் பேருந்து',
+        body: '{{trip_ta}} பயணத்தில் {{old_bus}} பழுதானதால் {{new_bus}} மீதமுள்ள நிறுத்தங்களுக்கு வரும். {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_HANDOVER_ONBOARD,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: '{{student}} is moving to {{new_bus}}',
+        body: '{{old_bus}} broke down on the {{trip}}. {{student}} is safe and moves to {{new_bus}} to finish the journey. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} {{new_bus}} பேருந்துக்கு மாறுகிறார்',
+        body: '{{trip_ta}} பயணத்தில் {{old_bus}} பழுதானது. {{student}} பாதுகாப்பாக உள்ளார்; பயணத்தை முடிக்க {{new_bus}} பேருந்துக்கு மாறுகிறார். {{reason}}',
+        sms_body: null,
       },
     },
   },

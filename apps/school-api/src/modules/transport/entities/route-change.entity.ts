@@ -8,6 +8,7 @@ export const ROUTE_CHANGE_KINDS = [
   'bus_changed',
   'student_moved',
   'pass_changed',
+  'bus_swapped',
 ] as const;
 export type RouteChangeKind = (typeof ROUTE_CHANGE_KINDS)[number];
 
@@ -35,6 +36,9 @@ export class RouteChange {
 
   @Column({ type: 'varchar', length: 255 })
   summary: string;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  reason: string | null;
 
   @Column({ type: 'int', default: 0 })
   parents_told: number;

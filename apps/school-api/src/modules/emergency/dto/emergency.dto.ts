@@ -6,13 +6,17 @@ import {
   ArrayUnique,
   IsArray,
   IsBoolean,
+  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
   IsString,
   Length,
+  Max,
   MaxLength,
+  Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 import { ListQueryDto, PaginationDto } from '@app/common';
 import { RefDto } from '../../students/dto/student-response.dto';
@@ -29,9 +33,14 @@ import {
   EmergencyCategory,
   EmergencyChannel,
   EmergencySeverity,
+  END_REASONS,
+  EndReason,
+  EXPIRY_UNITS,
+  ExpiryUnit,
   RECIPIENT_KINDS,
   RecipientKind,
 } from '../entities/emergency.entity';
+import { BROADCAST_STATES, BroadcastState } from '../emergency.logic';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
@@ -76,6 +85,19 @@ export class EmergencyAudienceDto {
   @IsOptional()
   @IsBoolean()
   include_teachers?: boolean;
+}
+
+export class ExpiryDto {
+  @ApiProperty({ example: 2, minimum: 1, maximum: 100000 })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  value: number;
+
+  @ApiProperty({ enum: EXPIRY_UNITS, example: 'hours' })
+  @IsIn(EXPIRY_UNITS, { message: 'unit must be seconds, minutes, hours, days, months or years' })
+  unit: ExpiryUnit;
 }
 
 export class CreateEmergencyDto extends EmergencyAudienceDto {
@@ -138,11 +160,52 @@ export class CreateEmergencyDto extends EmergencyAudienceDto {
   @MaxLength(64)
   client_id?: string;
 
-  @ApiPropertyOptional({ example: 12, description: 'Id of the broadcast this follows up, for example an all clear' })
+  @ApiPropertyOptional({
+    example: 12,
+    description: 'Id of the broadcast this follows up. A follow-up with category all_clear also ends that broadcast.',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   follow_up_of?: number;
+
+  @ApiPropertyOptional({
+    type: ExpiryDto,
+    description:
+      'How long it stays on screen after it goes out: 5 seconds up to 5 years. Leave out to keep it until someone ends it.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ExpiryDto)
+  expires_in?: ExpiryDto;
+
+  @ApiPropertyOptional({
+    example: '2026-11-18T06:00:00+05:30',
+    description: 'Send later: at least 1 minute ahead and within 60 days. Leave out to send now.',
+  })
+  @IsOptional()
+  @IsDateString({}, { message: 'send_at must be a date and time' })
+  send_at?: string;
+}
+
+export class ReviewEmergencyDto {
+  @ApiPropertyOptional({ example: 'Please add the reopening date', maxLength: 255 })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(255)
+  note?: string;
+}
+
+export class ExpiryOutDto {
+  @ApiProperty({ example: 2 })
+  value: number;
+
+  @ApiProperty({ enum: EXPIRY_UNITS })
+  unit: ExpiryUnit;
+
+  @ApiProperty({ example: '2 hours' })
+  label: string;
 }
 
 export class EmergencyPreviewDto {
@@ -263,8 +326,44 @@ export class EmergencyBroadcastDto {
   @ApiProperty({ type: [String], enum: EMERGENCY_CHANNELS })
   channels: EmergencyChannel[];
 
-  @ApiProperty({ enum: BROADCAST_STATUSES })
+  @ApiProperty({
+    enum: BROADCAST_STATUSES,
+    description: 'Delivery: pending_approval, scheduled, sending, sent, partly_failed, rejected or cancelled',
+  })
   status: BroadcastStatus;
+
+  @ApiProperty({
+    enum: BROADCAST_STATES,
+    description: 'What to show: pending_approval, scheduled, active (on screen), expired, ended, rejected or cancelled',
+  })
+  state: BroadcastState;
+
+  @ApiProperty({ nullable: true, type: Date, description: 'When a scheduled broadcast goes out' })
+  send_at: Date | null;
+
+  @ApiProperty({ type: ExpiryOutDto, nullable: true })
+  expiry: ExpiryOutDto | null;
+
+  @ApiProperty({ nullable: true, type: Date, description: 'When it leaves the screen; null = until ended' })
+  expires_at: Date | null;
+
+  @ApiProperty({ nullable: true, type: Date })
+  ended_at: Date | null;
+
+  @ApiProperty({ enum: END_REASONS, nullable: true, description: 'expired, ended (End now) or all_clear' })
+  end_reason: EndReason | null;
+
+  @ApiProperty({ type: RefDto, nullable: true })
+  ended_by: RefDto | null;
+
+  @ApiProperty({ type: RefDto, nullable: true, description: 'Who approved or rejected it' })
+  reviewed_by: RefDto | null;
+
+  @ApiProperty({ nullable: true, type: Date })
+  reviewed_at: Date | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  review_note: string | null;
 
   @ApiProperty({ type: RefDto, nullable: true })
   sent_by: RefDto | null;
@@ -290,8 +389,13 @@ export class EmergencyQueryDto extends ListQueryDto {
 
   @ApiPropertyOptional({ enum: BROADCAST_STATUSES })
   @IsOptional()
-  @IsIn(BROADCAST_STATUSES, { message: 'status must be sending, sent or partly_failed' })
+  @IsIn(BROADCAST_STATUSES, { message: 'status is not valid' })
   status?: BroadcastStatus;
+
+  @ApiPropertyOptional({ enum: BROADCAST_STATES })
+  @IsOptional()
+  @IsIn(BROADCAST_STATES, { message: 'state is not valid' })
+  state?: BroadcastState;
 
   @ApiPropertyOptional({ example: '2026-11-01' })
   @IsOptional()
@@ -383,6 +487,20 @@ export class ResendDto {
   })
   @IsIn(RESEND_TARGETS, { message: 'target must be failed or not_acknowledged' })
   target: ResendTarget;
+
+  @ApiPropertyOptional({
+    type: [String],
+    enum: EMERGENCY_CHANNELS,
+    example: ['sms'],
+    description:
+      "Only these channels, for example SMS only to people who have not seen it. Default: the broadcast's channels.",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Choose push, SMS or both' })
+  @ArrayUnique()
+  @IsIn(EMERGENCY_CHANNELS, { each: true, message: 'channels must be push or sms' })
+  channels?: EmergencyChannel[];
 }
 
 export class ResendResultDto {
@@ -411,8 +529,17 @@ export class EmergencyInsightsDto {
 }
 
 export class EmergencyTemplateDto {
-  @ApiProperty({ example: 'rain_holiday' })
+  @ApiProperty({ example: 4, description: "The school's own ready message" })
+  id: number;
+
+  @ApiProperty({ example: 't4' })
   key: string;
+
+  @ApiProperty({ example: true })
+  is_active: boolean;
+
+  @ApiProperty({ example: 1 })
+  sort_order: number;
 
   @ApiProperty({ enum: EMERGENCY_CATEGORIES })
   category: EmergencyCategory;
@@ -426,11 +553,122 @@ export class EmergencyTemplateDto {
   @ApiProperty()
   message: string;
 
-  @ApiProperty()
-  title_ta: string;
+  @ApiProperty({ nullable: true, type: String })
+  title_ta: string | null;
 
-  @ApiProperty()
-  message_ta: string;
+  @ApiProperty({ nullable: true, type: String })
+  message_ta: string | null;
+}
+
+export class TemplateQueryDto {
+  @ApiPropertyOptional({ example: true, description: 'Also the switched-off ones (manage screen)' })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  all?: boolean;
+}
+
+export class EmergencyTemplateInputDto {
+  @ApiProperty({ enum: EMERGENCY_CATEGORIES, example: 'weather' })
+  @IsIn(EMERGENCY_CATEGORIES, { message: 'category is not valid' })
+  category: EmergencyCategory;
+
+  @ApiPropertyOptional({ enum: EMERGENCY_SEVERITIES, default: 'warning' })
+  @IsOptional()
+  @IsIn(EMERGENCY_SEVERITIES, { message: 'severity must be info, warning or critical' })
+  severity?: EmergencySeverity;
+
+  @ApiProperty({ example: 'Water logging near the main gate', minLength: 3, maxLength: 120 })
+  @Transform(trim)
+  @IsString()
+  @Length(3, 120)
+  title: string;
+
+  @ApiProperty({ example: 'Please use the back gate on Anna Street today.', minLength: 5, maxLength: 1000 })
+  @Transform(trim)
+  @IsString()
+  @Length(5, 1000)
+  message: string;
+
+  @ApiPropertyOptional({ maxLength: 120 })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(120)
+  title_ta?: string;
+
+  @ApiPropertyOptional({ maxLength: 1000 })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(1000)
+  message_ta?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1000)
+  sort_order?: number;
+}
+
+export class EmergencyTemplateUpdateDto {
+  @ApiPropertyOptional({ enum: EMERGENCY_CATEGORIES })
+  @IsOptional()
+  @IsIn(EMERGENCY_CATEGORIES, { message: 'category is not valid' })
+  category?: EmergencyCategory;
+
+  @ApiPropertyOptional({ enum: EMERGENCY_SEVERITIES })
+  @IsOptional()
+  @IsIn(EMERGENCY_SEVERITIES, { message: 'severity must be info, warning or critical' })
+  severity?: EmergencySeverity;
+
+  @ApiPropertyOptional({ minLength: 3, maxLength: 120 })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(3, 120)
+  title?: string;
+
+  @ApiPropertyOptional({ minLength: 5, maxLength: 1000 })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(5, 1000)
+  message?: string;
+
+  @ApiPropertyOptional({ maxLength: 120, description: 'Empty text clears it' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(120)
+  title_ta?: string;
+
+  @ApiPropertyOptional({ maxLength: 1000, description: 'Empty text clears it' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(1000)
+  message_ta?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  is_active?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(1000)
+  sort_order?: number;
 }
 
 export class MyEmergencyDto {
@@ -466,6 +704,18 @@ export class MyEmergencyDto {
 
   @ApiProperty({ nullable: true, type: Number, description: 'The broadcast this follows up' })
   follow_up_of: number | null;
+
+  @ApiProperty({ example: true, description: 'false once it has expired or the school ended it: hide the red strip' })
+  is_active: boolean;
+
+  @ApiProperty({ nullable: true, type: Date })
+  expires_at: Date | null;
+
+  @ApiProperty({ nullable: true, type: Date })
+  ended_at: Date | null;
+
+  @ApiProperty({ enum: END_REASONS, nullable: true })
+  end_reason: EndReason | null;
 }
 
 export class MyEmergencyQueryDto extends PaginationDto {
@@ -474,4 +724,13 @@ export class MyEmergencyQueryDto extends PaginationDto {
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   pending?: boolean;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Also the expired and ended ones (history). By default only messages still on screen are listed.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  include_ended?: boolean;
 }

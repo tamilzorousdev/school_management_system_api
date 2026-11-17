@@ -1,11 +1,11 @@
 import { randomBytes } from 'crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, MoreThanOrEqual, Repository } from 'typeorm';
 import { AppException, applySearch, applySort, AuthUser, paginate, Paginated } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
-import { distanceMetres } from '../../shared/school-days';
+import { addDays, distanceMetres } from '../../shared/school-days';
 import { AwayLookup, awayLookup } from '../../shared/student-away';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -24,6 +24,8 @@ import {
   RosterStudentDto,
   RouteChangeDto,
   RouteDetailDto,
+  BusSwapDto,
+  BusSwapInputDto,
   RouteDto,
   RouteInputDto,
   RouteInsightsDto,
@@ -37,6 +39,8 @@ import {
   TransportChangeDto,
   UpdateRouteDto,
 } from './dto/transport.dto';
+import { routeIdsRunBy, vehicleOnDay } from './bus-swaps';
+import { RouteBusSwap } from './entities/route-bus-swap.entity';
 import { RouteChange, RouteChangeKind } from './entities/route-change.entity';
 import { RouteStop } from './entities/route-stop.entity';
 import { StudentTransportChange, TransportChangeAction } from './entities/student-transport-change.entity';
@@ -73,6 +77,7 @@ import {
 export const passengerRef = () => `P${randomBytes(9).toString('hex')}`;
 
 const RECENT_CHANGE_DAYS = 30;
+const SWAP_DAYS_AHEAD = 30;
 
 export interface RiderContact {
   photo_url: string | null;
@@ -201,6 +206,7 @@ export class RoutesService {
     @InjectRepository(StudentTransport) private readonly assignments: Repository<StudentTransport>,
     @InjectRepository(StudentTransportChange) private readonly changes: Repository<StudentTransportChange>,
     @InjectRepository(RouteChange) private readonly routeChanges: Repository<RouteChange>,
+    @InjectRepository(RouteBusSwap) private readonly swaps: Repository<RouteBusSwap>,
     @InjectRepository(Vehicle) private readonly vehicles: Repository<Vehicle>,
     private readonly files: FilesService,
     private readonly notifications: NotificationsService,
@@ -282,6 +288,7 @@ export class RoutesService {
       id: row.id,
       kind: row.kind,
       summary: row.summary,
+      reason: row.reason,
       stop: ref(stops, row.stop_id),
       student: ref(students, row.student_id),
       parents_told: row.parents_told,
@@ -321,6 +328,7 @@ export class RoutesService {
       const clash = await this.clashFor(schoolId, route.id, vehicleId, active, timings);
       if (clash) throw AppException.conflict(clash.message, clash.code);
     }
+    const { reason, ...changes } = dto;
     await this.dataSource.transaction(async (manager) => {
       if (dto.vehicle_id && dto.vehicle_id !== route.vehicle_id) {
         const riders = await manager.findBy(StudentTransport, { school_id: schoolId, route_id: id });
@@ -331,7 +339,7 @@ export class RoutesService {
           riders.map((row) => row.mode),
         );
       }
-      await manager.save(this.routes.merge(route, dto));
+      await manager.save(this.routes.merge(route, changes));
     });
     if (busChanged) {
       const vehicle = vehicleId ? await this.vehicles.findOneBy({ id: vehicleId }) : null;
@@ -342,6 +350,7 @@ export class RoutesService {
           : `Route ${route.name} has no bus for now. The school will tell you the new bus.`,
         studentIds: await this.routeStudents(route.id),
         actor,
+        reason,
       });
     }
     return this.detail(schoolId, id);
@@ -761,7 +770,8 @@ export class RoutesService {
       ? (stops.find((item) => item.id === assignment.drop_stop_id) ?? null)
       : null;
     if (!route || !stop) return null;
-    const vehicle = route.vehicle_id ? await this.vehicles.findOneBy({ id: route.vehicle_id }) : null;
+    const busToday = await vehicleOnDay(this.dataSource, route, todayIn(this.app.timeZone));
+    const vehicle = busToday ? await this.vehicles.findOneBy({ id: busToday }) : null;
     const people: { id: number; name: string; mobile: string }[] = vehicle
       ? await this.dataSource.query(`SELECT id, name, mobile FROM users WHERE id = ANY($1)`, [
           [vehicle.driver_user_id, vehicle.attendant_user_id].filter(Boolean),
@@ -834,10 +844,7 @@ export class RoutesService {
         routes: [],
       };
     }
-    const routes = await this.routes.find({
-      where: { school_id: schoolId, vehicle_id: vehicle.id, is_active: true },
-      order: { code: 'ASC' },
-    });
+    const routes = await this.todayRoutes(schoolId, vehicle.id);
     const riders = routes.length
       ? await this.driverRiders(
           schoolId,
@@ -901,7 +908,7 @@ export class RoutesService {
   async driverStudents(schoolId: number, userId: number, query: DriverStudentQueryDto): Promise<DriverStudentDto[]> {
     const vehicle = await this.driverVehicle(schoolId, userId);
     if (!vehicle) return [];
-    const routes = await this.routes.findBy({ school_id: schoolId, vehicle_id: vehicle.id, is_active: true });
+    const routes = await this.todayRoutes(schoolId, vehicle.id);
     if (!routes.length) return [];
     const riders = await this.driverRiders(
       schoolId,
@@ -921,11 +928,159 @@ export class RoutesService {
   async driverRoster(schoolId: number, userId: number): Promise<RouteRosterDto[]> {
     const vehicle = await this.driverVehicle(schoolId, userId);
     if (!vehicle) return [];
-    const routes = await this.routes.find({
-      where: { school_id: schoolId, vehicle_id: vehicle.id, is_active: true },
-      order: { code: 'ASC' },
-    });
+    const routes = await this.todayRoutes(schoolId, vehicle.id);
     return Promise.all(routes.map((route) => this.roster(schoolId, route.id)));
+  }
+
+  async swapBus(schoolId: number, routeId: number, dto: BusSwapInputDto, actor: AuthUser): Promise<BusSwapDto> {
+    const route = await this.find(schoolId, routeId);
+    if (!route.is_active) throw AppException.badRequest(`Route ${route.code} is switched off`, 'ROUTE_INACTIVE');
+    const today = todayIn(this.app.timeZone);
+    const date = dto.date ?? today;
+    if (date < today || date > addDays(today, SWAP_DAYS_AHEAD)) {
+      throw AppException.validation([
+        { field: 'date', message: `Pick today or a day in the next ${SWAP_DAYS_AHEAD} days` },
+      ]);
+    }
+    const vehicle = await this.vehicles.findOneBy({ id: dto.vehicle_id, school_id: schoolId });
+    if (!vehicle || vehicle.status !== 'active') {
+      throw AppException.validation([{ field: 'vehicle_id', message: 'Pick an active bus of this school' }]);
+    }
+    if (vehicle.id === route.vehicle_id) {
+      throw AppException.badRequest('This is already the usual bus of the route', 'SAME_BUS');
+    }
+    const school = await this.schoolContext(schoolId);
+    const timings = routeTimings((await this.stopList(route.id)).map(asSchedule), school, school.point);
+    const clash = await this.clashFor(schoolId, route.id, vehicle.id, true, timings);
+    if (clash && !dto.force) throw AppException.conflict(`${clash.message}. Change anyway if you must.`, clash.code);
+    const reason = dto.reason?.trim() || null;
+    const existing = await this.swaps.findOneBy({ route_id: route.id, swap_date: date });
+    const saved = await this.swaps.save(
+      existing
+        ? this.swaps.merge(existing, { vehicle_id: vehicle.id, reason, created_by: actor.id })
+        : this.swaps.create({
+            school_id: schoolId,
+            route_id: route.id,
+            swap_date: date,
+            vehicle_id: vehicle.id,
+            original_vehicle_id: route.vehicle_id,
+            reason,
+            created_by: actor.id,
+          }),
+    );
+    const usual = route.vehicle_id ? await this.vehicles.findOneBy({ id: route.vehicle_id }) : null;
+    const parents = await this.parentsOf(await this.routeStudents(route.id));
+    const crew = [usual, vehicle]
+      .flatMap((bus) => [bus?.driver_user_id, bus?.attendant_user_id])
+      .filter((id): id is number => Boolean(id));
+    const when = date === today ? 'today' : `on ${date}`;
+    const data = {
+      route: route.name,
+      bus: `${vehicle.name} (${vehicle.registration_no})`,
+      old_bus: usual ? `${usual.name} (${usual.registration_no})` : 'the usual bus',
+      when,
+      when_ta: date === today ? 'இன்று' : date,
+      reason: reason ? `Reason: ${reason}` : '',
+      route_id: String(route.id),
+    };
+    await this.send(TEMPLATES.BUS_SWAPPED, schoolId, [...new Set([...parents, ...crew])], data);
+    await this.routeChanges.insert({
+      school_id: schoolId,
+      route_id: route.id,
+      kind: 'bus_swapped',
+      summary: `${data.bus} runs route ${route.name} ${when} instead of ${data.old_bus}`.slice(0, 255),
+      reason,
+      parents_told: parents.length,
+      changed_by: actor.id,
+    });
+    if (clash) {
+      const busy = await this.routes.findOneBy({ id: clash.route_id });
+      if (busy) {
+        await this.record(schoolId, busy.id, {
+          kind: 'bus_swapped',
+          summary: `${vehicle.name} also covers route ${route.name} ${when}, so it may be late on route ${busy.name}`,
+          studentIds: await this.routeStudents(busy.id),
+          actor,
+          reason,
+        });
+      }
+    }
+    return {
+      ...(await this.presentSwaps([saved]))[0]!,
+      parents_told: parents.length,
+      warning: clash ? clash.message : null,
+    };
+  }
+
+  async clearSwap(schoolId: number, routeId: number, date: string | undefined, actor: AuthUser): Promise<void> {
+    const route = await this.find(schoolId, routeId);
+    const day = date ?? todayIn(this.app.timeZone);
+    const swap = await this.swaps.findOneBy({ route_id: route.id, swap_date: day });
+    if (!swap) throw AppException.notFound('No bus change for this route on that day', 'SWAP_NOT_FOUND');
+    await this.swaps.softRemove(swap);
+    const usual = route.vehicle_id ? await this.vehicles.findOneBy({ id: route.vehicle_id }) : null;
+    await this.record(schoolId, route.id, {
+      kind: 'bus_swapped',
+      summary: `Route ${route.name} runs on its usual bus${usual ? ` ${usual.name} (${usual.registration_no})` : ''} ${day === todayIn(this.app.timeZone) ? 'today' : `on ${day}`} after all`,
+      studentIds: await this.routeStudents(route.id),
+      actor,
+    });
+  }
+
+  async listSwaps(schoolId: number, date: string | undefined): Promise<BusSwapDto[]> {
+    const rows = await this.swaps.find({
+      where: date
+        ? { school_id: schoolId, swap_date: date }
+        : { school_id: schoolId, swap_date: MoreThanOrEqual(todayIn(this.app.timeZone)) },
+      order: { swap_date: 'ASC', id: 'ASC' },
+    });
+    return this.presentSwaps(rows);
+  }
+
+  private async todayRoutes(schoolId: number, vehicleId: number): Promise<TransportRoute[]> {
+    const ids = await routeIdsRunBy(this.dataSource, schoolId, vehicleId, todayIn(this.app.timeZone));
+    if (!ids.length) return [];
+    const rows = await this.routes.findBy({ id: In(ids) });
+    return rows.sort((a, b) => a.code.localeCompare(b.code));
+  }
+
+  private async presentSwaps(rows: RouteBusSwap[]): Promise<BusSwapDto[]> {
+    if (!rows.length) return [];
+    const [routes, buses, users]: [TransportRoute[], Vehicle[], { id: number; name: string }[]] = await Promise.all([
+      this.routes.find({ where: { id: In(rows.map((row) => row.route_id)) }, withDeleted: true }),
+      this.vehicles.find({
+        where: {
+          id: In(
+            rows.flatMap((row) => [row.vehicle_id, row.original_vehicle_id]).filter((id): id is number => Boolean(id)),
+          ),
+        },
+        withDeleted: true,
+      }),
+      this.dataSource.query(`SELECT id, name FROM users WHERE id = ANY($1)`, [
+        rows.map((row) => row.created_by).filter((id): id is number => Boolean(id)),
+      ]),
+    ]);
+    const bus = (id: number | null) => {
+      const found = id ? buses.find((item) => item.id === id) : undefined;
+      return found
+        ? { id: found.id, registration_no: found.registration_no, name: found.name, capacity: found.capacity }
+        : null;
+    };
+    return rows.map((row) => {
+      const route = routes.find((item) => item.id === row.route_id);
+      const by = users.find((user) => Number(user.id) === row.created_by);
+      return {
+        id: row.id,
+        route: { id: row.route_id, name: route?.name ?? '' },
+        date: row.swap_date,
+        vehicle: bus(row.vehicle_id)!,
+        usual_vehicle: bus(row.original_vehicle_id),
+        reason: row.reason,
+        by: by ? { id: Number(by.id), name: by.name } : null,
+        parents_told: 0,
+        warning: null,
+      };
+    });
   }
 
   private async driverVehicle(schoolId: number, userId: number): Promise<Vehicle | null> {
@@ -1265,7 +1420,7 @@ export class RoutesService {
     vehicleId: number | null,
     active: boolean,
     timings: RouteTimingsDto,
-  ): Promise<{ code: string; message: string } | null> {
+  ): Promise<{ code: string; message: string; route_id: number } | null> {
     if (!vehicleId || !active) return null;
     const mine = timeWindows(timings);
     if (!mine.length) return null;
@@ -1297,11 +1452,13 @@ export class RoutesService {
         return {
           code: 'BUS_TIME_CLASH',
           message: `${vehicle.registration_no} already runs route ${other.code} (${window}) at the same time`,
+          route_id: other.id,
         };
       }
       return {
         code: 'CREW_TIME_CLASH',
         message: `The crew of ${vehicle.registration_no} also work route ${other.code} on another bus (${window}) at the same time`,
+        route_id: other.id,
       };
     }
     return null;
@@ -1355,6 +1512,7 @@ export class RoutesService {
           summary: `New stop ${item.name} added to route ${route.name}`,
           studentIds: [],
           actor,
+          reason: dto.reason,
         });
         continue;
       }
@@ -1372,6 +1530,7 @@ export class RoutesService {
           summary: lines.join('. '),
           studentIds: [...new Set([...(pickupMoved ? boarding(old.id) : []), ...(dropMoved ? leaving(old.id) : [])])],
           actor,
+          reason: dto.reason,
         });
       }
       if (distanceMetres(Number(old.lat), Number(old.lng), item.lat, item.lng) >= NOTIFY_MOVE_METRES) {
@@ -1381,6 +1540,7 @@ export class RoutesService {
           summary: `Stop ${item.name} has moved${item.landmark ? ` to near ${item.landmark}` : ''}. Check the new place in the app.`,
           studentIds: anyUse(old.id),
           actor,
+          reason: dto.reason,
         });
       }
     }
@@ -1391,6 +1551,7 @@ export class RoutesService {
         summary: `Stop ${stop.name} removed from route ${route.name}`,
         studentIds: [],
         actor,
+        reason: dto.reason,
       });
     }
   }
@@ -1405,21 +1566,25 @@ export class RoutesService {
       stopId?: number;
       studentId?: number;
       actor: AuthUser | null;
+      reason?: string | null;
     },
   ): Promise<void> {
     const parents = await this.parentsOf(change.studentIds);
+    const reason = change.reason?.trim() || null;
+    const summary = reason ? `${change.summary}. Reason: ${reason}` : change.summary;
     await this.routeChanges.insert({
       school_id: schoolId,
       route_id: routeId,
       stop_id: change.stopId ?? null,
       student_id: change.studentId ?? null,
       kind: change.kind,
-      summary: change.summary.slice(0, 255),
+      summary: summary.slice(0, 255),
+      reason,
       parents_told: parents.length,
       changed_by: change.actor?.id ?? null,
     });
     await this.send(TEMPLATES.TRANSPORT_CHANGED, schoolId, parents, {
-      summary: change.summary,
+      summary,
       route_id: String(routeId),
     });
   }
@@ -1633,8 +1798,12 @@ export class RoutesService {
       this.stops.find({ where: { route_id: In(ids) }, order: { sequence: 'ASC' } }),
       this.schoolContext(schoolId),
     ]);
+    const swaps = await this.swaps.findBy({ route_id: In(ids), swap_date: todayIn(this.app.timeZone) });
+    const swapBuses = swaps.length ? await this.vehicles.findBy({ id: In(swaps.map((swap) => swap.vehicle_id)) }) : [];
     return rows.map((row) => {
       const vehicle = vehicles.find((item) => item.id === row.vehicle_id);
+      const swap = swaps.find((item) => item.route_id === row.id);
+      const swapBus = swap ? swapBuses.find((item) => item.id === swap.vehicle_id) : undefined;
       const stat = stats.find((item) => Number(item.route_id) === row.id);
       const schedule = allStops.filter((stop) => stop.route_id === row.id).map(asSchedule);
       return {
@@ -1643,6 +1812,17 @@ export class RoutesService {
         name: row.name,
         vehicle: vehicle
           ? { id: vehicle.id, registration_no: vehicle.registration_no, name: vehicle.name, capacity: vehicle.capacity }
+          : null,
+        swap_today: swapBus
+          ? {
+              vehicle: {
+                id: swapBus.id,
+                registration_no: swapBus.registration_no,
+                name: swapBus.name,
+                capacity: swapBus.capacity,
+              },
+              reason: swap!.reason,
+            }
           : null,
         is_active: row.is_active,
         stops: Number(stat?.stops ?? 0),

@@ -17,6 +17,7 @@ import { DriverProfileService } from './driver-profile.service';
 import { DriverRatingsController } from './driver-ratings.controller';
 import { DriverRatingsService } from './driver-ratings.service';
 import { DriverRating } from './entities/driver-rating.entity';
+import { RouteBusSwap } from './entities/route-bus-swap.entity';
 import { MobileDriverProfileController } from './mobile-driver-profile.controller';
 
 @Module({
@@ -31,6 +32,7 @@ import { MobileDriverProfileController } from './mobile-driver-profile.controlle
       VehicleDocument,
       RouteChange,
       DriverRating,
+      RouteBusSwap,
     ]),
     CrewModule,
   ],

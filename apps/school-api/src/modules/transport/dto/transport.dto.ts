@@ -371,7 +371,18 @@ export class RouteInputDto {
   is_active?: boolean;
 }
 
-export class UpdateRouteDto extends PartialType(RouteInputDto) {}
+export class UpdateRouteDto extends PartialType(RouteInputDto) {
+  @ApiPropertyOptional({
+    example: 'Bus 2 broke down',
+    maxLength: 200,
+    description: 'Why it changed. Parents see it in their note and it stays in the route history.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
 
 export class StopInputDto {
   @ApiPropertyOptional({ example: 12, description: 'Send the id to keep an existing stop and its students' })
@@ -439,6 +450,51 @@ export class StopsInputDto {
   @ValidateNested({ each: true })
   @Type(() => StopInputDto)
   items: StopInputDto[];
+
+  @ApiPropertyOptional({
+    example: 'Bus 2 broke down',
+    maxLength: 200,
+    description: 'Why it changed. Parents see it in their note and it stays in the route history.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
+
+export class BusSwapInputDto {
+  @ApiProperty({ example: 3, description: 'The bus that runs the route instead' })
+  @Type(() => Number)
+  @IsInt()
+  vehicle_id: number;
+
+  @IsDateOnly('2026-11-17', true)
+  date?: string;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Change anyway when the other bus or its crew also runs a route at that time (emergency)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  force?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'Bus 2 broke down',
+    maxLength: 200,
+    description: 'Why it changed. Parents see it in their note and it stays in the route history.',
+  })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
+
+export class BusSwapQueryDto {
+  @IsDateOnly('2026-11-17', true)
+  date?: string;
 }
 
 export class AssignTransportDto {
@@ -820,6 +876,14 @@ export class RouteTimingsDto {
   last_drop_at: string | null;
 }
 
+export class RouteSwapTodayDto {
+  @ApiProperty({ type: RouteVehicleDto })
+  vehicle: RouteVehicleDto;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Bus 2 broke down' })
+  reason: string | null;
+}
+
 export class RouteDto {
   @ApiProperty({ example: 1 })
   id: number;
@@ -832,6 +896,9 @@ export class RouteDto {
 
   @ApiProperty({ type: RouteVehicleDto, nullable: true })
   vehicle: RouteVehicleDto | null;
+
+  @ApiProperty({ type: RouteSwapTodayDto, nullable: true, description: 'Another bus runs this route today' })
+  swap_today: RouteSwapTodayDto | null;
 
   @ApiProperty()
   is_active: boolean;
@@ -888,6 +955,9 @@ export class RouteChangeDto {
 
   @ApiProperty({ example: 'Pickup at Anna Nagar changed from 07:20 to 07:30' })
   summary: string;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Road work on 2nd Avenue' })
+  reason: string | null;
 
   @ApiProperty({ nullable: true, type: RefDto })
   stop: RefDto | null;
@@ -1407,4 +1477,38 @@ export class TransportChangeDto {
 
   @ApiProperty({ example: '2026-11-17T10:12:00.000+05:30' })
   at: Date;
+}
+
+export class BusSwapDto {
+  @ApiProperty({ example: 4 })
+  id: number;
+
+  @ApiProperty({ type: RefDto })
+  route: RefDto;
+
+  @ApiProperty({ example: '2026-11-17' })
+  date: string;
+
+  @ApiProperty({ type: RouteVehicleDto })
+  vehicle: RouteVehicleDto;
+
+  @ApiProperty({ type: RouteVehicleDto, nullable: true, description: 'The usual bus' })
+  usual_vehicle: RouteVehicleDto | null;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Bus 2 broke down' })
+  reason: string | null;
+
+  @ApiProperty({ type: RefDto, nullable: true })
+  by: RefDto | null;
+
+  @ApiProperty({ example: 18, description: 'Parents told' })
+  parents_told: number;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'Set when it was changed anyway: the other bus also runs a route then, whose parents are told it may be late',
+  })
+  warning: string | null;
 }

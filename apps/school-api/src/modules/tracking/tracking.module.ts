@@ -22,6 +22,8 @@ import {
   DriverTripsController,
   TelematicsWebhookController,
 } from './tracking.controller';
+import { TripDelayService } from './trip-delay.service';
+import { TripHandoverService } from './trip-handover.service';
 import { TripsService } from './trips.service';
 
 @Module({
@@ -48,6 +50,8 @@ import { TripsService } from './trips.service';
     BoardingService,
     BoardingChecklistService,
     FleetAlertsService,
+    TripDelayService,
+    TripHandoverService,
   ],
   exports: [TripsService, TripAccessService, LiveGateway, FleetAlertsService, BoardingChecklistService],
 })

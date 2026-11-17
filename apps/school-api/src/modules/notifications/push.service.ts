@@ -12,6 +12,7 @@ export interface PushMessage {
   data: Record<string, string>;
   userId?: number;
   variables?: Record<string, string>;
+  ttlSeconds?: number;
 }
 
 export interface DataPushMessage {
@@ -172,7 +173,13 @@ export class PushService {
     }
     await this.kafka.sendPush({
       templateId: this.kafka.templateId(KAFKA_PUSH_TEMPLATE),
-      variables: { ...(message.variables ?? {}), ...message.data, title: message.title, body: message.body },
+      variables: {
+        ...(message.variables ?? {}),
+        ...message.data,
+        title: message.title,
+        body: message.body,
+        ...(message.ttlSeconds ? { ttl_seconds: String(message.ttlSeconds) } : {}),
+      },
       externalIds: [String(message.userId)],
       playerIds: message.tokens,
     });
@@ -184,8 +191,17 @@ export class PushService {
       tokens: message.tokens,
       notification: { title: message.title, body: message.body },
       data: message.data,
-      android: { priority: 'high', notification: { sound: 'default' } },
-      apns: { payload: { aps: { sound: 'default' } } },
+      android: {
+        priority: 'high',
+        notification: { sound: 'default' },
+        ...(message.ttlSeconds ? { ttl: message.ttlSeconds * 1000 } : {}),
+      },
+      apns: {
+        payload: { aps: { sound: 'default' } },
+        ...(message.ttlSeconds
+          ? { headers: { 'apns-expiration': String(Math.floor(Date.now() / 1000) + message.ttlSeconds) } }
+          : {}),
+      },
     });
 
     const invalidTokens: string[] = [];
@@ -226,6 +242,7 @@ export class PushService {
       headings: { en: message.title },
       contents: { en: message.body },
       data: message.data,
+      ...(message.ttlSeconds ? { ttl: message.ttlSeconds } : {}),
     };
 
     const response = await fetch('https://api.onesignal.com/notifications', {
