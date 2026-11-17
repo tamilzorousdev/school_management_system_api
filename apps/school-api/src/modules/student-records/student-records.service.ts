@@ -73,7 +73,7 @@ export class StudentRecordsService {
       this.documents.countBy({ student_id: studentId }),
       this.documents.countBy({ student_id: studentId, status: 'pending' }),
       this.notes.countBy({ student_id: studentId }),
-      this.notes.countBy({ student_id: studentId, category: In(['concern', 'incident']) }),
+      this.notes.countBy({ student_id: studentId, category: In(['concern', 'incident', 'disciplinary']) }),
       this.vaccinations.findBy({ student_id: studentId }),
     ]);
     return {

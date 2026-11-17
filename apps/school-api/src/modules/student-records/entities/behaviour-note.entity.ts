@@ -1,7 +1,7 @@
 import { SchoolScopedEntity } from '@app/common';
 import { Column, Entity, Index } from 'typeorm';
 
-export const BEHAVIOUR_CATEGORIES = ['appreciation', 'concern', 'incident'] as const;
+export const BEHAVIOUR_CATEGORIES = ['appreciation', 'concern', 'incident', 'disciplinary'] as const;
 export type BehaviourCategory = (typeof BEHAVIOUR_CATEGORIES)[number];
 
 @Entity('student_behaviour_notes')

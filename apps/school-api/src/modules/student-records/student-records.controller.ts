@@ -190,7 +190,8 @@ export class StudentRecordsController {
   @RequirePermissions(PERMISSIONS.STUDENTS_MANAGE)
   @ResponseMessage('Note added')
   @ApiOperation({
-    summary: 'Add an appreciation, concern or incident. Parents see it unless visible_to_parent is false.',
+    summary:
+      'Add an appreciation, concern, incident or disciplinary note. Parents see it unless visible_to_parent is false.',
   })
   @ApiEnvelope(BehaviourNoteDto, { status: HttpStatus.CREATED, message: 'Note added' })
   @ApiErrors(HttpStatus.BAD_REQUEST)

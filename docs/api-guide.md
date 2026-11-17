@@ -313,7 +313,7 @@ Child screens (all read-only, `{id}` comes from the list above; a child that is 
 | `GET /mobile/parent/children/{id}/id-card` | Digital ID card. Draw `qr_token` as a QR code; the bus attendant scans it |
 | `GET /mobile/parent/children/{id}/documents` | Documents the school shares, with `status` pending, verified or rejected |
 | `GET /mobile/parent/children/{id}/health` | Health summary, BMI and the vaccination log (`overdue` flag) |
-| `GET /mobile/parent/children/{id}/behaviour` | Behaviour notes shared with parents (appreciation, concern, incident) |
+| `GET /mobile/parent/children/{id}/behaviour` | Behaviour notes shared with parents (appreciation, concern, incident, disciplinary) |
 
 If the school replaces a lost card, the old `qr_token` stops working. Fetch the ID card again instead of caching it for long.
 
