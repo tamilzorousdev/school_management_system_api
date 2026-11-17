@@ -69,9 +69,11 @@ import {
   BoardingHistoryQueryDto,
   BusBoardingDateQueryDto,
   SectionBusBoardingDto,
+  ParentTransportCardDto,
   StudentTripDto,
 } from '../tracking/dto/checklist.dto';
-import { ParentTransportDto } from '../transport/dto/transport.dto';
+import { DriverRatingsService } from '../transport/driver-ratings.service';
+import { DriverRatingInputDto, ParentDriverRatingDto } from '../transport/dto/driver-rating.dto';
 import { RoutesService } from '../transport/routes.service';
 import { TimetableService } from '../timetable/timetable.service';
 import { TodayAttendanceDto } from './dto/mobile.dto';
@@ -92,6 +94,7 @@ export class MobileParentAttendanceController {
     private readonly transport: RoutesService,
     private readonly tracking: TripsService,
     private readonly boarding: BoardingChecklistService,
+    private readonly driverRatings: DriverRatingsService,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
@@ -122,10 +125,42 @@ export class MobileParentAttendanceController {
   @Get('transport')
   @ApiOperation({
     summary: 'Bus route, stop with pickup and drop time, bus, driver and attendant; null when the child walks',
+    description:
+      'today: the trips that have started today, morning first, with status (waiting, on_bus, off_bus, away) and the boarded / alighted marks ("Boarded at 07:02, Kilpauk"). recent_changes: route changes and this child’s own stop changes, last 30 days.',
   })
-  @ApiEnvelope(ParentTransportDto)
+  @ApiEnvelope(ParentTransportCardDto)
   async transportCard(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
-    return this.transport.forParent(await this.access.childSchool(user.id, id), id);
+    const schoolId = await this.access.childSchool(user.id, id);
+    const card = await this.transport.forParent(schoolId, id);
+    return card ? { ...card, today: await this.boarding.childToday(schoolId, id) } : null;
+  }
+
+  @Get('driver-rating')
+  @ApiOperation({
+    summary: 'Rate the bus driver: the child’s driver and bus, my rating this month and the chips to show',
+    description:
+      'One rating per driver per month for each parent; sending again in the same month changes it. can_rate is false when the child does not use the bus or the bus has no driver yet.',
+  })
+  @ApiEnvelope(ParentDriverRatingDto)
+  async driverRating(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.driverRatings.forParent(await this.access.childSchool(user.id, id), user.id, id);
+  }
+
+  @Put('driver-rating')
+  @ResponseMessage('Thank you for rating the driver')
+  @ApiOperation({
+    summary: 'Save my rating of the bus driver (1 to 5 stars, chips and a comment)',
+    description:
+      'For 1 or 2 stars pick a complaint chip or write a comment (400 VALIDATION_FAILED on field comment). 400 NOT_ON_BUS when the child does not use the bus, NO_DRIVER when the bus has no driver. The transport office sees every rating; 1 and 2 stars also reach them as an in-app alert.',
+  })
+  @ApiEnvelope(ParentDriverRatingDto, { message: 'Thank you for rating the driver' })
+  @ApiErrors(HttpStatus.BAD_REQUEST)
+  async rateDriver(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: DriverRatingInputDto,
+  ) {
+    return this.driverRatings.rate(await this.access.childSchool(user.id, id), user.id, id, dto);
   }
 
   @Get('bus-history')

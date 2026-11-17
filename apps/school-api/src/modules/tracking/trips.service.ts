@@ -6,6 +6,7 @@ import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { addDays, holidaySet, WEEKLY_OFF, weekday } from '../../shared/school-days';
 import { ClearanceService } from '../crew/clearance.service';
+import { AWAY_FOR_TRIP_SQL, awayLookup } from '../../shared/student-away';
 import { STOP_FOR_TRIP_SQL, stopForTrip } from '../transport/transport.logic';
 import { TelematicsClient } from '../fleet/telematics.client';
 import { RouteStop } from '../transport/entities/route-stop.entity';
@@ -22,6 +23,8 @@ import {
   RiderDto,
   TripDetailDto,
   TripDto,
+  TripFlagCountsDto,
+  TripListItemDto,
   TripPositionDto,
   TripQueryDto,
   TripStopDto,
@@ -30,6 +33,7 @@ import { TransportTrip, TripKind, TripPosition, TripStop } from './entities/tran
 import { TripBoarding } from './entities/trip-boarding.entity';
 import { TripEvent } from './entities/trip-event.entity';
 import { boardingStatus, liveTimeline, nextScheduledTrip, plannedTimeline, zoneOffset } from './bus-timeline.logic';
+import { TripFlagFilter } from './boarding.logic';
 import { childBusStatus, minutesFrom, orderStops, ridesOn } from './tracking.logic';
 
 interface TelematicsStop {
@@ -50,6 +54,23 @@ interface TelematicsTrip {
 }
 
 const STALE_MS = 2 * 60 * 1000;
+
+const TRIP_RIDERS_SQL = `FROM student_transport r
+  JOIN students rs ON rs.id = r.student_id AND rs.deleted_at IS NULL AND rs.status = 'active'
+  WHERE r.route_id = t.route_id AND r.deleted_at IS NULL AND (r.mode = 'both' OR r.mode = t.kind)`;
+const MARKED_SQL = (action: string) =>
+  `EXISTS (SELECT 1 FROM transport_boardings b WHERE b.trip_id = t.id AND b.student_id = r.student_id AND b.action = '${action}')`;
+const NOT_ALIGHTED_RIDERS_SQL = `${TRIP_RIDERS_SQL} AND ${MARKED_SQL('boarded')} AND NOT ${MARKED_SQL('alighted')}`;
+const NOT_BOARDED_RIDERS_SQL = `${TRIP_RIDERS_SQL} AND NOT ${MARKED_SQL('boarded')} AND NOT ${MARKED_SQL('alighted')}
+  AND NOT ${AWAY_FOR_TRIP_SQL('r.student_id', 't.trip_date', 't.kind')}`;
+
+function flaggedTripSql(flag: TripFlagFilter): string {
+  const notBoarded = `EXISTS (SELECT 1 ${NOT_BOARDED_RIDERS_SQL})`;
+  const notAlighted = `EXISTS (SELECT 1 ${NOT_ALIGHTED_RIDERS_SQL})`;
+  if (flag === 'not_boarded') return notBoarded;
+  if (flag === 'not_alighted') return notAlighted;
+  return `(${notBoarded} OR ${notAlighted})`;
+}
 
 @Injectable()
 export class TripsService {
@@ -175,18 +196,39 @@ export class TripsService {
     return Boolean(result.affected);
   }
 
-  async list(schoolId: number, query: TripQueryDto): Promise<Paginated<TripDto>> {
+  async list(schoolId: number, query: TripQueryDto): Promise<Paginated<TripListItemDto>> {
     const qb = this.trips.createQueryBuilder('t').where('t.school_id = :schoolId', { schoolId });
     if (query.date) qb.andWhere('t.trip_date = :date', { date: query.date });
     if (query.status) qb.andWhere('t.status = :status', { status: query.status });
     if (query.route_id) qb.andWhere('t.route_id = :route', { route: query.route_id });
     if (query.vehicle_id) qb.andWhere('t.vehicle_id = :vehicle', { vehicle: query.vehicle_id });
+    if (query.flag) qb.andWhere(`t.status = 'ended' AND ${flaggedTripSql(query.flag)}`);
     const [rows, total] = await qb
       .orderBy('t.started_at', 'DESC')
       .skip((query.page - 1) * query.limit)
       .take(query.limit)
       .getManyAndCount();
-    return paginate([await this.present(rows), total], query.page, query.limit);
+    const [presented, counts] = await Promise.all([this.present(rows), this.flagCounts(rows)]);
+    const items = presented.map((trip) => ({ ...trip, flags: counts.get(trip.id) ?? null }));
+    return paginate([items, total], query.page, query.limit);
+  }
+
+  private async flagCounts(trips: TransportTrip[]): Promise<Map<number, TripFlagCountsDto>> {
+    const ended = trips.filter((trip) => trip.status === 'ended').map((trip) => trip.id);
+    if (!ended.length) return new Map();
+    const rows: { id: number; not_boarded: string; not_alighted: string }[] = await this.dataSource.query(
+      `SELECT t.id,
+              (SELECT COUNT(*) ${NOT_BOARDED_RIDERS_SQL}) AS not_boarded,
+              (SELECT COUNT(*) ${NOT_ALIGHTED_RIDERS_SQL}) AS not_alighted
+       FROM transport_trips t WHERE t.id = ANY($1)`,
+      [ended],
+    );
+    return new Map(
+      rows.map((row) => [
+        Number(row.id),
+        { not_boarded: Number(row.not_boarded), not_alighted: Number(row.not_alighted) },
+      ]),
+    );
   }
 
   async detail(schoolId: number, tripId: number): Promise<TripDetailDto> {
@@ -470,21 +512,17 @@ export class TripsService {
     const ids = rows.map((row) => Number(row.student_id));
     const [recorded, away] = await Promise.all([
       this.boardings.find({ where: { trip_id: trip.id, student_id: In(ids) } }),
-      this.dataSource.query(
-        `SELECT student_id FROM student_leave_requests
-           WHERE student_id = ANY($1) AND status = 'approved' AND deleted_at IS NULL AND from_date <= $2 AND to_date >= $2
-         UNION
-         SELECT student_id FROM student_attendance_days
-           WHERE student_id = ANY($1) AND date = $2 AND status IN ('absent', 'leave')`,
-        [ids, trip.trip_date],
-      ) as Promise<{ student_id: number }[]>,
+      awayLookup(this.dataSource, ids, [trip.trip_date]),
     ]);
     const boardedIds = new Set(recorded.filter((row) => row.action === 'boarded').map((row) => row.student_id));
     const alightedIds = new Set(recorded.filter((row) => row.action === 'alighted').map((row) => row.student_id));
-    const awayIds = new Set(away.map((row) => Number(row.student_id)));
     const order = new Map(trip.stops.map((stop, index) => [stop.stop_id, index]));
     return rows
       .map((row) => ({
+        away: away(Number(row.student_id), trip.trip_date, trip.kind),
+        row,
+      }))
+      .map(({ away: absence, row }) => ({
         student_id: Number(row.student_id),
         full_name: [row.first_name, row.last_name].filter(Boolean).join(' '),
         class_section: row.class_name ? [row.class_name, row.section_name].filter(Boolean).join(' - ') : null,
@@ -493,7 +531,8 @@ export class TripsService {
         passenger_ref: row.passenger_ref,
         boarded: boardedIds.has(Number(row.student_id)),
         alighted: alightedIds.has(Number(row.student_id)),
-        away_today: awayIds.has(Number(row.student_id)),
+        away_today: Boolean(absence),
+        away_note: absence?.note ?? null,
       }))
       .sort(
         (a, b) => (order.get(a.stop_id) ?? 99) - (order.get(b.stop_id) ?? 99) || a.full_name.localeCompare(b.full_name),

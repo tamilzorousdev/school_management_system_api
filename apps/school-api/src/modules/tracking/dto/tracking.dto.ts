@@ -16,6 +16,7 @@ import {
 } from '../entities/transport-trip.entity';
 import { TRIP_EVENT_TYPES, TripEventType } from '../entities/trip-event.entity';
 import { CHILD_BUS_STATUSES, ChildBusStatus } from '../tracking.logic';
+import { TRIP_FLAG_FILTERS, TripFlagFilter } from '../boarding.logic';
 import { BOARDING_STATUSES, BoardingStatus, TIMELINE_SOURCES, TimelineSource } from '../bus-timeline.logic';
 
 export class StartTripDto {
@@ -88,6 +89,15 @@ export class TripQueryDto extends ListQueryDto {
   @Type(() => Number)
   @IsInt()
   vehicle_id?: number;
+
+  @ApiPropertyOptional({
+    enum: TRIP_FLAG_FILTERS,
+    description:
+      'Ended trips with a problem: not_alighted (a child marked on the bus and never off), not_boarded (a child who was not away and never got on) or any',
+  })
+  @IsOptional()
+  @IsIn(TRIP_FLAG_FILTERS)
+  flag?: TripFlagFilter;
 }
 
 export class TripPositionDto {
@@ -224,6 +234,19 @@ export class TripDto {
   stops_total: number;
 }
 
+export class TripFlagCountsDto {
+  @ApiProperty({ example: 1, description: 'Riders who were not away and never got on' })
+  not_boarded: number;
+
+  @ApiProperty({ example: 0, description: 'Riders marked on the bus and never marked off' })
+  not_alighted: number;
+}
+
+export class TripListItemDto extends TripDto {
+  @ApiProperty({ type: TripFlagCountsDto, nullable: true, description: 'Only for ended trips; null while running' })
+  flags: TripFlagCountsDto | null;
+}
+
 export class TripEventDto {
   @ApiProperty({ example: 120 })
   id: number;
@@ -269,8 +292,19 @@ export class RiderDto {
   @ApiProperty({ example: false, description: 'Got off the bus (scanned or tapped as alighted)' })
   alighted: boolean;
 
-  @ApiProperty({ example: false, description: 'On leave or marked absent today, so not expected' })
+  @ApiProperty({
+    example: false,
+    description: 'Not expected on this trip: leave (half-day leave only for its half), sports OD or marked absent',
+  })
   away_today: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Sports OD – District athletics',
+    description: 'Why the student is not expected on this trip: On leave, Half-day leave, Sports OD or Marked absent',
+  })
+  away_note: string | null;
 }
 
 export class TripDetailDto extends TripDto {

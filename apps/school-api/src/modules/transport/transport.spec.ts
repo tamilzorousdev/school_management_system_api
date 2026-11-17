@@ -11,6 +11,7 @@ import {
   sendsSms,
   stopForTrip,
   stopsOf,
+  transportChangeSummary,
   tripRiders,
 } from './transport.logic';
 
@@ -149,5 +150,43 @@ describe('seatCheck', () => {
 
   it('allows a full bus exactly at capacity', () => {
     expect(seatCheck(3, tripRiders(['both', 'both', 'both']))).toBeNull();
+  });
+});
+
+describe('transportChangeSummary', () => {
+  const r1 = { id: 1, name: 'R1' };
+  const r2 = { id: 2, name: 'R2' };
+  const a = { id: 10, name: 'Kilpauk' };
+  const b = { id: 11, name: 'Anna Nagar' };
+  const place = (route = r1, stop = a, drop: typeof a | null = null) => ({ route, stop, drop_stop: drop });
+
+  it('describes a new bus with a different evening stop', () => {
+    expect(transportChangeSummary({ action: 'assigned', from: null, to: place(r1, a, b), mode: 'both' })).toBe(
+      'Bus given on R1: boards at Kilpauk, gets off at Anna Nagar (morning and evening)',
+    );
+  });
+
+  it('describes a move to another route', () => {
+    expect(transportChangeSummary({ action: 'moved', from: place(), to: place(r2, b), mode: 'pickup' })).toBe(
+      'Moved to R2: boards at Anna Nagar (morning only)',
+    );
+  });
+
+  it('names the pickup and evening stop changes on the same route', () => {
+    expect(transportChangeSummary({ action: 'moved', from: place(), to: place(r1, b), mode: 'both' })).toBe(
+      'Pickup stop changed from Kilpauk to Anna Nagar; Evening stop changed from Kilpauk to Anna Nagar',
+    );
+    expect(transportChangeSummary({ action: 'moved', from: place(), to: place(r1, a, b), mode: 'both' })).toBe(
+      'Evening stop changed from Kilpauk to Anna Nagar',
+    );
+  });
+
+  it('falls back when only the ride changed, and handles removal', () => {
+    expect(transportChangeSummary({ action: 'moved', from: place(), to: place(), mode: 'drop' })).toBe(
+      'Bus details updated (evening only)',
+    );
+    expect(transportChangeSummary({ action: 'removed', from: place(), to: null, mode: null })).toBe(
+      'Removed from the school bus',
+    );
   });
 });

@@ -10,7 +10,9 @@ import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TransportMode } from '../transport/entities/student-transport.entity';
 import { TransportRoute } from '../transport/entities/transport-route.entity';
-import { checklistSummary, RiderMarks, riderStatus, tripFlag, undoRefusal } from './boarding.logic';
+import { RoutesService } from '../transport/routes.service';
+import { awayLookup } from '../../shared/student-away';
+import { checklistSummary, missedTheBus, RiderMarks, riderStatus, tripFlag, undoRefusal } from './boarding.logic';
 import {
   BoardingHistoryQueryDto,
   BoardingMarkDto,
@@ -19,6 +21,7 @@ import {
   TripChecklistDto,
   TripHistoryDto,
 } from './dto/checklist.dto';
+import { RiderDto } from './dto/tracking.dto';
 import { TransportTrip } from './entities/transport-trip.entity';
 import { TripBoarding } from './entities/trip-boarding.entity';
 import { LiveGateway } from './live.gateway';
@@ -26,6 +29,11 @@ import { ridesOn } from './tracking.logic';
 import { TripsService } from './trips.service';
 
 const HISTORY_DAYS = 30;
+
+const TRIP_LABELS: Record<TransportTrip['kind'], { en: string; ta: string }> = {
+  pickup: { en: 'morning bus', ta: 'காலை' },
+  drop: { en: 'evening bus', ta: 'மாலை' },
+};
 
 interface Marks {
   boarded: BoardingMarkDto | null;
@@ -40,6 +48,7 @@ export class BoardingChecklistService {
     @InjectRepository(TripBoarding) private readonly boardings: Repository<TripBoarding>,
     @InjectRepository(TransportTrip) private readonly trips: Repository<TransportTrip>,
     private readonly tripsService: TripsService,
+    private readonly routes: RoutesService,
     private readonly notifications: NotificationsService,
     private readonly gateway: LiveGateway,
     private readonly dataSource: DataSource,
@@ -54,6 +63,7 @@ export class BoardingChecklistService {
     ]);
     const ended = trip.status === 'ended';
     const stopNames = new Map(trip.stops.map((stop) => [stop.stop_id, stop.name]));
+    const contacts = await this.routes.riderContacts(riders.map((rider) => rider.student_id));
     return {
       trip: summary!,
       summary: checklistSummary(riders, ended),
@@ -68,9 +78,36 @@ export class BoardingChecklistService {
           flag: tripFlag(rider, ended),
           boarded: recorded?.boarded ?? null,
           alighted: recorded?.alighted ?? null,
+          away_note: rider.away_note,
+          photo_url: contacts.get(rider.student_id)?.photo_url ?? null,
+          parents: contacts.get(rider.student_id)?.parents ?? [],
+          pass_status: contacts.get(rider.student_id)?.pass_status ?? 'active',
         };
       }),
     };
+  }
+
+  async officeChecklist(schoolId: number, tripId: number): Promise<TripChecklistDto> {
+    return this.checklist(await this.tripsService.find(schoolId, tripId));
+  }
+
+  async studentHistory(
+    schoolId: number,
+    studentId: number,
+    query: BoardingHistoryQueryDto,
+  ): Promise<Paginated<StudentTripDto>> {
+    const [student] = await this.dataSource.query(
+      `SELECT 1 FROM students WHERE id = $1 AND school_id = $2 AND deleted_at IS NULL`,
+      [studentId, schoolId],
+    );
+    if (!student) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
+    return this.childHistory(schoolId, studentId, query);
+  }
+
+  async childToday(schoolId: number, studentId: number): Promise<StudentTripDto[]> {
+    const today = todayIn(this.app.timeZone);
+    const result = await this.childHistory(schoolId, studentId, { from: today, to: today, page: 1, limit: 10 });
+    return [...result.items].reverse();
   }
 
   async crewChecklist(schoolId: number, tripId: number, vehicleId: number): Promise<TripChecklistDto> {
@@ -99,17 +136,27 @@ export class BoardingChecklistService {
       { flags_sent_at: new Date() },
     );
     if (!claimed.affected) return 0;
-    const onBus = (await this.tripsService.riders(trip)).filter((rider) => rider.boarded && !rider.alighted);
-    if (!onBus.length) return 0;
+    const riders = await this.tripsService.riders(trip);
     const [info] = await this.dataSource.query(`SELECT name, registration_no FROM vehicles WHERE id = $1`, [
       trip.vehicle_id,
     ]);
+    const bus = info ? `${info.name} (${info.registration_no})` : 'the school bus';
+    const [office, parents] = await Promise.all([
+      this.leftOnBusAlert(trip, riders, bus),
+      this.notOnBusNotice(trip, riders, bus),
+    ]);
+    return office + parents;
+  }
+
+  private async leftOnBusAlert(trip: TransportTrip, riders: RiderDto[], bus: string): Promise<number> {
+    const onBus = riders.filter((rider) => rider.boarded && !rider.alighted);
+    if (!onBus.length) return 0;
     const result = await this.notifications
       .dispatch({
         template: TEMPLATES.STUDENTS_LEFT_ON_BUS,
         audience: { roles: [ROLES.ADMIN, ROLES.TRANSPORT_INCHARGE], school_id: trip.school_id },
         data: {
-          bus: info ? `${info.name} (${info.registration_no})` : 'the school bus',
+          bus,
           count: String(onBus.length),
           names: onBus.map((rider) => rider.full_name).join(', '),
           trip_id: String(trip.id),
@@ -120,6 +167,44 @@ export class BoardingChecklistService {
         return { recipients: 0 };
       });
     return result.recipients;
+  }
+
+  private async notOnBusNotice(trip: TransportTrip, riders: RiderDto[], bus: string): Promise<number> {
+    const missed = missedTheBus(riders);
+    if (!missed.length) return 0;
+    const guardians: { student_id: number; user_id: number }[] = await this.dataSource.query(
+      `SELECT DISTINCT sg.student_id, g.user_id FROM student_guardians sg
+       JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL AND g.user_id IS NOT NULL
+       WHERE sg.student_id = ANY($1) AND sg.receives_alerts = true`,
+      [missed.map((rider) => rider.student_id)],
+    );
+    const label = TRIP_LABELS[trip.kind];
+    let sent = 0;
+    for (const rider of missed) {
+      const userIds = guardians
+        .filter((row) => Number(row.student_id) === rider.student_id)
+        .map((row) => Number(row.user_id));
+      if (!userIds.length) continue;
+      const result = await this.notifications
+        .dispatch({
+          template: TEMPLATES.CHILD_NOT_ON_BUS,
+          audience: { user_ids: userIds },
+          data: {
+            student: rider.full_name,
+            bus,
+            trip: label.en,
+            trip_ta: label.ta,
+            trip_id: String(trip.id),
+            student_id: String(rider.student_id),
+          },
+        })
+        .catch((error: Error) => {
+          this.logger.warn(`Trip ${trip.id} not-on-bus notice for ${rider.student_id} failed: ${error.message}`);
+          return { recipients: 0 };
+        });
+      sent += result.recipients;
+    }
+    return sent;
   }
 
   async vehicleHistory(
@@ -240,7 +325,7 @@ export class BoardingChecklistService {
     const dates = [...new Set(trips.map((trip) => trip.trip_date))];
     const [marks, away, routes] = await Promise.all([
       this.marks(trips, studentIds),
-      this.away(studentIds, dates),
+      awayLookup(this.dataSource, studentIds, dates),
       this.dataSource
         .getRepository(TransportRoute)
         .findBy({ id: In([...new Set(trips.map((trip) => trip.route_id))]) }),
@@ -248,10 +333,11 @@ export class BoardingChecklistService {
     return trips.flatMap((trip) =>
       studentIds.map((studentId) => {
         const recorded = marks.get(markKey(trip.id, studentId));
+        const absence = away(studentId, trip.trip_date, trip.kind);
         const rider: RiderMarks = {
           boarded: Boolean(recorded?.boarded),
           alighted: Boolean(recorded?.alighted),
-          away_today: away.has(`${studentId}:${trip.trip_date}`),
+          away_today: Boolean(absence),
         };
         return {
           student_id: studentId,
@@ -265,6 +351,7 @@ export class BoardingChecklistService {
             flag: tripFlag(rider, trip.status === 'ended'),
             boarded: recorded?.boarded ?? null,
             alighted: recorded?.alighted ?? null,
+            away_note: absence?.note ?? null,
           },
         };
       }),
@@ -302,20 +389,6 @@ export class BoardingChecklistService {
       result.set(key, entry);
     }
     return result;
-  }
-
-  private async away(studentIds: number[], dates: string[]): Promise<Set<string>> {
-    const rows: { student_id: number; date: string }[] = await this.dataSource.query(
-      `SELECT r.student_id, d::date::text AS date
-       FROM student_leave_requests r, unnest($2::date[]) d
-       WHERE r.student_id = ANY($1) AND r.status = 'approved' AND r.deleted_at IS NULL
-         AND r.from_date <= d AND r.to_date >= d
-       UNION
-       SELECT student_id, date::text FROM student_attendance_days
-       WHERE student_id = ANY($1) AND date = ANY($2::date[]) AND status IN ('absent', 'leave')`,
-      [studentIds, dates],
-    );
-    return new Set(rows.map((row) => `${Number(row.student_id)}:${row.date}`));
   }
 
   private async assignments(

@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { CrewModule } from '../crew/crew.module';
 import { StudentLifecycleModule } from '../student-lifecycle/student-lifecycle.module';
+import { TransportModule } from '../transport/transport.module';
 import { BoardingChecklistService } from './boarding-checklist.service';
 import { BoardingService } from './boarding.service';
 import { DriverSafetyController } from './driver-safety.controller';
@@ -15,7 +16,12 @@ import { FleetAlertsService } from './fleet-alerts.service';
 import { LiveGateway } from './live.gateway';
 import { TripAccessService } from './trip-access.service';
 import { TripEventsService } from './trip-events.service';
-import { AdminTripsController, DriverTripsController, TelematicsWebhookController } from './tracking.controller';
+import {
+  AdminStudentBusController,
+  AdminTripsController,
+  DriverTripsController,
+  TelematicsWebhookController,
+} from './tracking.controller';
 import { TripsService } from './trips.service';
 
 @Module({
@@ -24,9 +30,11 @@ import { TripsService } from './trips.service';
     AuthModule,
     StudentLifecycleModule,
     CrewModule,
+    TransportModule,
   ],
   controllers: [
     AdminTripsController,
+    AdminStudentBusController,
     DriverTripsController,
     TelematicsWebhookController,
     DriverSafetyController,

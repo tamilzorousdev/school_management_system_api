@@ -41,9 +41,12 @@ export const TEMPLATES = {
   FLEET_DOCUMENT_EXPIRY_URGENT: 'FLEET_DOCUMENT_EXPIRY_URGENT',
   CREW_DOCUMENT_EXPIRY_URGENT: 'CREW_DOCUMENT_EXPIRY_URGENT',
   BUS_DOCUMENT_EXPIRY_DRIVER: 'BUS_DOCUMENT_EXPIRY_DRIVER',
+  TRANSPORT_CHANGED: 'TRANSPORT_CHANGED',
   VEHICLE_FAULT: 'VEHICLE_FAULT',
   TRIP_NOT_BOARDED: 'TRIP_NOT_BOARDED',
   STUDENTS_LEFT_ON_BUS: 'STUDENTS_LEFT_ON_BUS',
+  CHILD_NOT_ON_BUS: 'CHILD_NOT_ON_BUS',
+  DRIVER_LOW_RATING: 'DRIVER_LOW_RATING',
   RESULT_PUBLISHED: 'RESULT_PUBLISHED',
   ACHIEVEMENT_ADDED: 'ACHIEVEMENT_ADDED',
   CLASS_COMBINED: 'CLASS_COMBINED',
@@ -80,6 +83,17 @@ export interface TemplateDefinition {
 }
 
 export const TEMPLATE_CATALOG: TemplateDefinition[] = [
+  {
+    code: TEMPLATES.TRANSPORT_CHANGED,
+    category: 'transport',
+    push: false,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: { title: 'School bus update', body: '{{summary}}', sms_body: null },
+      ta: { title: 'பள்ளிப் பேருந்து மாற்றம்', body: '{{summary}}', sms_body: null },
+    },
+  },
   {
     code: TEMPLATES.PARENT_SIGNATURE_CHANGED,
     category: 'system',
@@ -1036,6 +1050,44 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{section}} வகுப்பில் {{count}} பேர் பேருந்தில் ஏறவில்லை',
         body: 'இன்று காலை {{bus}} பேருந்தில் இல்லை: {{names}}. முதல் பாடவேளைக்கு முன் சரிபார்க்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.CHILD_NOT_ON_BUS,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}} did not come on the {{trip}}',
+        body: '{{student}} was not marked on {{bus}} for the {{trip}} today. If you did not expect this, please contact the school.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} இன்று {{trip_ta}} பேருந்தில் வரவில்லை',
+        body: '{{student}} இன்று {{trip_ta}} {{bus}} பேருந்தில் ஏறியதாகக் குறிக்கப்படவில்லை. இது எதிர்பாராதது என்றால் பள்ளியைத் தொடர்புகொள்ளவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.DRIVER_LOW_RATING,
+    category: 'transport',
+    push: false,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{rating}}-star rating for {{driver}}',
+        body: '{{parent}} ({{student}}) rated {{driver}} on {{bus}} {{rating}} out of 5. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{driver}} ஓட்டுநருக்கு {{rating}} நட்சத்திர மதிப்பீடு',
+        body: '{{parent}} ({{student}}) {{bus}} ஓட்டுநர் {{driver}}-க்கு 5-க்கு {{rating}} மதிப்பீடு அளித்தார். {{reason}}',
         sms_body: null,
       },
     },

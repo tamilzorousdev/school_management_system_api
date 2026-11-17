@@ -2,9 +2,12 @@ import { randomBytes } from 'crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
-import { AppException, applySearch, applySort, paginate, Paginated } from '@app/common';
+import { AppException, applySearch, applySort, AuthUser, paginate, Paginated } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
+import { distanceMetres } from '../../shared/school-days';
+import { AwayLookup, awayLookup } from '../../shared/student-away';
+import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import {
@@ -12,12 +15,21 @@ import {
   AssignStopStudentsDto,
   AssignTransportDto,
   DriverDutyDto,
+  DriverStopStudentDto,
+  DriverStudentDto,
+  DriverStudentQueryDto,
+  GuardianContactDto,
   ParentTransportDto,
+  PassInputDto,
   RosterStudentDto,
+  RouteChangeDto,
   RouteDetailDto,
   RouteDto,
   RouteInputDto,
+  RouteInsightsDto,
+  RouteQueryDto,
   RouteRosterDto,
+  RouteTimingsDto,
   StopDto,
   StopsInputDto,
   StudentTransportDto,
@@ -25,14 +37,48 @@ import {
   TransportChangeDto,
   UpdateRouteDto,
 } from './dto/transport.dto';
+import { RouteChange, RouteChangeKind } from './entities/route-change.entity';
 import { RouteStop } from './entities/route-stop.entity';
 import { StudentTransportChange, TransportChangeAction } from './entities/student-transport-change.entity';
-import { StudentTransport, TransportMode } from './entities/student-transport.entity';
+import { PassStatus, StudentTransport, TransportMode } from './entities/student-transport.entity';
 import { TransportRoute } from './entities/transport-route.entity';
+import { VEHICLE_EXPIRY_FIELDS } from './entities/vehicle-document.entity';
 import { Vehicle } from './entities/vehicle.entity';
-import { autoSequence, pathKm, seatCheck, stopsOf, tripRiders } from './transport.logic';
+import {
+  checkSchedule,
+  NOTIFY_MOVE_METRES,
+  NOTIFY_TIME_SHIFT_MINUTES,
+  routeTimings,
+  ScheduleProblem,
+  ScheduleStop,
+  SchoolDay,
+  timeShift,
+  timeWindows,
+  windowsOverlap,
+} from './route-schedule.logic';
+import {
+  autoSequence,
+  expiryState,
+  occupancy,
+  pathKm,
+  ridesTrip,
+  ROAD_KINDS,
+  roadBlockers,
+  seatCheck,
+  stopsOf,
+  transportChangeSummary,
+  tripRiders,
+} from './transport.logic';
 
 export const passengerRef = () => `P${randomBytes(9).toString('hex')}`;
+
+const RECENT_CHANGE_DAYS = 30;
+
+export interface RiderContact {
+  photo_url: string | null;
+  parents: GuardianContactDto[];
+  pass_status: PassStatus;
+}
 
 interface StudentRow {
   id: number;
@@ -63,6 +109,16 @@ interface PlacementEntry {
   start_date?: string;
 }
 
+interface SchoolContext extends SchoolDay {
+  point: { lat: number; lng: number } | null;
+}
+
+interface TimedStop {
+  name: string;
+  pickup_time: string | null;
+  drop_time: string | null;
+}
+
 const placementOf = (row: StudentTransport): Placement => ({
   route_id: row.route_id,
   stop_id: row.stop_id,
@@ -78,6 +134,63 @@ const fullName = (first: string, last: string | null) => [first, last].filter(Bo
 const classSection = (className: string | null, sectionName: string | null) =>
   className ? [className, sectionName].filter(Boolean).join(' - ') : null;
 
+const asSchedule = (stop: {
+  name: string;
+  lat: number;
+  lng: number;
+  pickup_time: string | null;
+  drop_time: string | null;
+}): ScheduleStop => ({
+  name: stop.name,
+  lat: Number(stop.lat),
+  lng: Number(stop.lng),
+  pickup_time: stop.pickup_time,
+  drop_time: stop.drop_time,
+});
+
+function modeProblem(mode: TransportMode, pickupStop: TimedStop, dropStop: TimedStop | null = null): string | null {
+  if (ridesTrip(mode, 'pickup') && !pickupStop.pickup_time) {
+    return `${pickupStop.name} has no pickup time, so students cannot ride there in the morning`;
+  }
+  const evening = dropStop ?? pickupStop;
+  if (ridesTrip(mode, 'drop') && !evening.drop_time) {
+    return `${evening.name} has no drop time, so students cannot ride there in the evening`;
+  }
+  return null;
+}
+
+export function journeyText(mode: TransportMode, stop: TimedStop, dropStop: TimedStop | null = null): string {
+  const evening = dropStop ?? stop;
+  const parts = [];
+  if (ridesTrip(mode, 'pickup')) parts.push(`Boards at ${stop.name}${stop.pickup_time ? ` ${stop.pickup_time}` : ''}`);
+  if (ridesTrip(mode, 'drop'))
+    parts.push(`Drops at ${evening.name}${evening.drop_time ? ` ${evening.drop_time}` : ''}`);
+  return parts.join(' · ');
+}
+
+function awayNotes(away: AwayLookup, studentId: number, mode: TransportMode, date: string) {
+  return {
+    away_morning: ridesTrip(mode, 'pickup') ? (away(studentId, date, 'pickup')?.note ?? null) : null,
+    away_evening: ridesTrip(mode, 'drop') ? (away(studentId, date, 'drop')?.note ?? null) : null,
+  };
+}
+
+const stopStudent = (row: DriverStudentDto): DriverStopStudentDto => ({
+  id: row.id,
+  full_name: row.full_name,
+  admission_no: row.admission_no,
+  class_section: row.class_section,
+  passenger_ref: row.passenger_ref,
+  mode: row.mode,
+  for: row.for,
+  photo_url: row.photo_url,
+  parents: row.parents,
+  pass_status: row.pass_status,
+  away_morning: row.away_morning,
+  away_evening: row.away_evening,
+  journey: row.journey,
+});
+
 @Injectable()
 export class RoutesService {
   private readonly logger = new Logger('Transport');
@@ -87,32 +200,94 @@ export class RoutesService {
     @InjectRepository(RouteStop) private readonly stops: Repository<RouteStop>,
     @InjectRepository(StudentTransport) private readonly assignments: Repository<StudentTransport>,
     @InjectRepository(StudentTransportChange) private readonly changes: Repository<StudentTransportChange>,
+    @InjectRepository(RouteChange) private readonly routeChanges: Repository<RouteChange>,
     @InjectRepository(Vehicle) private readonly vehicles: Repository<Vehicle>,
+    private readonly files: FilesService,
     private readonly notifications: NotificationsService,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
-  async list(schoolId: number): Promise<RouteDto[]> {
+  async list(schoolId: number, query: RouteQueryDto = {}): Promise<RouteDto[]> {
     const rows = await this.routes.find({ where: { school_id: schoolId }, order: { code: 'ASC' } });
-    return this.present(schoolId, rows);
+    const presented = await this.present(schoolId, rows);
+    if (query.flag === 'no_bus') return presented.filter((route) => !route.vehicle);
+    if (query.flag === 'inactive') return presented.filter((route) => !route.is_active);
+    if (query.flag === 'has_problems') return presented.filter((route) => route.problems > 0);
+    return presented;
+  }
+
+  async insights(schoolId: number): Promise<RouteInsightsDto> {
+    const routes = await this.list(schoolId);
+    return {
+      routes: routes.length,
+      active: routes.filter((route) => route.is_active).length,
+      stops: routes.reduce((sum, route) => sum + route.stops, 0),
+      students: routes.reduce((sum, route) => sum + route.students, 0),
+      no_bus: routes.filter((route) => route.is_active && !route.vehicle).length,
+      with_problems: routes.filter((route) => route.problems > 0).length,
+    };
   }
 
   async detail(schoolId: number, id: number): Promise<RouteDetailDto> {
     const route = await this.find(schoolId, id);
     const [summary] = await this.present(schoolId, [route]);
     const stops = await this.stopList(route.id);
-    const [school] = await this.dataSource.query(`SELECT latitude, longitude FROM schools WHERE id = $1`, [schoolId]);
-    const schoolLocation =
-      school?.latitude != null && school?.longitude != null
-        ? { lat: Number(school.latitude), lng: Number(school.longitude) }
-        : null;
+    const school = await this.schoolContext(schoolId);
+    const problems: ScheduleProblem[] = checkSchedule(stops.map(asSchedule), school);
+    const clash = await this.clashFor(schoolId, route.id, route.vehicle_id, route.is_active, summary!.timings);
+    if (clash)
+      problems.push({ code: clash.code, severity: 'warning', stop: null, field: null, message: clash.message });
     return {
       ...summary!,
       stop_list: stops,
-      school_location: schoolLocation,
-      distance_km: pathKm([...stops, ...(schoolLocation ? [schoolLocation] : [])]),
+      school_location: school.point,
+      distance_km: pathKm([...stops, ...(school.point ? [school.point] : [])]),
+      schedule_problems: problems,
+      warnings: await this.busWarnings(route),
     };
+  }
+
+  async routeHistory(schoolId: number, id: number): Promise<RouteChangeDto[]> {
+    await this.find(schoolId, id);
+    const rows = await this.routeChanges.find({ where: { route_id: id }, order: { id: 'DESC' }, take: 100 });
+    const pick = (values: (number | null)[]) => values.filter((value): value is number => Boolean(value));
+    const [people, students, stops]: [
+      { id: number; name: string }[],
+      { id: number; name: string }[],
+      { id: number; name: string }[],
+    ] = await Promise.all([
+      pick(rows.map((row) => row.changed_by)).length
+        ? this.dataSource.query(`SELECT u.id, u.name FROM users u WHERE u.id = ANY($1)`, [
+            pick(rows.map((row) => row.changed_by)),
+          ])
+        : Promise.resolve([]),
+      pick(rows.map((row) => row.student_id)).length
+        ? this.dataSource.query(
+            `SELECT s.id, concat_ws(' ', s.first_name, s.last_name) AS name FROM students s WHERE s.id = ANY($1)`,
+            [pick(rows.map((row) => row.student_id))],
+          )
+        : Promise.resolve([]),
+      pick(rows.map((row) => row.stop_id)).length
+        ? this.dataSource.query(`SELECT st.id, st.name FROM route_stops st WHERE st.id = ANY($1)`, [
+            pick(rows.map((row) => row.stop_id)),
+          ])
+        : Promise.resolve([]),
+    ]);
+    const ref = (list: { id: number; name: string }[], id: number | null) => {
+      const found = id ? list.find((item) => Number(item.id) === id) : null;
+      return found ? { id: Number(found.id), name: found.name } : null;
+    };
+    return rows.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      summary: row.summary,
+      stop: ref(stops, row.stop_id),
+      student: ref(students, row.student_id),
+      parents_told: row.parents_told,
+      changed_by: ref(people, row.changed_by),
+      at: row.created_at,
+    }));
   }
 
   async create(schoolId: number, dto: RouteInputDto): Promise<RouteDetailDto> {
@@ -129,9 +304,23 @@ export class RoutesService {
     return this.detail(schoolId, saved.id);
   }
 
-  async update(schoolId: number, id: number, dto: UpdateRouteDto): Promise<RouteDetailDto> {
+  async update(
+    schoolId: number,
+    id: number,
+    dto: UpdateRouteDto,
+    actor: AuthUser | null = null,
+  ): Promise<RouteDetailDto> {
     const route = await this.find(schoolId, id);
     await this.validate(schoolId, dto, id);
+    const vehicleId = dto.vehicle_id === undefined ? route.vehicle_id : dto.vehicle_id;
+    const active = dto.is_active ?? route.is_active;
+    const busChanged = dto.vehicle_id !== undefined && dto.vehicle_id !== route.vehicle_id;
+    if (busChanged || (active && !route.is_active)) {
+      const school = await this.schoolContext(schoolId);
+      const timings = routeTimings((await this.stopList(route.id)).map(asSchedule), school, school.point);
+      const clash = await this.clashFor(schoolId, route.id, vehicleId, active, timings);
+      if (clash) throw AppException.conflict(clash.message, clash.code);
+    }
     await this.dataSource.transaction(async (manager) => {
       if (dto.vehicle_id && dto.vehicle_id !== route.vehicle_id) {
         const riders = await manager.findBy(StudentTransport, { school_id: schoolId, route_id: id });
@@ -144,6 +333,17 @@ export class RoutesService {
       }
       await manager.save(this.routes.merge(route, dto));
     });
+    if (busChanged) {
+      const vehicle = vehicleId ? await this.vehicles.findOneBy({ id: vehicleId }) : null;
+      await this.record(schoolId, route.id, {
+        kind: 'bus_changed',
+        summary: vehicle
+          ? `Route ${route.name} now runs on bus ${vehicle.registration_no} (${vehicle.name})`
+          : `Route ${route.name} has no bus for now. The school will tell you the new bus.`,
+        studentIds: await this.routeStudents(route.id),
+        actor,
+      });
+    }
     return this.detail(schoolId, id);
   }
 
@@ -162,9 +362,15 @@ export class RoutesService {
     });
   }
 
-  async setStops(schoolId: number, id: number, dto: StopsInputDto): Promise<RouteDetailDto> {
-    await this.find(schoolId, id);
+  async setStops(
+    schoolId: number,
+    id: number,
+    dto: StopsInputDto,
+    actor: AuthUser | null = null,
+  ): Promise<RouteDetailDto> {
+    const route = await this.find(schoolId, id);
     const current = await this.stops.findBy({ route_id: id });
+    const snapshot = current.map((stop) => ({ ...stop }));
     const keep = new Set(dto.items.map((item) => item.id).filter((value): value is number => Boolean(value)));
     const unknown = [...keep].filter((stopId) => !current.some((stop) => stop.id === stopId));
     if (unknown.length) {
@@ -181,6 +387,37 @@ export class RoutesService {
         );
       }
     }
+    const school = await this.schoolContext(schoolId);
+    const planned = dto.items.map((item) => ({
+      name: item.name,
+      lat: item.lat,
+      lng: item.lng,
+      pickup_time: item.pickup_time ?? null,
+      drop_time: item.drop_time ?? null,
+    }));
+    const errors = checkSchedule(planned, school).filter((item) => item.severity === 'error');
+    if (errors.length) {
+      throw AppException.validation(errors.map((item) => ({ field: item.field ?? 'items', message: item.message })));
+    }
+    const riders = await this.assignments.findBy({ route_id: id });
+    const plannedStop = (stopId: number | null) => {
+      const item = stopId ? dto.items.find((entry) => entry.id === stopId) : undefined;
+      return item
+        ? { name: item.name, pickup_time: item.pickup_time ?? null, drop_time: item.drop_time ?? null }
+        : null;
+    };
+    for (const rider of riders) {
+      const pickupStop = plannedStop(rider.stop_id);
+      if (!pickupStop) continue;
+      const problem = modeProblem(rider.mode, pickupStop, plannedStop(rider.drop_stop_id));
+      if (problem) {
+        throw AppException.validation([{ field: 'items', message: `${problem}. Students ride there.` }]);
+      }
+    }
+    const timings = routeTimings(planned, school, school.point);
+    const clash = await this.clashFor(schoolId, route.id, route.vehicle_id, route.is_active, timings);
+    if (clash) throw AppException.conflict(clash.message, clash.code);
+
     await this.dataSource.transaction(async (manager) => {
       if (removed.length) await manager.softDelete(RouteStop, { id: In(removed.map((stop) => stop.id)) });
       for (const [index, item] of dto.items.entries()) {
@@ -202,6 +439,7 @@ export class RoutesService {
         );
       }
     });
+    await this.recordStopChanges(schoolId, route, snapshot, dto, removed, riders, actor);
     return this.detail(schoolId, id);
   }
 
@@ -224,7 +462,13 @@ export class RoutesService {
     dto: AssignStopStudentsDto,
   ): Promise<AssignResultDto> {
     const stop = await this.stop(schoolId, routeId, stopId);
+    const route = await this.find(schoolId, routeId);
     await this.assertActiveStudents(schoolId, dto.student_ids);
+    const existing = await this.assignments.findBy({ school_id: schoolId, student_id: In(dto.student_ids) });
+    for (const studentId of dto.student_ids) {
+      const mode = dto.mode ?? existing.find((row) => row.student_id === studentId)?.mode ?? 'both';
+      this.assertCanRide(route, mode, stop);
+    }
     const changes = await this.place(
       schoolId,
       routeId,
@@ -244,25 +488,57 @@ export class RoutesService {
 
   async assignStudent(schoolId: number, studentId: number, dto: AssignTransportDto): Promise<StudentTransportDto> {
     const stop = await this.stop(schoolId, dto.route_id, dto.stop_id);
+    const route = await this.find(schoolId, dto.route_id);
     await this.assertActiveStudents(schoolId, [studentId], true);
     const current = await this.assignments.findOneBy({ school_id: schoolId, student_id: studentId });
     const mode = dto.mode ?? current?.mode ?? 'both';
     let dropStopId = dto.drop_stop_id ?? null;
     if (dropStopId === stop.id) dropStopId = null;
+    let dropStop: RouteStop | null = null;
     if (dropStopId !== null) {
       if (mode !== 'both') {
         throw AppException.validation([
           { field: 'drop_stop_id', message: 'A separate drop stop is only for students who use the bus both ways' },
         ]);
       }
-      const dropStop = await this.stops.findOneBy({ id: dropStopId, route_id: dto.route_id });
+      dropStop = await this.stops.findOneBy({ id: dropStopId, route_id: dto.route_id });
       if (!dropStop) {
         throw AppException.validation([{ field: 'drop_stop_id', message: 'Choose a drop stop on the same route' }]);
       }
     }
+    this.assertCanRide(route, mode, stop, dropStop);
     await this.place(schoolId, dto.route_id, [
       { student_id: studentId, stop_id: stop.id, drop_stop_id: dropStopId, mode, start_date: dto.start_date },
     ]);
+    return (await this.studentRows(schoolId, { student_id: studentId }))[0]!;
+  }
+
+  async setPass(schoolId: number, studentId: number, dto: PassInputDto, actor: AuthUser): Promise<StudentTransportDto> {
+    const current = await this.assignments.findOneBy({ school_id: schoolId, student_id: studentId });
+    if (!current) throw AppException.notFound('This student has no bus', 'TRANSPORT_NOT_FOUND');
+    const note = dto.status === 'on_hold' ? (dto.note ?? null) : null;
+    if (current.pass_status !== dto.status || current.pass_note !== note) {
+      await this.assignments.update(current.id, {
+        pass_status: dto.status,
+        pass_note: note,
+        pass_changed_at: new Date(),
+        pass_changed_by: actor.id,
+      });
+      const [student] = await this.dataSource.query(
+        `SELECT concat_ws(' ', first_name, last_name) AS name FROM students WHERE id = $1`,
+        [studentId],
+      );
+      await this.record(schoolId, current.route_id, {
+        kind: 'pass_changed',
+        summary:
+          dto.status === 'on_hold'
+            ? `${student?.name ?? 'Your child'}'s bus pass is on hold.${note ? ` ${note}.` : ''} Please contact the school office.`
+            : `${student?.name ?? 'Your child'}'s bus pass is active again.`,
+        studentIds: [studentId],
+        studentId,
+        actor,
+      });
+    }
     return (await this.studentRows(schoolId, { student_id: studentId }))[0]!;
   }
 
@@ -354,8 +630,9 @@ export class RoutesService {
       section_name: string | null;
       guardian_name: string | null;
       guardian_mobile: string | null;
+      pass_status: PassStatus;
     }[] = await this.dataSource.query(
-      `SELECT t.student_id, t.stop_id, t.drop_stop_id, t.mode, s.first_name, s.last_name, s.admission_no,
+      `SELECT t.student_id, t.stop_id, t.drop_stop_id, t.mode, t.pass_status, s.first_name, s.last_name, s.admission_no,
               c.name AS class_name, sec.name AS section_name, g.name AS guardian_name, g.mobile AS guardian_mobile
        FROM student_transport t
        JOIN students s ON s.id = t.student_id AND s.deleted_at IS NULL AND s.status = 'active'
@@ -372,6 +649,12 @@ export class RoutesService {
        ORDER BY s.first_name, s.last_name`,
       [schoolId, routeId],
     );
+    const today = todayIn(this.app.timeZone);
+    const away = await awayLookup(
+      this.dataSource,
+      rows.map((row) => Number(row.student_id)),
+      [today],
+    );
     const students = rows.map((row) => {
       const student: RosterStudentDto = {
         id: Number(row.student_id),
@@ -381,6 +664,8 @@ export class RoutesService {
         mode: row.mode,
         guardian_name: row.guardian_name,
         guardian_mobile: row.guardian_mobile,
+        pass_status: row.pass_status,
+        ...awayNotes(away, Number(row.student_id), row.mode, today),
       };
       return {
         student,
@@ -432,6 +717,7 @@ export class RoutesService {
     if (query.class_id) qb.andWhere('c.id = :classId', { classId: query.class_id });
     if (query.section_id) qb.andWhere('sec.id = :sectionId', { sectionId: query.section_id });
     if (query.mode) qb.andWhere('t.mode = :mode', { mode: query.mode });
+    if (query.pass_status) qb.andWhere('t.pass_status = :pass', { pass: query.pass_status });
     const ordered = query.sort ? query : { ...query, sort: 'name', order: 'asc' as const };
     applySearch(qb, query.search, ['s.first_name', 's.last_name', 's.admission_no']);
     applySort(qb, ordered, {
@@ -485,6 +771,29 @@ export class RoutesService {
       const found = people.find((item) => Number(item.id) === id);
       return found ? { id: Number(found.id), name: found.name, mobile: found.mobile } : null;
     };
+    const school = await this.schoolContext(schoolId);
+    const myStops = [stop.id, ...(dropStop ? [dropStop.id] : [])];
+    const since = new Date(Date.now() - RECENT_CHANGE_DAYS * 86400000);
+    const recent = await this.routeChanges
+      .createQueryBuilder('c')
+      .where('c.route_id = :route AND c.created_at >= :since', { route: route.id, since })
+      .andWhere(
+        `(c.student_id = :student OR (c.student_id IS NULL AND (c.stop_id IS NULL OR c.stop_id IN (:...stops))))`,
+        {
+          student: studentId,
+          stops: myStops,
+        },
+      )
+      .orderBy('c.id', 'DESC')
+      .take(10)
+      .getMany();
+    const moves = (await this.history(schoolId, studentId)).filter((change) => change.at >= since);
+    const recentChanges = [
+      ...recent.map((row) => ({ summary: row.summary, at: row.created_at })),
+      ...moves.map((change) => ({ summary: transportChangeSummary(change), at: change.at })),
+    ]
+      .sort((a, b) => b.at.getTime() - a.at.getTime())
+      .slice(0, 10);
     return {
       route: { id: route.id, name: route.name },
       stop,
@@ -496,28 +805,46 @@ export class RoutesService {
       driver: person(vehicle?.driver_user_id),
       attendant: person(vehicle?.attendant_user_id),
       monthly_fee: Math.max(stop.monthly_fee, dropStop?.monthly_fee ?? 0),
+      route_stops: stops.map((item) => ({
+        sequence: item.sequence,
+        name: item.name,
+        landmark: item.landmark,
+        pickup_time: item.pickup_time,
+        drop_time: item.drop_time,
+        is_my_stop: myStops.includes(item.id),
+      })),
+      timings: routeTimings(stops.map(asSchedule), school, school.point),
+      pass_status: assignment.pass_status,
+      pass_note: assignment.pass_note,
+      recent_changes: recentChanges,
     };
   }
 
   async forDriver(schoolId: number, userId: number): Promise<DriverDutyDto> {
-    const vehicle = await this.vehicles.findOne({
-      where: [
-        { school_id: schoolId, driver_user_id: userId, status: 'active' },
-        { school_id: schoolId, attendant_user_id: userId, status: 'active' },
-      ],
-    });
-    if (!vehicle) return { vehicle: null, routes: [] };
+    const vehicle = await this.driverVehicle(schoolId, userId);
+    if (!vehicle) {
+      return {
+        vehicle: null,
+        students: 0,
+        morning: 0,
+        evening: 0,
+        passes_on_hold: 0,
+        away_morning: 0,
+        away_evening: 0,
+        routes: [],
+      };
+    }
     const routes = await this.routes.find({
       where: { school_id: schoolId, vehicle_id: vehicle.id, is_active: true },
       order: { code: 'ASC' },
     });
     const riders = routes.length
-      ? await this.studentRows(schoolId, { route_ids: routes.map((route) => route.id) })
+      ? await this.driverRiders(
+          schoolId,
+          routes.map((route) => route.id),
+        )
       : [];
-    const placed = riders.map((row) => ({
-      row,
-      stops: stopsOf({ stop_id: row.stop.id, drop_stop_id: row.drop_stop?.id ?? null, mode: row.mode }),
-    }));
+    const school = await this.schoolContext(schoolId);
     return {
       vehicle: {
         id: vehicle.id,
@@ -525,30 +852,169 @@ export class RoutesService {
         name: vehicle.name,
         capacity: vehicle.capacity,
       },
+      students: riders.length,
+      morning: riders.filter((row) => ridesTrip(row.mode, 'pickup')).length,
+      evening: riders.filter((row) => ridesTrip(row.mode, 'drop')).length,
+      passes_on_hold: riders.filter((row) => row.pass_status === 'on_hold').length,
+      away_morning: riders.filter((row) => row.away_morning).length,
+      away_evening: riders.filter((row) => row.away_evening).length,
       routes: await Promise.all(
-        routes.map(async (route) => ({
-          id: route.id,
-          code: route.code,
-          name: route.name,
-          stops: (await this.stopList(route.id)).map((stop) => ({
-            ...stop,
-            student_list: placed
-              .filter((item) => item.stops.pickup === stop.id || item.stops.drop === stop.id)
-              .map((item) => ({
-                ...item.row.student,
-                passenger_ref: item.row.passenger_ref,
-                mode: item.row.mode,
-                for:
-                  item.stops.pickup === stop.id && item.stops.drop === stop.id
-                    ? ('both' as const)
-                    : item.stops.pickup === stop.id
-                      ? ('pickup' as const)
-                      : ('drop' as const),
-              })),
-          })),
-        })),
+        routes.map(async (route) => {
+          const stops = await this.stopList(route.id);
+          const own = riders.filter((row) => row.route.id === route.id);
+          return {
+            id: route.id,
+            code: route.code,
+            name: route.name,
+            path: [...stops.map((item) => item.name), 'School'].join(' → '),
+            from: stops[0]?.name ?? null,
+            to: 'School',
+            timings: routeTimings(stops.map(asSchedule), school, school.point),
+            students: own.length,
+            stops: stops.map((stop) => ({
+              ...stop,
+              student_list: own
+                .map((row) => {
+                  const legs = stopsOf({
+                    stop_id: row.stop.id,
+                    drop_stop_id: row.drop_stop?.id ?? null,
+                    mode: row.mode,
+                  });
+                  const forStop: DriverStopStudentDto['for'] | null =
+                    legs.pickup === stop.id && legs.drop === stop.id
+                      ? 'both'
+                      : legs.pickup === stop.id
+                        ? 'pickup'
+                        : legs.drop === stop.id
+                          ? 'drop'
+                          : null;
+                  return forStop ? { ...stopStudent(row), for: forStop } : null;
+                })
+                .filter((row): row is DriverStopStudentDto => Boolean(row)),
+            })),
+          };
+        }),
       ),
     };
+  }
+
+  async driverStudents(schoolId: number, userId: number, query: DriverStudentQueryDto): Promise<DriverStudentDto[]> {
+    const vehicle = await this.driverVehicle(schoolId, userId);
+    if (!vehicle) return [];
+    const routes = await this.routes.findBy({ school_id: schoolId, vehicle_id: vehicle.id, is_active: true });
+    if (!routes.length) return [];
+    const riders = await this.driverRiders(
+      schoolId,
+      routes.map((route) => route.id),
+    );
+    const words = (query.search ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    return riders.filter((row) => {
+      if (query.ride === 'morning' && !ridesTrip(row.mode, 'pickup')) return false;
+      if (query.ride === 'evening' && !ridesTrip(row.mode, 'drop')) return false;
+      const text = [row.full_name, row.admission_no, ...row.parents.map((parent) => parent.mobile)]
+        .join(' ')
+        .toLowerCase();
+      return words.every((word) => text.includes(word));
+    });
+  }
+
+  async driverRoster(schoolId: number, userId: number): Promise<RouteRosterDto[]> {
+    const vehicle = await this.driverVehicle(schoolId, userId);
+    if (!vehicle) return [];
+    const routes = await this.routes.find({
+      where: { school_id: schoolId, vehicle_id: vehicle.id, is_active: true },
+      order: { code: 'ASC' },
+    });
+    return Promise.all(routes.map((route) => this.roster(schoolId, route.id)));
+  }
+
+  private async driverVehicle(schoolId: number, userId: number): Promise<Vehicle | null> {
+    return this.vehicles.findOne({
+      where: [
+        { school_id: schoolId, driver_user_id: userId, status: 'active' },
+        { school_id: schoolId, attendant_user_id: userId, status: 'active' },
+      ],
+    });
+  }
+
+  async riderContacts(studentIds: number[]): Promise<Map<number, RiderContact>> {
+    if (!studentIds.length) return new Map();
+    const [students, guardians]: [
+      { id: number; photo_file_id: number | null; pass_status: PassStatus | null }[],
+      { student_id: number; name: string; relation: string; mobile: string; is_primary: boolean }[],
+    ] = await Promise.all([
+      this.dataSource.query(
+        `SELECT s.id, s.photo_file_id, t.pass_status FROM students s
+         LEFT JOIN student_transport t ON t.student_id = s.id AND t.deleted_at IS NULL
+         WHERE s.id = ANY($1)`,
+        [studentIds],
+      ),
+      this.dataSource.query(
+        `SELECT sg.student_id, g.name, sg.relation, g.mobile, sg.is_primary
+         FROM student_guardians sg JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
+         WHERE sg.student_id = ANY($1) ORDER BY sg.is_primary DESC, sg.id`,
+        [studentIds],
+      ),
+    ]);
+    return new Map(
+      students.map((student) => {
+        const id = Number(student.id);
+        const parents: GuardianContactDto[] = guardians
+          .filter((item) => Number(item.student_id) === id)
+          .map((item) => ({
+            name: item.name,
+            relation: item.relation,
+            mobile: item.mobile,
+            is_primary: item.is_primary,
+          }));
+        const photo = student.photo_file_id === null ? null : Number(student.photo_file_id);
+        return [id, { photo_url: this.files.linkFor(photo), parents, pass_status: student.pass_status ?? 'active' }];
+      }),
+    );
+  }
+
+  private async driverRiders(schoolId: number, routeIds: number[]): Promise<DriverStudentDto[]> {
+    const rows = await this.studentRows(schoolId, { route_ids: routeIds });
+    if (!rows.length) return [];
+    const studentIds = rows.map((row) => row.student.id);
+    const today = todayIn(this.app.timeZone);
+    const [contacts, away] = await Promise.all([
+      this.riderContacts(studentIds),
+      awayLookup(this.dataSource, studentIds, [today]),
+    ]);
+    return rows.map((row) => {
+      const contact = contacts.get(row.student.id);
+      return {
+        ...row.student,
+        passenger_ref: row.passenger_ref,
+        mode: row.mode,
+        for: row.mode,
+        photo_url: contact?.photo_url ?? null,
+        parents: contact?.parents ?? [],
+        pass_status: row.pass_status,
+        ...awayNotes(away, row.student.id, row.mode, today),
+        journey: journeyText(row.mode, row.stop, row.drop_stop),
+        route: row.route,
+        stop: row.stop,
+        drop_stop: row.drop_stop,
+      };
+    });
+  }
+
+  private assertCanRide(
+    route: TransportRoute,
+    mode: TransportMode,
+    pickupStop: TimedStop,
+    dropStop: TimedStop | null = null,
+  ): void {
+    if (!route.is_active) {
+      throw AppException.badRequest(`Route ${route.code} is switched off. Switch it on first.`, 'ROUTE_INACTIVE');
+    }
+    if (!route.vehicle_id) {
+      throw AppException.badRequest(`Route ${route.code} has no bus yet. Give it a bus first.`, 'ROUTE_HAS_NO_BUS');
+    }
+    const problem = modeProblem(mode, pickupStop, dropStop);
+    if (problem) throw AppException.badRequest(problem, 'STOP_TIME_MISSING');
   }
 
   private async place(schoolId: number, routeId: number, entries: PlacementEntry[]): Promise<PlacementChange[]> {
@@ -793,6 +1259,206 @@ export class RoutesService {
       .catch((error: Error) => this.logger.warn(`${template} not sent: ${error.message}`));
   }
 
+  private async clashFor(
+    schoolId: number,
+    routeId: number,
+    vehicleId: number | null,
+    active: boolean,
+    timings: RouteTimingsDto,
+  ): Promise<{ code: string; message: string } | null> {
+    if (!vehicleId || !active) return null;
+    const mine = timeWindows(timings);
+    if (!mine.length) return null;
+    const vehicle = await this.vehicles.findOneBy({ id: vehicleId });
+    if (!vehicle) return null;
+    const crew = [vehicle.driver_user_id, vehicle.attendant_user_id].filter((id): id is number => Boolean(id));
+    const buses = await this.vehicles.find({
+      where: [
+        { id: vehicleId },
+        ...(crew.length
+          ? [
+              { school_id: schoolId, driver_user_id: In(crew) },
+              { school_id: schoolId, attendant_user_id: In(crew) },
+            ]
+          : []),
+      ],
+    });
+    const others = await this.routes.findBy({
+      school_id: schoolId,
+      vehicle_id: In(buses.map((bus) => bus.id)),
+      is_active: true,
+    });
+    const school = await this.schoolContext(schoolId);
+    for (const other of others.filter((item) => item.id !== routeId)) {
+      const theirs = routeTimings((await this.stopList(other.id)).map(asSchedule), school, school.point);
+      if (!windowsOverlap(mine, timeWindows(theirs))) continue;
+      const window = `${theirs.leaves_at ?? theirs.leaves_school_at} to ${theirs.reaches_school_at ?? theirs.last_drop_at}`;
+      if (other.vehicle_id === vehicleId) {
+        return {
+          code: 'BUS_TIME_CLASH',
+          message: `${vehicle.registration_no} already runs route ${other.code} (${window}) at the same time`,
+        };
+      }
+      return {
+        code: 'CREW_TIME_CLASH',
+        message: `The crew of ${vehicle.registration_no} also work route ${other.code} on another bus (${window}) at the same time`,
+      };
+    }
+    return null;
+  }
+
+  private async busWarnings(route: TransportRoute): Promise<string[]> {
+    if (!route.vehicle_id) {
+      return route.is_active ? ['This route has no bus. Students cannot be added until it has one.'] : [];
+    }
+    const vehicle = await this.vehicles.findOneBy({ id: route.vehicle_id });
+    if (!vehicle) return [];
+    const warnings: string[] = [];
+    if (vehicle.status !== 'active') warnings.push(`${vehicle.registration_no} is marked off the road`);
+    const today = todayIn(this.app.timeZone);
+    const blockers = roadBlockers(
+      ROAD_KINDS.map((kind) =>
+        expiryState(kind, vehicle[VEHICLE_EXPIRY_FIELDS[kind] as keyof Vehicle] as string | null, today),
+      ),
+    );
+    if (blockers.length) warnings.push(`${vehicle.registration_no} is not road-worthy: ${blockers.join(', ')} expired`);
+    const riders = tripRiders(await this.busRiders(this.dataSource.manager, vehicle.id, []));
+    const seats = occupancy(Math.max(riders.pickup, riders.drop), vehicle.capacity);
+    if (seats.over_capacity) warnings.push(`${vehicle.registration_no} has more students than seats on a trip`);
+    else if (seats.nearly_full) warnings.push(`${vehicle.registration_no} is ${seats.occupancy_percent}% full`);
+    return warnings;
+  }
+
+  private async recordStopChanges(
+    schoolId: number,
+    route: TransportRoute,
+    before: RouteStop[],
+    dto: StopsInputDto,
+    removed: RouteStop[],
+    riders: StudentTransport[],
+    actor: AuthUser | null,
+  ): Promise<void> {
+    const boarding = (stopId: number) =>
+      riders
+        .filter((rider) => ridesTrip(rider.mode, 'pickup') && rider.stop_id === stopId)
+        .map((rider) => rider.student_id);
+    const leaving = (stopId: number) =>
+      riders
+        .filter((rider) => ridesTrip(rider.mode, 'drop') && (rider.drop_stop_id ?? rider.stop_id) === stopId)
+        .map((rider) => rider.student_id);
+    const anyUse = (stopId: number) => [...new Set([...boarding(stopId), ...leaving(stopId)])];
+    for (const item of dto.items) {
+      const old = item.id ? before.find((stop) => stop.id === item.id) : undefined;
+      if (!old) {
+        await this.record(schoolId, route.id, {
+          kind: 'stop_added',
+          summary: `New stop ${item.name} added to route ${route.name}`,
+          studentIds: [],
+          actor,
+        });
+        continue;
+      }
+      const pickupMoved = timeShift(old.pickup_time, item.pickup_time ?? null) >= NOTIFY_TIME_SHIFT_MINUTES;
+      const dropMoved = timeShift(old.drop_time, item.drop_time ?? null) >= NOTIFY_TIME_SHIFT_MINUTES;
+      if (pickupMoved || dropMoved) {
+        const lines = [
+          pickupMoved &&
+            `Pickup at ${item.name} changed from ${old.pickup_time ?? 'none'} to ${item.pickup_time ?? 'none'}`,
+          dropMoved && `Drop at ${item.name} changed from ${old.drop_time ?? 'none'} to ${item.drop_time ?? 'none'}`,
+        ].filter(Boolean);
+        await this.record(schoolId, route.id, {
+          kind: 'stop_time',
+          stopId: old.id,
+          summary: lines.join('. '),
+          studentIds: [...new Set([...(pickupMoved ? boarding(old.id) : []), ...(dropMoved ? leaving(old.id) : [])])],
+          actor,
+        });
+      }
+      if (distanceMetres(Number(old.lat), Number(old.lng), item.lat, item.lng) >= NOTIFY_MOVE_METRES) {
+        await this.record(schoolId, route.id, {
+          kind: 'stop_moved',
+          stopId: old.id,
+          summary: `Stop ${item.name} has moved${item.landmark ? ` to near ${item.landmark}` : ''}. Check the new place in the app.`,
+          studentIds: anyUse(old.id),
+          actor,
+        });
+      }
+    }
+    for (const stop of removed) {
+      await this.record(schoolId, route.id, {
+        kind: 'stop_removed',
+        stopId: stop.id,
+        summary: `Stop ${stop.name} removed from route ${route.name}`,
+        studentIds: [],
+        actor,
+      });
+    }
+  }
+
+  private async record(
+    schoolId: number,
+    routeId: number,
+    change: {
+      kind: RouteChangeKind;
+      summary: string;
+      studentIds: number[];
+      stopId?: number;
+      studentId?: number;
+      actor: AuthUser | null;
+    },
+  ): Promise<void> {
+    const parents = await this.parentsOf(change.studentIds);
+    await this.routeChanges.insert({
+      school_id: schoolId,
+      route_id: routeId,
+      stop_id: change.stopId ?? null,
+      student_id: change.studentId ?? null,
+      kind: change.kind,
+      summary: change.summary.slice(0, 255),
+      parents_told: parents.length,
+      changed_by: change.actor?.id ?? null,
+    });
+    await this.send(TEMPLATES.TRANSPORT_CHANGED, schoolId, parents, {
+      summary: change.summary,
+      route_id: String(routeId),
+    });
+  }
+
+  private async parentsOf(studentIds: number[]): Promise<number[]> {
+    if (!studentIds.length) return [];
+    const rows: { user_id: number }[] = await this.dataSource.query(
+      `SELECT DISTINCT g.user_id FROM student_guardians sg
+       JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
+       WHERE sg.student_id = ANY($1) AND g.user_id IS NOT NULL AND sg.receives_alerts = true`,
+      [studentIds],
+    );
+    return rows.map((row) => Number(row.user_id));
+  }
+
+  private async routeStudents(routeId: number): Promise<number[]> {
+    return (await this.assignments.findBy({ route_id: routeId })).map((row) => row.student_id);
+  }
+
+  private async schoolContext(schoolId: number): Promise<SchoolContext> {
+    const [[school], [day]] = await Promise.all([
+      this.dataSource.query(`SELECT latitude, longitude FROM schools WHERE id = $1`, [schoolId]),
+      this.dataSource.query(
+        `SELECT MIN(start_time) AS start, MAX(end_time) AS "end" FROM bell_periods
+         WHERE school_id = $1 AND is_special = false
+           AND (class_id IS NULL OR NOT EXISTS (SELECT 1 FROM bell_periods b WHERE b.school_id = $1 AND b.class_id IS NULL))`,
+        [schoolId],
+      ),
+    ]);
+    return {
+      start: day?.start ?? null,
+      end: day?.end ?? null,
+      point:
+        school?.latitude != null && school?.longitude != null
+          ? { lat: Number(school.latitude), lng: Number(school.longitude) }
+          : null,
+    };
+  }
+
   private async studentRows(
     schoolId: number,
     filter: { student_id?: number; ids?: number[]; route_ids?: number[] },
@@ -820,13 +1486,17 @@ export class RoutesService {
       mode: StudentTransport['mode'];
       start_date: string;
       passenger_ref: string;
+      pass_status: StudentTransport['pass_status'];
+      pass_note: string | null;
+      pass_changed_at: Date | null;
     }[] = await this.dataSource.query(
       `SELECT t.id, t.student_id, s.first_name, s.last_name, s.admission_no, c.name AS class_name, sec.name AS section_name,
               r.id AS route_id, r.name AS route_name, st.id AS stop_id, st.name AS stop_name, st.pickup_time, st.drop_time,
               dst.id AS drop_stop_id, dst.name AS drop_stop_name, dst.pickup_time AS drop_pickup_time,
               dst.drop_time AS drop_drop_time,
               GREATEST(st.monthly_fee, COALESCE(dst.monthly_fee, 0)) AS monthly_fee,
-              t.mode, to_char(t.start_date, 'YYYY-MM-DD') AS start_date, t.passenger_ref
+              t.mode, to_char(t.start_date, 'YYYY-MM-DD') AS start_date, t.passenger_ref,
+              t.pass_status, t.pass_note, t.pass_changed_at
        FROM student_transport t
        JOIN students s ON s.id = t.student_id
        JOIN transport_routes r ON r.id = t.route_id
@@ -864,6 +1534,9 @@ export class RoutesService {
         start_date: row.start_date,
         passenger_ref: row.passenger_ref,
         monthly_fee: Number(row.monthly_fee),
+        pass_status: row.pass_status,
+        pass_note: row.pass_note,
+        pass_changed_at: row.pass_changed_at,
       };
     });
   }
@@ -896,9 +1569,13 @@ export class RoutesService {
   }
 
   private async stop(schoolId: number, routeId: number, stopId: number): Promise<RouteStop> {
-    await this.find(schoolId, routeId);
+    const route = await this.find(schoolId, routeId);
     const stop = await this.stops.findOneBy({ id: stopId, route_id: routeId });
-    if (!stop) throw AppException.validation([{ field: 'stop_id', message: 'Choose a stop on this route' }]);
+    if (!stop) {
+      throw AppException.validation([
+        { field: 'stop_id', message: `Choose a stop on route ${route.code}: this stop is not on it` },
+      ]);
+    }
     return stop;
   }
 
@@ -922,9 +1599,18 @@ export class RoutesService {
   private async present(schoolId: number, rows: TransportRoute[]): Promise<RouteDto[]> {
     if (!rows.length) return [];
     const ids = rows.map((row) => row.id);
-    const [vehicles, stats]: [
+    const [vehicles, stats, allStops, school]: [
       Vehicle[],
-      { route_id: number; stops: string; students: string; first_pickup: string | null }[],
+      {
+        route_id: number;
+        stops: string;
+        students: string;
+        morning_riders: string;
+        evening_riders: string;
+        first_pickup: string | null;
+      }[],
+      RouteStop[],
+      SchoolContext,
     ] = await Promise.all([
       this.vehicles.findBy({
         school_id: schoolId,
@@ -934,14 +1620,23 @@ export class RoutesService {
         `SELECT r.id AS route_id,
                   (SELECT COUNT(*) FROM route_stops s WHERE s.route_id = r.id AND s.deleted_at IS NULL) AS stops,
                   (SELECT COUNT(*) FROM student_transport t WHERE t.route_id = r.id AND t.deleted_at IS NULL) AS students,
+                  (SELECT COUNT(*) FILTER (WHERE t.mode IN ('both', 'pickup')) FROM student_transport t
+                     JOIN students st ON st.id = t.student_id AND st.deleted_at IS NULL AND st.status = 'active'
+                     WHERE t.route_id = r.id AND t.deleted_at IS NULL) AS morning_riders,
+                  (SELECT COUNT(*) FILTER (WHERE t.mode IN ('both', 'drop')) FROM student_transport t
+                     JOIN students st ON st.id = t.student_id AND st.deleted_at IS NULL AND st.status = 'active'
+                     WHERE t.route_id = r.id AND t.deleted_at IS NULL) AS evening_riders,
                   (SELECT MIN(s.pickup_time) FROM route_stops s WHERE s.route_id = r.id AND s.deleted_at IS NULL) AS first_pickup
            FROM transport_routes r WHERE r.id = ANY($1)`,
         [ids],
       ),
+      this.stops.find({ where: { route_id: In(ids) }, order: { sequence: 'ASC' } }),
+      this.schoolContext(schoolId),
     ]);
     return rows.map((row) => {
       const vehicle = vehicles.find((item) => item.id === row.vehicle_id);
       const stat = stats.find((item) => Number(item.route_id) === row.id);
+      const schedule = allStops.filter((stop) => stop.route_id === row.id).map(asSchedule);
       return {
         id: row.id,
         code: row.code,
@@ -952,7 +1647,11 @@ export class RoutesService {
         is_active: row.is_active,
         stops: Number(stat?.stops ?? 0),
         students: Number(stat?.students ?? 0),
+        morning_riders: Number(stat?.morning_riders ?? 0),
+        evening_riders: Number(stat?.evening_riders ?? 0),
         first_pickup: stat?.first_pickup ?? null,
+        timings: routeTimings(schedule, school, school.point),
+        problems: checkSchedule(schedule, school).filter((item) => item.severity === 'error').length,
       };
     });
   }

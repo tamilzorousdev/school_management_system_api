@@ -672,11 +672,50 @@ Permission `fleet.view` to read, `fleet.manage` to change. A student has one rou
 | `GET /admin/students/{id}/transport/history` | Assignments, moves and removals, newest first: `{ action, from, to, mode, by, at }` |
 | `POST /admin/transport/routes/{id}/stops/{stopId}/students` | Bulk: `{ student_ids, mode? }` put on this stop for both trips (clears any separate drop stop) |
 | `GET /admin/transport/students` | Paged riders. Filters `route_id`, `stop_id` (pickup or drop), `class_id`, `section_id`, `mode`. Sort `name`, `admission_no`, `class`, `stop`, `created_at` |
-| `GET /admin/transport/routes/{id}/roster` | Route list: stops in order, each with `pickup_students` and `drop_students` (name, admission no, class, mode, guardian name and mobile), plus `morning_riders`/`evening_riders` for the route and `bus_morning_riders`/`bus_evening_riders` for the whole bus |
+| `GET /admin/transport/routes/{id}/roster` | Route list: stops in order, each with `pickup_students` and `drop_students` (name, admission no, class, mode, guardian name and mobile, `pass_status`), plus `morning_riders`/`evening_riders` for the route and `bus_morning_riders`/`bus_evening_riders` for the whole bus |
 
 **Seats.** Counted per trip across every active route of the bus: morning riders (`both` + `pickup`) and evening riders (`both` + `drop`) must each fit `capacity`. Only active students count. A pickup-only and a drop-only student share one seat. Over capacity returns 409 `BUS_FULL` naming the trip. Giving a route a different bus checks the new bus the same way.
 
 **Notifications** on every assign, move and removal: parents with alerts on get `TRANSPORT_ASSIGNED` (route, pickup and drop with times) or `TRANSPORT_REMOVED`; the driver and attendant of the old and new bus get `BUS_RIDER_CHANGED`. Drop trips use the drop stop for `BUS_APPROACHING`/`BUS_ARRIVED`, the child bus card, boarding and the trip rider list.
+## Routes, stops and timings (admin web, Parent and Driver apps)
+
+**Route timings.** Every route (`GET /admin/transport/routes`, `GET …/routes/{id}`) has `timings`: `leaves_at` (first pickup), `reaches_school_at` (estimated from the last stop's distance to school, never after school starts), `leaves_school_at` and `last_drop_at`, plus `problems` (number of stop time errors). School start and end come from the bell schedule. `GET /admin/transport/routes?flag=` takes `no_bus`, `inactive` or `has_problems`; `GET /admin/transport/routes/insights` gives `{ routes, active, stops, students, no_bus, with_problems }`.
+
+**Stop time checks** on `PUT /admin/transport/routes/{id}/stops` (they block saving):
+- Once one stop has a pickup (or drop) time, every stop needs one.
+- Pickup times go up stop by stop, at least 2 minutes apart, and the last pickup is before school starts.
+- Drop times go up from the last stop outwards (the evening order), at least 2 minutes apart, and the first drop is after school ends.
+- A stop cannot lose the time its students need (a morning rider needs a pickup time, an evening rider a drop time).
+
+Errors are `400 VALIDATION_FAILED` with `field` `items.N.pickup_time` or `items.N.drop_time` and a message naming the stop ("Pickup at Kilpauk (07:35) must be at least 2 minutes after Anna Nagar (07:40)"). Stops far apart but only minutes apart come back as a warning in `schedule_problems` on the route (`STOP_TIMES_TOO_CLOSE`), which does not block saving.
+
+**No double booking.** A bus cannot run two routes at overlapping times (`409 BUS_TIME_CLASH`), and its driver or attendant cannot work another bus's route at the same time (`409 CREW_TIME_CLASH`). Checked when stops are saved, when a route gets a bus and when a route is switched on. A bus can run two rounds when they do not overlap. `RouteDetailDto.warnings` lists a missing bus, a bus off the road or not road-worthy, and a nearly full bus.
+
+**Putting students on a stop** (`POST …/routes/{id}/stops/{stopId}/students`, `PUT /admin/students/{id}/transport`): only stops of that route; `400 ROUTE_HAS_NO_BUS`, `ROUTE_INACTIVE`, `STOP_TIME_MISSING` (no pickup time for morning riders or no drop time for evening riders); `409 BUS_FULL`. Giving a route another bus checks that bus's seats too.
+
+**Change history and parent notes.** `GET /admin/transport/routes/{id}/history` lists what changed and when (`stop_time`, `stop_moved`, `stop_added`, `stop_removed`, `bus_changed`, `student_moved`, `pass_changed`) with `changed_by` and `parents_told`. Parents get an in-app note (`TRANSPORT_CHANGED`, no push, no SMS) when their child's stop time moves by 5 minutes or more, the stop moves 100 m or more, the child is moved to another stop, the route's bus changes, or the bus pass changes.
+
+**Bus pass.** `PUT /admin/students/{id}/transport/pass` `{ "status": "on_hold" | "active", "note"? }`. The admin list (`GET /admin/transport/students?pass_status=on_hold`) shows `pass_status`, `pass_note`, `pass_changed_at`. The driver sees only `pass_status`, never fees or the note; the app shows "Bus pass on hold – contact office" and the child is never left behind. Parents see `pass_status` and `pass_note`.
+
+**Parent app.** `GET /mobile/parent/children/{id}/transport` also returns `route_stops` (every stop in order with times, `is_my_stop`), `timings`, `pass_status`, `pass_note` and `recent_changes` (last 30 days, newest first, at most 10): route changes such as stop times plus this child's own changes ("Bus given on R1: boards at Kilpauk", "Moved to R2: …", "Pickup stop changed from A to B", "Evening stop changed from A to B").
+
+**Driver app (Module 1).** `GET /mobile/driver/duty` returns `students`, `morning`, `evening`, `passes_on_hold`; each route has `path` ("Anna Nagar → Kilpauk → School"), `from`, `to`, `timings` and `students`; each student has `photo_url`, class and section, `parents` (name, relation, mobile, primary first), `mode`, `journey` ("Boards at Kilpauk 07:25 · Drops at Kilpauk 16:30") and `pass_status`. `GET /mobile/driver/students?search=&ride=morning|evening` is the same list for the whole bus, searchable by name, admission number or parent mobile.
+
+**Driver app (Module 3).** `GET /mobile/driver/roster` returns the admin route roster for every active route on my bus: stops in route order, each with `pickup_students` (get on in the morning) and `drop_students` (get off in the evening), so a child with a different evening stop is listed at both. Each student has `pass_status`, `away_morning` and `away_evening`: null when the child rides that bus today, otherwise the reason to show ("On leave", "Half-day leave: comes in the afternoon", "Half-day leave: goes home at noon", "Sports OD – District athletics", "Marked absent"). Do not wait for an away child, but still let the attendant mark them if they turn up. Empty list when I have no bus. Use the roster before a trip starts (the plan) and `GET /mobile/driver/trips/{id}/checklist` while it runs (the live tick list). `GET /mobile/driver/duty` also has `away_morning` and `away_evening` counts, and every student in duty and `GET /mobile/driver/students` has `away_morning` / `away_evening`.
+
+**Away rule (per bus).** Morning bus: approved full-day leave or morning half-day leave, sports OD for the whole day or the morning session, or marked absent / leave / OD in the morning attendance. Evening bus: the same with the afternoon half (afternoon attendance, or the morning mark when the afternoon is not taken yet). Late does not count. The same rule sets `status: away` and `away_note` in the trip checklist, trip riders and bus-history, and away children are never flagged `not_boarded`.
+
+**Driver rating.** Parents rate their child's bus driver once a month (sending again the same month changes it).
+
+| Call | Use |
+|---|---|
+| `GET /mobile/parent/children/{id}/driver-rating` | Parent app (Module 2): `driver` (name, photo), `vehicle`, `month`, `can_rate` (false when the child does not use the bus or the bus has no driver), `my_rating` (`rating`, `tags`, `comment`, `updated_at`) and `tags` (the chips: code, label, positive) |
+| `PUT /mobile/parent/children/{id}/driver-rating` | `{ "rating": 1-5, "tags"?: ["safe_driving", "on_time"], "comment"? }`. For 1 or 2 stars pick a complaint chip (`rash_driving`, `late`, `rude`, `uses_phone`) or write a comment, else 400 `VALIDATION_FAILED` on `comment`. 400 `NOT_ON_BUS`, `NO_DRIVER`. A new 1 or 2 star rating sends `DRIVER_LOW_RATING` (in-app) to admins and the transport in-charge |
+| `GET /admin/transport/driver-ratings/summary` | Each driver of an active bus (and anyone rated): `average`, `count`, `month_average`, `month_count`, `low_count`, `distribution` (1 to 5 star counts) and `top_tags`. Lowest average first. Permission `fleet.view` |
+| `GET /admin/transport/driver-ratings?driver_user_id&vehicle_id&rating&low=true&from&to&search&sort` | The ratings with driver, bus, student, parent, chips and comment. search: driver, parent or student name, or comment. sort: `updated_at` (default), `created_at`, `rating` |
+| `GET /admin/transport/driver-ratings/insights` | `average`, `count`, `month_count`, `month_low`, `drivers_rated` |
+
+**Route list.** `GET /admin/transport/routes` items also have `morning_riders` and `evening_riders` (active students on each trip) next to `students`, so cards can show "Morning 23/40 · Evening 19/40".
 
 ## Live bus
 
@@ -689,7 +728,7 @@ Permission `fleet.view` to read, `fleet.manage` to change. A student has one rou
 | `POST /mobile/driver/trips/{id}/positions` | Phone GPS fallback every 5–10 s: `{ "lat", "lng", "speed", "heading" }`. Used only when the bus tracker is silent for 60 s |
 | `POST /mobile/driver/trips/{id}/end` | End by hand. A pickup also ends by itself inside the school gate; a drop after the last stop. The response also has `not_alighted` (boarded but never marked off) |
 | `POST /mobile/driver/trips/{id}/boardings` | Scan or tap: `{ "action": "boarded", "qr_token": "TZS1.12.1.…" }` after scanning the ID card, or `{ "action": "alighted", "student_id": 12 }` from the `riders` list. Returns the row with `method` (`qr`/`manual`), `stop` (null at the school gate), `occurred_at` and `already_recorded` (a double scan is safe and sends nothing). Parents get **{child} boarded the bus** / **got off the bus**. 409 `NOT_ON_THIS_ROUTE`, `NOT_ON_THIS_TRIP`, `NOT_BOARDED`, `QR_REPLACED` (old card), `TRIP_ENDED`; 400 `QR_INVALID` |
-| `GET /mobile/driver/trips/{id}/checklist` | **Boarding checklist** (Module 3): `trip`, `summary` `{ total, away, waiting, on_bus, off_bus, not_boarded, not_alighted }` and `students` in stop order, each with `stop`, `status` (`waiting`, `on_bus`, `off_bus`, `away` = on leave or absent today), `flag` (after the trip ends: `not_boarded` or `not_alighted`, else null), and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Lighter than the trip screen, so poll it freely. Works for past trips too. In this phase the attendant marks by tapping (`POST …/boardings` with `student_id`) |
+| `GET /mobile/driver/trips/{id}/checklist` | **Boarding checklist** (Module 3): `trip`, `summary` `{ total, away, waiting, on_bus, off_bus, not_boarded, not_alighted }` and `students` in stop order, each with `stop`, `status` (`waiting`, `on_bus`, `off_bus`, `away` = on leave or absent today), `flag` (after the trip ends: `not_boarded` or `not_alighted`, else null), and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Each student also has `photo_url`, `parents` (name, relation, mobile, primary first; call them when the child is still `waiting`) and `pass_status` (`on_hold`: show "Bus pass on hold – contact office", never leave the child behind). Lighter than the trip screen, so poll it freely. Works for past trips too. In this phase the attendant marks by tapping (`POST …/boardings` with `student_id`) |
 | `DELETE /mobile/driver/trips/{id}/boardings/{boardingId}` | Undo a wrong tap while the trip runs (`boardingId` = the mark's `id` from the checklist). Returns the updated checklist; parents are not told. Undo "got off" before "boarded" (409 `UNDO_ALIGHTED_FIRST`); 404 `BOARDING_NOT_FOUND`; 409 `TRIP_ENDED` |
 | `GET /mobile/driver/trips/history?from=&to=&page=&limit=` | Past trips of my bus, newest first, each with the checklist `summary`. `from`/`to` default to the last 30 days. Open one with `…/{id}/checklist` |
 | `POST /mobile/driver/sos` | SOS button: `{ "trip_id"?, "lat"?, "lng"?, "note"? }` (all optional; the running trip and the bus position are used). School admins and the transport in-charge get a push and an SMS with the name and number to call. Pressing again within 2 minutes returns the same alert with `already_raised: true` |
@@ -717,12 +756,19 @@ At the end of a pickup, class teachers get the list of expected children who wer
 
 When a trip ends (by hand, from the office, or by itself) with children still marked on the bus, school admins and the transport in-charge get **{count} still on {bus} after the trip ended** with the names (push, SMS if the push does not reach the phone). It is sent once per trip.
 
+At the same moment the parents of each child who was expected on that trip (not away) and never marked get **{student} did not come on the morning bus / evening bus** (`CHILD_NOT_ON_BUS`, push and in-app, data `student`, `bus`, `trip`, `trip_id`, `student_id`). It is skipped when the attendant marked nobody on the trip, so a trip run without the app does not alarm every parent.
+
 **Boarding history.**
 
 | Call | Use |
 |---|---|
 | `GET /mobile/parent/children/{id}/bus-history?from=&to=&page=&limit=` | The child's trips, newest first: `trip_id`, `trip_date`, `kind`, `trip_status`, `route`, `status` (`waiting`, `on_bus`, `off_bus`, `away`), `flag` (`not_boarded` / `not_alighted` after the trip ends) and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Last 30 days by default |
 | `GET /mobile/teacher/sections/{id}/bus-boarding?date=` | Class teacher: each bus student of the class with that day's pickup and drop trips (same fields as above). `date` defaults to today. 403 `NOT_CLASS_TEACHER` for other sections |
+| `GET /mobile/parent/children/{id}/transport` | The transport card also has `today`: the trips that have started today, morning first, with the same fields as bus-history ("Boarded at 07:02, Kilpauk"). Empty before the first trip starts |
+| `GET /admin/transport/trips/{id}/checklist` | Office: the same checklist the attendant sees (permission `fleet.view`). 404 `TRIP_NOT_FOUND` |
+| `GET /admin/students/{id}/bus-history?from=&to=&page=&limit=` | Office: the student's trips, same fields as the parent bus-history. 404 `STUDENT_NOT_FOUND` |
+
+Bus-history covers trips on the child's current route plus any trip where the child was marked. After a move to another route, trips on the old route where the child was not marked do not show.
 
 ### Live updates (socket.io)
 Connect to the namespace `/live` on the API host with `{ auth: { token: "<access_token>" } }`, then:
@@ -752,7 +798,7 @@ Read with `fleet.view`, change with `fleet.manage`. `{id}` of a bus is the schoo
 | `POST /admin/fleet/maintenance/{id}/close` | `{ "cost"?, "vendor"?, "odometer_km"?, "notes"? }`. 409 `TICKET_CLOSED` |
 | `GET /admin/fleet/fuel` | Fuel log: `vehicle_id`, `from`, `to`, search (station, bus); sort `filled_on`, `amount`, `litres`, `odometer_km`. Each entry has `price_per_litre`, `km_since_last` and `km_per_litre` (distance since the previous fill of that bus ÷ litres of this fill; null for the first). `GET .../insights?vehicle_id=` returns this month's `entries_this_month`, `litres_this_month`, `amount_this_month` and `avg_km_per_litre` (last 90 days) |
 | `POST` / `PATCH` / `DELETE /admin/fleet/fuel[/{id}]` | `{ "vehicle_id": 1, "filled_on": "2026-11-03", "litres": 60.5, "amount": 5800, "odometer_km": 48213, "station"?, "bill_file_id"? (from `POST /files`), "filled_by"? (user id) }`. `filled_on` cannot be in the future and `odometer_km` must sit between the fills before and after it (field errors) |
-| `GET /admin/transport/trips?date&route_id&vehicle_id&status=ended` | Trip history |
+| `GET /admin/transport/trips?date&route_id&vehicle_id&status=ended&flag=` | Trip history. Ended trips have `flags` `{ not_boarded, not_alighted }` (the same counts as the checklist; null while running). `flag`: `not_alighted` (a child left marked on the bus), `not_boarded` (a child who was not away and never got on) or `any` |
 | `GET /admin/fleet/trips/{id}/playback?max_points=1500` | Replay: `trip`, `school`, `path` (planned route), `points` `[{ at, lat, lng, speed, heading }]` oldest first (thinned evenly to `max_points`, `sampled` says so), `distance_km`, `duration_seconds`, `max_speed`, `avg_speed`, `stop_arrivals` and `safety_events`. 404 `TRACK_NOT_FOUND` |
 
 When the Telematics service reports a new engine fault code it sends `vehicle.fault` `{ id, type, at, device_id, fault: { code, description, severity }, odometer_km? }`. The bus with that tracker gets a maintenance ticket (`source: obd`, one open ticket per code; retries are stored once) and admins and the transport in-charge get `VEHICLE_FAULT` (push and in-app; `bus`, `code`, `fault`, `severity`).

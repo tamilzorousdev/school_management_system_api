@@ -2,6 +2,8 @@ import { ApiProperty } from '@nestjs/swagger';
 import { PaginationDto } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
+import { GuardianContactDto, ParentTransportDto } from '../../transport/dto/transport.dto';
+import { PASS_STATUSES, PassStatus } from '../../transport/entities/student-transport.entity';
 import { RIDER_STATUSES, RiderStatus, TRIP_FLAGS, TripFlag } from '../boarding.logic';
 import { TRIP_KINDS, TRIP_STATUSES, TripKind, TripStatus } from '../entities/transport-trip.entity';
 import { BOARDING_METHODS, BoardingMethod } from '../entities/trip-boarding.entity';
@@ -76,6 +78,30 @@ export class ChecklistStudentDto {
 
   @ApiProperty({ type: BoardingMarkDto, nullable: true })
   alighted: BoardingMarkDto | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Sports OD – District athletics',
+    description: 'Why the student is not expected on this trip: On leave, Half-day leave, Sports OD or Marked absent',
+  })
+  away_note: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  photo_url: string | null;
+
+  @ApiProperty({
+    type: [GuardianContactDto],
+    description: 'Parents to call when the child is not at the stop, primary first',
+  })
+  parents: GuardianContactDto[];
+
+  @ApiProperty({
+    enum: PASS_STATUSES,
+    example: 'active',
+    description: 'on_hold: show "Bus pass on hold – contact office" next to the name. Never leave a child behind.',
+  })
+  pass_status: PassStatus;
 }
 
 export class TripChecklistDto {
@@ -134,6 +160,23 @@ export class StudentTripDto {
 
   @ApiProperty({ type: BoardingMarkDto, nullable: true })
   alighted: BoardingMarkDto | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Sports OD – District athletics',
+    description: 'Why the student is not expected on this trip: On leave, Half-day leave, Sports OD or Marked absent',
+  })
+  away_note: string | null;
+}
+
+export class ParentTransportCardDto extends ParentTransportDto {
+  @ApiProperty({
+    type: [StudentTripDto],
+    description:
+      'Today’s trips that have started, morning first: status, boarded / alighted { at, stop, method }. Empty before the first trip starts.',
+  })
+  today: StudentTripDto[];
 }
 
 export class SectionBusStudentDto {

@@ -22,8 +22,9 @@ import { ListQueryDto } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
 import { EXPIRY_KINDS, ExpiryKind } from '../entities/expiry-alert.entity';
+import { ROUTE_CHANGE_KINDS, RouteChangeKind } from '../entities/route-change.entity';
 import { TRANSPORT_CHANGE_ACTIONS, TransportChangeAction } from '../entities/student-transport-change.entity';
-import { TRANSPORT_MODES, TransportMode } from '../entities/student-transport.entity';
+import { PASS_STATUSES, PassStatus, TRANSPORT_MODES, TransportMode } from '../entities/student-transport.entity';
 import {
   FUEL_TYPES,
   FuelType,
@@ -512,6 +513,43 @@ export class StudentTransportQueryDto extends ListQueryDto {
   @IsOptional()
   @IsIn(TRANSPORT_MODES)
   mode?: TransportMode;
+
+  @ApiPropertyOptional({ enum: PASS_STATUSES, description: 'on_hold lists the students whose bus pass is on hold' })
+  @IsOptional()
+  @IsIn(PASS_STATUSES)
+  pass_status?: PassStatus;
+}
+
+export const ROUTE_FLAGS = ['no_bus', 'inactive', 'has_problems'] as const;
+export type RouteFlag = (typeof ROUTE_FLAGS)[number];
+
+export class RouteQueryDto {
+  @ApiPropertyOptional({
+    enum: ROUTE_FLAGS,
+    description: 'no_bus: no bus given; inactive: switched off; has_problems: wrong or missing stop times',
+  })
+  @IsOptional()
+  @IsIn(ROUTE_FLAGS)
+  flag?: RouteFlag;
+}
+
+export class PassInputDto {
+  @ApiProperty({ enum: PASS_STATUSES, example: 'on_hold' })
+  @IsIn(PASS_STATUSES)
+  status: PassStatus;
+
+  @ApiPropertyOptional({
+    example: 'Transport fee due since October',
+    nullable: true,
+    type: String,
+    description: 'Office note; parents see it, the driver does not',
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(255)
+  note?: string | null;
 }
 
 export class ExpiryQueryDto {
@@ -768,6 +806,20 @@ export class RouteVehicleDto {
   capacity: number;
 }
 
+export class RouteTimingsDto {
+  @ApiProperty({ nullable: true, type: String, example: '07:10', description: 'First pickup' })
+  leaves_at: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: '08:15', description: 'Estimated arrival at school' })
+  reaches_school_at: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: '15:40', description: 'Estimated departure from school' })
+  leaves_school_at: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: '16:45', description: 'Last drop' })
+  last_drop_at: string | null;
+}
+
 export class RouteDto {
   @ApiProperty({ example: 1 })
   id: number;
@@ -790,8 +842,87 @@ export class RouteDto {
   @ApiProperty({ example: 34 })
   students: number;
 
+  @ApiProperty({ example: 23, description: 'Students on the morning trip (mode both or pickup)' })
+  morning_riders: number;
+
+  @ApiProperty({ example: 19, description: 'Students on the evening trip (mode both or drop)' })
+  evening_riders: number;
+
   @ApiProperty({ nullable: true, type: String, example: '07:05', description: 'First pickup time' })
   first_pickup: string | null;
+
+  @ApiProperty({ type: RouteTimingsDto })
+  timings: RouteTimingsDto;
+
+  @ApiProperty({ example: 0, description: 'Stop time errors (wrong order, missing, outside school hours)' })
+  problems: number;
+}
+
+export class ScheduleProblemDto {
+  @ApiProperty({
+    example: 'PICKUP_TIME_ORDER',
+    description:
+      'PICKUP_TIME_MISSING, DROP_TIME_MISSING, PICKUP_TIME_ORDER, DROP_TIME_ORDER, PICKUP_AFTER_SCHOOL_START, DROP_BEFORE_SCHOOL_END, STOP_TIMES_TOO_CLOSE',
+  })
+  code: string;
+
+  @ApiProperty({ enum: ['error', 'warning'] })
+  severity: 'error' | 'warning';
+
+  @ApiProperty({ nullable: true, type: String, example: 'Kilpauk' })
+  stop: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: 'items.2.pickup_time' })
+  field: string | null;
+
+  @ApiProperty({ example: 'Pickup at Kilpauk (07:35) must be at least 2 minutes after Anna Nagar (07:40)' })
+  message: string;
+}
+
+export class RouteChangeDto {
+  @ApiProperty({ example: 9 })
+  id: number;
+
+  @ApiProperty({ enum: ROUTE_CHANGE_KINDS })
+  kind: RouteChangeKind;
+
+  @ApiProperty({ example: 'Pickup at Anna Nagar changed from 07:20 to 07:30' })
+  summary: string;
+
+  @ApiProperty({ nullable: true, type: RefDto })
+  stop: RefDto | null;
+
+  @ApiProperty({ nullable: true, type: RefDto })
+  student: RefDto | null;
+
+  @ApiProperty({ example: 6, description: 'Parents who got an in-app note' })
+  parents_told: number;
+
+  @ApiProperty({ nullable: true, type: RefDto })
+  changed_by: RefDto | null;
+
+  @ApiProperty()
+  at: Date;
+}
+
+export class RouteInsightsDto {
+  @ApiProperty({ example: 4 })
+  routes: number;
+
+  @ApiProperty({ example: 3 })
+  active: number;
+
+  @ApiProperty({ example: 21 })
+  stops: number;
+
+  @ApiProperty({ example: 57 })
+  students: number;
+
+  @ApiProperty({ example: 1, description: 'Active routes without a bus' })
+  no_bus: number;
+
+  @ApiProperty({ example: 1, description: 'Routes with stop time errors' })
+  with_problems: number;
 }
 
 export class LatLngDto {
@@ -811,6 +942,19 @@ export class RouteDetailDto extends RouteDto {
 
   @ApiProperty({ example: 14.6, description: 'Straight-line length through every stop to school, km' })
   distance_km: number;
+
+  @ApiProperty({
+    type: [ScheduleProblemDto],
+    description: 'Errors block saving the stops; warnings are for a second look',
+  })
+  schedule_problems: ScheduleProblemDto[];
+
+  @ApiProperty({
+    type: [String],
+    example: ['TN 09 CD 5678 is not road-worthy: Fitness certificate expired'],
+    description: 'Bus not road-worthy, nearly full or missing',
+  })
+  warnings: string[];
 }
 
 export class TransportStudentRefDto {
@@ -872,6 +1016,15 @@ export class StudentTransportDto {
 
   @ApiProperty({ example: 1200, description: 'The higher fee of the pickup and drop stops' })
   monthly_fee: number;
+
+  @ApiProperty({ enum: PASS_STATUSES })
+  pass_status: PassStatus;
+
+  @ApiProperty({ nullable: true, type: String })
+  pass_note: string | null;
+
+  @ApiProperty({ nullable: true, type: Date })
+  pass_changed_at: Date | null;
 }
 
 export class AssignResultDto {
@@ -943,6 +1096,63 @@ export class ParentTransportDto {
 
   @ApiProperty({ example: 1200 })
   monthly_fee: number;
+
+  @ApiProperty({ type: () => [ParentRouteStopDto], description: 'Every stop of the route in order; my stop is marked' })
+  route_stops: ParentRouteStopDto[];
+
+  @ApiProperty({ type: RouteTimingsDto })
+  timings: RouteTimingsDto;
+
+  @ApiProperty({ enum: PASS_STATUSES })
+  pass_status: PassStatus;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Transport fee due since October' })
+  pass_note: string | null;
+
+  @ApiProperty({ type: () => [ParentRouteChangeDto], description: 'Changes to my child’s bus in the last 30 days' })
+  recent_changes: ParentRouteChangeDto[];
+}
+
+export class ParentRouteStopDto {
+  @ApiProperty({ example: 3 })
+  sequence: number;
+
+  @ApiProperty({ example: 'Kilpauk' })
+  name: string;
+
+  @ApiProperty({ nullable: true, type: String })
+  landmark: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: '07:25' })
+  pickup_time: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: '16:30' })
+  drop_time: string | null;
+
+  @ApiProperty({ example: true })
+  is_my_stop: boolean;
+}
+
+export class ParentRouteChangeDto {
+  @ApiProperty({ example: 'Pickup at Kilpauk changed from 07:20 to 07:30' })
+  summary: string;
+
+  @ApiProperty()
+  at: Date;
+}
+
+export class GuardianContactDto {
+  @ApiProperty({ example: 'Lakshmi Narayanan' })
+  name: string;
+
+  @ApiProperty({ example: 'mother' })
+  relation: string;
+
+  @ApiProperty({ example: '9000000005' })
+  mobile: string;
+
+  @ApiProperty({ example: true })
+  is_primary: boolean;
 }
 
 export class DriverStopStudentDto extends TransportStudentRefDto {
@@ -951,6 +1161,38 @@ export class DriverStopStudentDto extends TransportStudentRefDto {
 
   @ApiProperty({ enum: TRANSPORT_MODES })
   mode: TransportMode;
+
+  @ApiProperty({ nullable: true, type: String })
+  photo_url: string | null;
+
+  @ApiProperty({ type: [GuardianContactDto], description: 'Parents to call, primary first' })
+  parents: GuardianContactDto[];
+
+  @ApiProperty({
+    enum: PASS_STATUSES,
+    description: 'on_hold: show "Bus pass on hold – contact office". Never leave a child behind.',
+  })
+  pass_status: PassStatus;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: null,
+    description:
+      'Why the student is not riding the morning bus today (On leave, Half-day leave: comes in the afternoon, Sports OD – …, Marked absent); null = pick up as usual',
+  })
+  away_morning: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Half-day leave: goes home at noon',
+    description: 'Why the student is not riding the evening bus today; null = drop as usual',
+  })
+  away_evening: string | null;
+
+  @ApiProperty({ example: 'Boards at Kilpauk 07:25 · Drops at Kilpauk 16:30' })
+  journey: string;
 
   @ApiProperty({
     enum: ['both', 'pickup', 'drop'],
@@ -974,6 +1216,24 @@ export class DriverRouteDto {
   @ApiProperty({ example: 'Anna Nagar - School' })
   name: string;
 
+  @ApiProperty({
+    example: 'Anna Nagar → Kilpauk → Egmore → School',
+    description: 'Morning way; evening is the reverse',
+  })
+  path: string;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Anna Nagar' })
+  from: string | null;
+
+  @ApiProperty({ example: 'School' })
+  to: string;
+
+  @ApiProperty({ type: RouteTimingsDto })
+  timings: RouteTimingsDto;
+
+  @ApiProperty({ example: 18 })
+  students: number;
+
   @ApiProperty({ type: [DriverStopDto] })
   stops: DriverStopDto[];
 }
@@ -982,8 +1242,51 @@ export class DriverDutyDto {
   @ApiProperty({ type: RouteVehicleDto, nullable: true })
   vehicle: RouteVehicleDto | null;
 
+  @ApiProperty({ example: 25, description: 'Students on my bus across its routes' })
+  students: number;
+
+  @ApiProperty({ example: 24, description: 'Ride in the morning (pickup or both)' })
+  morning: number;
+
+  @ApiProperty({ example: 23, description: 'Ride in the evening (drop or both)' })
+  evening: number;
+
+  @ApiProperty({ example: 1, description: 'Bus pass on hold' })
+  passes_on_hold: number;
+
+  @ApiProperty({ example: 2, description: 'Not riding the morning bus today (leave, half-day leave, OD or absent)' })
+  away_morning: number;
+
+  @ApiProperty({ example: 1, description: 'Not riding the evening bus today' })
+  away_evening: number;
+
   @ApiProperty({ type: [DriverRouteDto] })
   routes: DriverRouteDto[];
+}
+
+export class DriverStudentDto extends DriverStopStudentDto {
+  @ApiProperty({ type: RefDto })
+  route: RefDto;
+
+  @ApiProperty({ type: TransportStopRefDto, description: 'Pickup stop, or the only stop' })
+  stop: TransportStopRefDto;
+
+  @ApiProperty({ type: TransportStopRefDto, nullable: true, description: 'Evening drop stop when it differs' })
+  drop_stop: TransportStopRefDto | null;
+}
+
+export class DriverStudentQueryDto {
+  @ApiPropertyOptional({ example: 'kavin', description: 'Name, admission number or parent mobile' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(60)
+  search?: string;
+
+  @ApiPropertyOptional({ enum: ['morning', 'evening'], description: 'Only students riding then' })
+  @IsOptional()
+  @IsIn(['morning', 'evening'])
+  ride?: 'morning' | 'evening';
 }
 
 export class RosterStudentDto extends TransportStudentRefDto {
@@ -995,6 +1298,26 @@ export class RosterStudentDto extends TransportStudentRefDto {
 
   @ApiProperty({ nullable: true, type: String, example: '9000000005' })
   guardian_mobile: string | null;
+
+  @ApiProperty({ enum: PASS_STATUSES, example: 'active' })
+  pass_status: PassStatus;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: null,
+    description:
+      'Why the student is not riding the morning bus today (On leave, Half-day leave: comes in the afternoon, Sports OD – …, Marked absent); null = pick up as usual',
+  })
+  away_morning: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Half-day leave: goes home at noon',
+    description: 'Why the student is not riding the evening bus today; null = drop as usual',
+  })
+  away_evening: string | null;
 }
 
 export class RosterStopDto {

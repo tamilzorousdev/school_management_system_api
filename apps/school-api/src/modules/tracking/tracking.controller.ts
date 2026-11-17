@@ -33,11 +33,11 @@ import {
   PhonePositionDto,
   StartTripDto,
   TripDetailDto,
-  TripDto,
+  TripListItemDto,
   TripQueryDto,
 } from './dto/tracking.dto';
 import { BoardingChecklistService } from './boarding-checklist.service';
-import { BoardingHistoryQueryDto, TripChecklistDto, TripHistoryDto } from './dto/checklist.dto';
+import { BoardingHistoryQueryDto, StudentTripDto, TripChecklistDto, TripHistoryDto } from './dto/checklist.dto';
 import { TripEventsService } from './trip-events.service';
 import { TripsService } from './trips.service';
 
@@ -54,10 +54,27 @@ export class AdminTripsController {
 
   @Get()
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
-  @ApiOperation({ summary: 'Bus trips, newest first. Filter by date, status and route.' })
-  @ApiEnvelope(TripDto, { paginated: true })
+  @ApiOperation({
+    summary: 'Bus trips, newest first. Filter by date, status, route, bus and flag.',
+    description:
+      'Ended trips have flags { not_boarded, not_alighted }; running trips have flags null. flag=not_alighted lists trips where a child was left marked on the bus.',
+  })
+  @ApiEnvelope(TripListItemDto, { paginated: true })
   list(@SchoolId() schoolId: number, @Query() query: TripQueryDto) {
     return this.trips.list(schoolId, query);
+  }
+
+  @Get(':id/checklist')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary: 'Boarding checklist of a trip: every student in stop order with status, marks, flag, bus pass and parents',
+    description:
+      'Same as the attendant sees. status: waiting, on_bus, off_bus or away. flag after the trip ends: not_boarded or not_alighted.',
+  })
+  @ApiEnvelope(TripChecklistDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  tripChecklist(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.checklist.officeChecklist(schoolId, id);
   }
 
   @Get(':id')
@@ -98,6 +115,31 @@ export class AdminTripsController {
     const detail = await this.trips.end(schoolId, id, 'admin');
     await this.checklist.afterTripEnded(await this.trips.find(schoolId, id));
     return detail;
+  }
+}
+
+@ApiTags('Admin · Trips')
+@ApiBearerAuth()
+@ApiSchoolHeader()
+@ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
+@Controller('admin/students/:id/bus-history')
+export class AdminStudentBusController {
+  constructor(private readonly checklist: BoardingChecklistService) {}
+
+  @Get()
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary: 'Bus boarding history of a student: each trip with when and where they got on and off',
+    description: 'Newest first. from and to default to the last 30 days. status and flag as in the trip checklist.',
+  })
+  @ApiEnvelope(StudentTripDto, { paginated: true })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  history(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: BoardingHistoryQueryDto,
+  ) {
+    return this.checklist.studentHistory(schoolId, id, query);
   }
 }
 
