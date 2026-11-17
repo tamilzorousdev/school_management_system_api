@@ -293,6 +293,12 @@ export class TripDetailDto extends TripDto {
   @ApiProperty({ type: [RiderDto], description: 'Expected but not boarded yet (students away today are left out)' })
   not_boarded: RiderDto[];
 
+  @ApiProperty({
+    type: [RiderDto],
+    description: 'After the trip ends: boarded but never marked off the bus. Empty while the trip runs.',
+  })
+  not_alighted: RiderDto[];
+
   @ApiProperty({ type: [BoardingDto], description: 'Who boarded or got off, newest first, with time and method' })
   boardings: BoardingDto[];
 }

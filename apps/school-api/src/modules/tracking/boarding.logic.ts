@@ -37,3 +37,64 @@ export function boardingStopId(action: BoardingAction, kind: TripKind, assignedS
 export function clockIn(at: Date, timeZone: string): string {
   return new Intl.DateTimeFormat('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone }).format(at);
 }
+
+export const RIDER_STATUSES = ['away', 'waiting', 'on_bus', 'off_bus'] as const;
+export type RiderStatus = (typeof RIDER_STATUSES)[number];
+
+export const TRIP_FLAGS = ['not_boarded', 'not_alighted'] as const;
+export type TripFlag = (typeof TRIP_FLAGS)[number];
+
+export interface RiderMarks {
+  boarded: boolean;
+  alighted: boolean;
+  away_today: boolean;
+}
+
+export interface ChecklistSummary {
+  total: number;
+  away: number;
+  waiting: number;
+  on_bus: number;
+  off_bus: number;
+  not_boarded: number;
+  not_alighted: number;
+}
+
+export function riderStatus(rider: RiderMarks): RiderStatus {
+  if (rider.alighted) return 'off_bus';
+  if (rider.boarded) return 'on_bus';
+  return rider.away_today ? 'away' : 'waiting';
+}
+
+export function tripFlag(rider: RiderMarks, tripEnded: boolean): TripFlag | null {
+  if (!tripEnded) return null;
+  const status = riderStatus(rider);
+  if (status === 'waiting') return 'not_boarded';
+  if (status === 'on_bus') return 'not_alighted';
+  return null;
+}
+
+export function checklistSummary(riders: RiderMarks[], tripEnded: boolean): ChecklistSummary {
+  const summary: ChecklistSummary = {
+    total: riders.length,
+    away: 0,
+    waiting: 0,
+    on_bus: 0,
+    off_bus: 0,
+    not_boarded: 0,
+    not_alighted: 0,
+  };
+  for (const rider of riders) {
+    summary[riderStatus(rider)] += 1;
+    const flag = tripFlag(rider, tripEnded);
+    if (flag) summary[flag] += 1;
+  }
+  return summary;
+}
+
+export function undoRefusal(recorded: BoardingAction[], target: BoardingAction): Refusal | null {
+  if (target === 'boarded' && recorded.includes('alighted')) {
+    return { code: 'UNDO_ALIGHTED_FIRST', message: 'Undo "got off" first, then undo "boarded"' };
+  }
+  return null;
+}

@@ -36,6 +36,8 @@ import {
   TripDto,
   TripQueryDto,
 } from './dto/tracking.dto';
+import { BoardingChecklistService } from './boarding-checklist.service';
+import { BoardingHistoryQueryDto, TripChecklistDto, TripHistoryDto } from './dto/checklist.dto';
 import { TripEventsService } from './trip-events.service';
 import { TripsService } from './trips.service';
 
@@ -45,7 +47,10 @@ import { TripsService } from './trips.service';
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
 @Controller('admin/transport/trips')
 export class AdminTripsController {
-  constructor(private readonly trips: TripsService) {}
+  constructor(
+    private readonly trips: TripsService,
+    private readonly checklist: BoardingChecklistService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
@@ -89,8 +94,10 @@ export class AdminTripsController {
   @ApiOperation({ summary: 'End a trip from the office' })
   @ApiEnvelope(TripDetailDto, { message: 'Trip ended' })
   @ApiErrors(HttpStatus.NOT_FOUND)
-  end(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
-    return this.trips.end(schoolId, id, 'admin');
+  async end(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    const detail = await this.trips.end(schoolId, id, 'admin');
+    await this.checklist.afterTripEnded(await this.trips.find(schoolId, id));
+    return detail;
   }
 }
 
@@ -99,7 +106,10 @@ export class AdminTripsController {
 @RequireRoles(ROLES.DRIVER, ROLES.ATTENDANT)
 @Controller('mobile/driver/trips')
 export class DriverTripsController {
-  constructor(private readonly trips: TripsService) {}
+  constructor(
+    private readonly trips: TripsService,
+    private readonly checklist: BoardingChecklistService,
+  ) {}
 
   @Get('today')
   @ApiTags(DRIVER_MODULE_TAGS.MODULE_1)
@@ -110,6 +120,32 @@ export class DriverTripsController {
   @ApiEnvelope(DriverTodayDto)
   today(@CurrentUser() user: AuthUser) {
     return this.trips.driverToday(user);
+  }
+
+  @Get('history')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_3)
+  @ApiOperation({
+    summary: 'Boarding history: past trips of my bus with boarded, got-off and flagged counts',
+    description:
+      'from and to default to the last 30 days. Open a trip with GET /mobile/driver/trips/{id}/checklist to see each student.',
+  })
+  @ApiEnvelope(TripHistoryDto, { paginated: true })
+  async history(@CurrentUser() user: AuthUser, @Query() query: BoardingHistoryQueryDto) {
+    return this.checklist.vehicleHistory(user.school_id!, await this.vehicleOf(user), query);
+  }
+
+  @Get(':id/checklist')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_3)
+  @ApiOperation({
+    summary: 'Boarding checklist: every student of the trip in stop order with status, times and flag',
+    description:
+      'status: waiting, on_bus, off_bus or away (on leave or absent today). Mark with POST /mobile/driver/trips/{id}/boardings { action, student_id }. ' +
+      'After the trip ends, flag shows not_boarded or not_alighted. Works for past trips too. Lighter than the trip screen, so poll it freely.',
+  })
+  @ApiEnvelope(TripChecklistDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  async tripChecklist(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.checklist.crewChecklist(user.school_id!, id, await this.vehicleOf(user));
   }
 
   @Post()
@@ -149,7 +185,9 @@ export class DriverTripsController {
   @ApiEnvelope(TripDetailDto, { message: 'Trip ended' })
   @ApiErrors(HttpStatus.NOT_FOUND)
   async end(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
-    return this.trips.end(user.school_id!, id, 'driver', await this.vehicleOf(user));
+    const detail = await this.trips.end(user.school_id!, id, 'driver', await this.vehicleOf(user));
+    await this.checklist.afterTripEnded(await this.trips.find(user.school_id!, id));
+    return detail;
   }
 
   @Post(':id/positions')

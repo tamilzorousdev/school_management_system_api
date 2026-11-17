@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Param, ParseIntPipe, Post } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, HttpStatus, Param, ParseIntPipe, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ApiEnvelope,
@@ -11,8 +11,10 @@ import {
 } from '@app/common';
 import { ROLES } from '../access/access.catalog';
 import { DRIVER_MODULE_TAGS } from '../mobile/driver-modules.catalog';
+import { BoardingChecklistService } from './boarding-checklist.service';
 import { BoardingService } from './boarding.service';
 import { BoardingResultDto, RecordBoardingDto } from './dto/boarding.dto';
+import { TripChecklistDto } from './dto/checklist.dto';
 import { RaiseSosDto, SosResultDto } from './dto/fleet-alert.dto';
 import { FleetAlertsService } from './fleet-alerts.service';
 import { TripsService } from './trips.service';
@@ -25,6 +27,7 @@ export class DriverSafetyController {
   constructor(
     private readonly trips: TripsService,
     private readonly boarding: BoardingService,
+    private readonly checklist: BoardingChecklistService,
     private readonly alerts: FleetAlertsService,
   ) {}
 
@@ -47,6 +50,25 @@ export class DriverSafetyController {
     @Body() dto: RecordBoardingDto,
   ): Promise<BoardingResultDto> {
     return this.boarding.record(user, id, dto, await this.vehicleOf(user));
+  }
+
+  @Delete('trips/:id/boardings/:boardingId')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_3)
+  @ResponseMessage('Mark removed')
+  @ApiOperation({
+    summary: 'Undo a wrong tap while the trip runs (boarding_id from the checklist)',
+    description:
+      'Removes the boarded or got-off mark and returns the updated checklist. No message goes to the parent. ' +
+      'Undo got off before boarded: UNDO_ALIGHTED_FIRST (409). Errors: BOARDING_NOT_FOUND (404), TRIP_ENDED (409), NOT_YOUR_TRIP (403).',
+  })
+  @ApiEnvelope(TripChecklistDto, { message: 'Mark removed' })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  async undo(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('boardingId', ParseIntPipe) boardingId: number,
+  ): Promise<TripChecklistDto> {
+    return this.checklist.undo(user, id, boardingId, await this.vehicleOf(user));
   }
 
   @Post('sos')

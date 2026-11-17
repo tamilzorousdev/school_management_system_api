@@ -64,6 +64,13 @@ import { SubstitutesService } from '../substitutes/substitutes.service';
 import { TeacherTimetableDto } from '../timetable/dto/timetable.dto';
 import { ChildBusDto, ChildBusV2Dto } from '../tracking/dto/tracking.dto';
 import { TripsService } from '../tracking/trips.service';
+import { BoardingChecklistService } from '../tracking/boarding-checklist.service';
+import {
+  BoardingHistoryQueryDto,
+  BusBoardingDateQueryDto,
+  SectionBusBoardingDto,
+  StudentTripDto,
+} from '../tracking/dto/checklist.dto';
 import { ParentTransportDto } from '../transport/dto/transport.dto';
 import { RoutesService } from '../transport/routes.service';
 import { TimetableService } from '../timetable/timetable.service';
@@ -84,6 +91,7 @@ export class MobileParentAttendanceController {
     private readonly leaves: StudentLeaveService,
     private readonly transport: RoutesService,
     private readonly tracking: TripsService,
+    private readonly boarding: BoardingChecklistService,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
@@ -118,6 +126,22 @@ export class MobileParentAttendanceController {
   @ApiEnvelope(ParentTransportDto)
   async transportCard(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
     return this.transport.forParent(await this.access.childSchool(user.id, id), id);
+  }
+
+  @Get('bus-history')
+  @ApiOperation({
+    summary: 'Bus boarding history: each trip with when the child got on and off, where and how',
+    description:
+      'Newest first. from and to default to the last 30 days. status: waiting, on_bus, off_bus or away. ' +
+      'flag after the trip ends: not_boarded or not_alighted. Empty when the child does not use the bus.',
+  })
+  @ApiEnvelope(StudentTripDto, { paginated: true })
+  async busHistory(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: BoardingHistoryQueryDto,
+  ) {
+    return this.boarding.childHistory(await this.access.childSchool(user.id, id), id, query);
   }
 
   @Get('attendance')
@@ -197,7 +221,29 @@ export class MobileTeacherAttendanceController {
     private readonly timetable: TimetableService,
     private readonly substitutes: SubstitutesService,
     private readonly insights: TeacherInsightsService,
+    private readonly boarding: BoardingChecklistService,
   ) {}
+
+  @Get('sections/:id/bus-boarding')
+  @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
+  @ApiOperation({
+    summary: 'Bus boarding for my class on a day: each bus student with the pickup and drop trip status',
+    description:
+      'Class teacher only (403 NOT_CLASS_TEACHER). date defaults to today. status: waiting, on_bus, off_bus or away; ' +
+      'flag after the trip ends: not_boarded or not_alighted.',
+  })
+  @ApiEnvelope(SectionBusBoardingDto)
+  async busBoarding(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: BusBoardingDateQueryDto,
+  ) {
+    const schoolId = this.access.teacherSchool(user);
+    if (!(await this.access.classTeacherSections(schoolId, user.id)).includes(id)) {
+      throw AppException.forbidden('Only the class teacher of this section can see this', 'NOT_CLASS_TEACHER');
+    }
+    return this.boarding.sectionDay(schoolId, id, query.date);
+  }
 
   @Get('check-in')
   @ApiTags(TEACHER_MODULE_TAGS.MODULE_2)
