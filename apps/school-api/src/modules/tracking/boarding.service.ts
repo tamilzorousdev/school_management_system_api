@@ -7,6 +7,7 @@ import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StudentLifecycleService } from '../student-lifecycle/student-lifecycle.service';
 import { StudentTransport } from '../transport/entities/student-transport.entity';
+import { stopForTrip } from '../transport/transport.logic';
 import { boardingStep, boardingStopId, clockIn, routeRefusal } from './boarding.logic';
 import { BoardingDto, BoardingResultDto, RecordBoardingDto } from './dto/boarding.dto';
 import { TransportTrip } from './entities/transport-trip.entity';
@@ -66,7 +67,7 @@ export class BoardingService {
         school_id: schoolId,
         trip_id: trip.id,
         student_id: studentId,
-        stop_id: boardingStopId(dto.action, trip.kind, assignment!.stop_id),
+        stop_id: boardingStopId(dto.action, trip.kind, stopForTrip(assignment!, trip.kind)),
         action: dto.action,
         method,
         recorded_by: user.id,

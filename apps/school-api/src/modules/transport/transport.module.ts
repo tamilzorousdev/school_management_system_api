@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CrewModule } from '../crew/crew.module';
 import { ExpiryAlert } from './entities/expiry-alert.entity';
 import { RouteStop } from './entities/route-stop.entity';
+import { StudentTransportChange } from './entities/student-transport-change.entity';
 import { StudentTransport } from './entities/student-transport.entity';
 import { TransportRoute } from './entities/transport-route.entity';
 import { Vehicle } from './entities/vehicle.entity';
@@ -16,7 +17,15 @@ import { MobileDriverProfileController } from './mobile-driver-profile.controlle
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Vehicle, TransportRoute, RouteStop, StudentTransport, ExpiryAlert, VehicleDocument]),
+    TypeOrmModule.forFeature([
+      Vehicle,
+      TransportRoute,
+      RouteStop,
+      StudentTransport,
+      StudentTransportChange,
+      ExpiryAlert,
+      VehicleDocument,
+    ]),
     CrewModule,
   ],
   controllers: [TransportController, StudentTransportController, MobileDriverController, MobileDriverProfileController],

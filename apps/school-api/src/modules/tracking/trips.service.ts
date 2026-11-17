@@ -6,6 +6,7 @@ import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { addDays, holidaySet, WEEKLY_OFF, weekday } from '../../shared/school-days';
 import { ClearanceService } from '../crew/clearance.service';
+import { STOP_FOR_TRIP_SQL, stopForTrip } from '../transport/transport.logic';
 import { TelematicsClient } from '../fleet/telematics.client';
 import { RouteStop } from '../transport/entities/route-stop.entity';
 import { StudentTransport } from '../transport/entities/student-transport.entity';
@@ -307,9 +308,9 @@ export class TripsService {
             trip_id: trip.id,
             kind: trip.kind,
             trip_date: trip.trip_date,
-            child_stop_id: assignment.stop_id,
+            child_stop_id: stopForTrip(assignment, trip.kind),
             stops: liveTimeline(trip.stops, {
-              childStopId: assignment.stop_id,
+              childStopId: stopForTrip(assignment, trip.kind),
               tripDate: trip.trip_date,
               offset,
               positionAt: trip.last_position ? new Date(trip.last_position.recorded_at) : null,
@@ -365,10 +366,10 @@ export class TripsService {
       trip_id: null,
       kind: next.kind,
       trip_date: next.trip_date,
-      child_stop_id: assignment.stop_id,
+      child_stop_id: stopForTrip(assignment, next.kind),
       stops: plannedTimeline(stops, {
         kind: next.kind,
-        childStopId: assignment.stop_id,
+        childStopId: stopForTrip(assignment, next.kind),
         tripDate: next.trip_date,
         offset,
       }),
@@ -396,8 +397,10 @@ export class TripsService {
     let trip = own.find((item) => item.status === 'active') ?? own[0] ?? null;
     if (trip?.status === 'active') trip = await this.refresh(trip);
     const [summary] = trip ? await this.present([trip]) : [null];
-    const stopState = trip?.stops.find((stop) => stop.stop_id === assignment.stop_id) ?? null;
-    const stopRow = await this.dataSource.getRepository(RouteStop).findOneBy({ id: assignment.stop_id });
+    const kind: TripKind = trip?.kind ?? (assignment.mode === 'drop' ? 'drop' : 'pickup');
+    const childStopId = stopForTrip(assignment, kind);
+    const stopState = trip?.stops.find((stop) => stop.stop_id === childStopId) ?? null;
+    const stopRow = await this.dataSource.getRepository(RouteStop).findOneBy({ id: childStopId });
     const stop: TripStopDto | null = stopState
       ? { ...stopState, riders: 0 }
       : stopRow
@@ -408,7 +411,7 @@ export class TripsService {
             lat: stopRow.lat,
             lng: stopRow.lng,
             radius_m: stopRow.geofence_radius_m,
-            planned_time: stopRow.pickup_time,
+            planned_time: kind === 'drop' ? stopRow.drop_time : stopRow.pickup_time,
             status: 'pending',
             eta_seconds: null,
             approached_at: null,
@@ -419,7 +422,7 @@ export class TripsService {
         : null;
     let position: TripPositionDto | null = trip?.last_position ?? null;
     if (!position && vehicle?.device_id) position = await this.lastKnown(vehicle.device_id);
-    const status = childBusStatus(trip, assignment.stop_id);
+    const status = childBusStatus(trip, childStopId);
     const boarding = trip ? await this.childBoarding(trip, studentId) : null;
     const eta = status === 'on_the_way' || status === 'approaching' ? (stopState?.eta_seconds ?? null) : null;
     const bus: ChildBusDto = {
@@ -451,7 +454,7 @@ export class TripsService {
       passenger_ref: string;
     }[] = await this.dataSource.query(
       `SELECT t.student_id, s.first_name, s.last_name, c.name AS class_name, sec.name AS section_name,
-              t.stop_id, t.mode, t.passenger_ref
+              ${STOP_FOR_TRIP_SQL('t', '$2')} AS stop_id, t.mode, t.passenger_ref
        FROM student_transport t
        JOIN students s ON s.id = t.student_id AND s.deleted_at IS NULL AND s.status = 'active'
        LEFT JOIN student_enrollments e ON e.student_id = s.id

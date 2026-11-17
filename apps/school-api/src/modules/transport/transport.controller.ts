@@ -43,9 +43,11 @@ import {
   RouteDetailDto,
   RouteDto,
   RouteInputDto,
+  RouteRosterDto,
   StopsInputDto,
   StudentTransportDto,
   StudentTransportQueryDto,
+  TransportChangeDto,
   UpdateRouteDto,
   UpdateVehicleDto,
   VehicleDocumentDto,
@@ -291,6 +293,19 @@ export class TransportController {
     return this.routes.detail(schoolId, id);
   }
 
+  @Get('routes/:id/roster')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary: 'Route student list: every stop in order with who gets on in the morning and off in the evening',
+    description:
+      'Active students only, with the primary guardian contact. Not paged; a route never has more riders than seats.',
+  })
+  @ApiEnvelope(RouteRosterDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  roster(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.routes.roster(schoolId, id);
+  }
+
   @Post('routes')
   @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
   @ResponseMessage('Route created')
@@ -370,8 +385,9 @@ export class TransportController {
   @Get('students')
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
   @ApiOperation({
-    summary: 'Students who use the bus, with route, stop, mode and fee',
-    description: 'search matches student name and admission number. sort: name, created_at.',
+    summary: 'Students who use the bus, with route, pickup and drop stops, mode and fee',
+    description:
+      'search matches student name and admission number. stop_id matches the pickup or drop stop. sort: name, admission_no, class, stop, created_at.',
   })
   @ApiEnvelope(StudentTransportDto, { paginated: true })
   students(@SchoolId() schoolId: number, @Query() query: StudentTransportQueryDto) {
@@ -395,10 +411,22 @@ export class StudentTransportController {
     return this.routes.studentTransport(schoolId, id);
   }
 
+  @Get('history')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({ summary: 'Assignments, moves and removals for this student, newest first (last 50)' })
+  @ApiEnvelope(TransportChangeDto, { isArray: true })
+  history(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.routes.history(schoolId, id);
+  }
+
   @Put()
   @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
   @ResponseMessage('Bus stop saved')
-  @ApiOperation({ summary: 'Give the student a route and stop' })
+  @ApiOperation({
+    summary: 'Give the student a route, a pickup stop and optionally a different drop stop on the same route',
+    description:
+      '409 BUS_FULL when the morning or evening trip of the bus has no seat left. Parents and the crew of the old and new bus get a push.',
+  })
   @ApiEnvelope(StudentTransportDto, { message: 'Bus stop saved' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
   set(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: AssignTransportDto) {

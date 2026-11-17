@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { STOP_FOR_TRIP_SQL } from '../transport/transport.logic';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { AppException } from '@app/common';
@@ -213,7 +214,7 @@ export class TripEventsService {
        JOIN student_guardians sg ON sg.student_id = t.student_id AND sg.receives_alerts = true
        JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL AND g.user_id IS NOT NULL
        WHERE t.route_id = $1 AND t.deleted_at IS NULL AND (t.mode = 'both' OR t.mode = $2)
-         ${stopId ? 'AND t.stop_id = $3' : ''}`,
+         ${stopId ? `AND ${STOP_FOR_TRIP_SQL('t', '$2')} = $3` : ''}`,
       stopId ? [trip.route_id, trip.kind, stopId] : [trip.route_id, trip.kind],
     );
     return rows.map((row) => Number(row.user_id));
