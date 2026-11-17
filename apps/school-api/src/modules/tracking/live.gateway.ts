@@ -156,6 +156,17 @@ export class LiveGateway implements OnGatewayInit {
       .emit(name, { ...message, full_name: boarding.full_name, class_section: boarding.class_section });
   }
 
+  passengerUndone(trip: TransportTrip, boarding: { id: number; student_id: number; action: string }): void {
+    this.server?.to(tripRoom(trip.id)).to(fleetRoom(trip.school_id)).emit('passenger.undone', {
+      trip_id: trip.id,
+      route_id: trip.route_id,
+      vehicle_id: trip.vehicle_id,
+      boarding_id: boarding.id,
+      student_id: boarding.student_id,
+      action: boarding.action,
+    });
+  }
+
   alert(schoolId: number, name: 'alert.raised' | 'alert.updated', alert: AlertDto): void {
     this.server?.to(fleetRoom(schoolId)).emit(name, alert);
   }

@@ -90,6 +90,9 @@ export class TransportTrip {
   @Column({ type: 'timestamptz', nullable: true })
   not_boarded_sent_at: Date | null;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  flags_sent_at: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 

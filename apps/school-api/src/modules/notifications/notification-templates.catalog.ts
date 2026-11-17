@@ -43,6 +43,7 @@ export const TEMPLATES = {
   BUS_DOCUMENT_EXPIRY_DRIVER: 'BUS_DOCUMENT_EXPIRY_DRIVER',
   VEHICLE_FAULT: 'VEHICLE_FAULT',
   TRIP_NOT_BOARDED: 'TRIP_NOT_BOARDED',
+  STUDENTS_LEFT_ON_BUS: 'STUDENTS_LEFT_ON_BUS',
   RESULT_PUBLISHED: 'RESULT_PUBLISHED',
   ACHIEVEMENT_ADDED: 'ACHIEVEMENT_ADDED',
   CLASS_COMBINED: 'CLASS_COMBINED',
@@ -1036,6 +1037,27 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
         title: '{{section}} வகுப்பில் {{count}} பேர் பேருந்தில் ஏறவில்லை',
         body: 'இன்று காலை {{bus}} பேருந்தில் இல்லை: {{names}}. முதல் பாடவேளைக்கு முன் சரிபார்க்கவும்.',
         sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.STUDENTS_LEFT_ON_BUS,
+    category: 'transport',
+    push: true,
+    sms: 'fallback',
+    critical: true,
+    text: {
+      en: {
+        title: '{{count}} still on {{bus}} after the trip ended',
+        body: 'Not marked off the bus: {{names}}. Please check the bus now.',
+        sms_body:
+          '{{count}} student(s) not marked off {{bus}} after the trip ended: {{names}}. Please check the bus now. -TAMILZOROUS',
+      },
+      ta: {
+        title: 'பயணம் முடிந்த பின்னும் {{bus}} பேருந்தில் {{count}} பேர்',
+        body: 'பேருந்திலிருந்து இறங்கியதாகக் குறிக்கப்படவில்லை: {{names}}. உடனே பேருந்தைச் சரிபார்க்கவும்.',
+        sms_body:
+          'பயணம் முடிந்த பின்னும் {{bus}} பேருந்திலிருந்து இறங்கியதாகக் குறிக்கப்படாதவர்கள்: {{names}}. உடனே சரிபார்க்கவும். -TAMILZOROUS',
       },
     },
   },

@@ -179,6 +179,9 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 | `TELEMATICS_UNAVAILABLE` | 503 | Bus tracking service is down; try again in a minute |
 | `NOT_ON_THIS_ROUTE`, `NOT_ON_THIS_TRIP` | 409 | Boarding: the student is not on this bus route, or does not ride this pickup/drop |
 | `NOT_BOARDED`, `TRIP_ENDED`, `STUDENT_NOT_ACTIVE` | 409 | Boarding: got off before boarding, the trip is over, or the student has left the school |
+| `UNDO_ALIGHTED_FIRST` | 409 | Boarding undo: remove the "got off" mark before the "boarded" mark |
+| `BOARDING_NOT_FOUND` | 404 | Boarding undo: no such mark on this trip |
+| `NOT_CLASS_TEACHER` | 403 | Class bus boarding: only the class teacher of that section |
 | `ALERT_RESOLVED`, `ALERT_ALREADY_RESOLVED` | 409 | Alerts centre: the alert is already resolved |
 | `TICKET_CLOSED` | 409 | Fleet maintenance: the ticket is already done |
 | `TICKET_NOT_FOUND`, `FUEL_LOG_NOT_FOUND`, `TRACK_NOT_FOUND` | 404 | Fleet maintenance and trip replay: no such ticket or fuel entry, or the trip never reached the tracker |
@@ -684,8 +687,11 @@ Permission `fleet.view` to read, `fleet.manage` to change. A student has one rou
 | `POST /mobile/driver/trips` | `{ "route_id": 1, "kind": "pickup" }` starts the trip. Parents of the route get "Bus has started". 409 `TRIP_ALREADY_ACTIVE`, 400 `NO_TRACKER`, 403 `CREW_NOT_APPROVED` when the bus driver or attendant is not cleared for duty (show the message: renew documents at the transport office) |
 | `GET /mobile/driver/trips/{id}` | Trip screen: `stop_list` in travel order with `status` and `eta_seconds`, `school` (end of a pickup), `riders` (with `boarded`, `alighted`), `not_boarded` and `boardings` (newest first) |
 | `POST /mobile/driver/trips/{id}/positions` | Phone GPS fallback every 5–10 s: `{ "lat", "lng", "speed", "heading" }`. Used only when the bus tracker is silent for 60 s |
-| `POST /mobile/driver/trips/{id}/end` | End by hand. A pickup also ends by itself inside the school gate; a drop after the last stop |
+| `POST /mobile/driver/trips/{id}/end` | End by hand. A pickup also ends by itself inside the school gate; a drop after the last stop. The response also has `not_alighted` (boarded but never marked off) |
 | `POST /mobile/driver/trips/{id}/boardings` | Scan or tap: `{ "action": "boarded", "qr_token": "TZS1.12.1.…" }` after scanning the ID card, or `{ "action": "alighted", "student_id": 12 }` from the `riders` list. Returns the row with `method` (`qr`/`manual`), `stop` (null at the school gate), `occurred_at` and `already_recorded` (a double scan is safe and sends nothing). Parents get **{child} boarded the bus** / **got off the bus**. 409 `NOT_ON_THIS_ROUTE`, `NOT_ON_THIS_TRIP`, `NOT_BOARDED`, `QR_REPLACED` (old card), `TRIP_ENDED`; 400 `QR_INVALID` |
+| `GET /mobile/driver/trips/{id}/checklist` | **Boarding checklist** (Module 3): `trip`, `summary` `{ total, away, waiting, on_bus, off_bus, not_boarded, not_alighted }` and `students` in stop order, each with `stop`, `status` (`waiting`, `on_bus`, `off_bus`, `away` = on leave or absent today), `flag` (after the trip ends: `not_boarded` or `not_alighted`, else null), and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Lighter than the trip screen, so poll it freely. Works for past trips too. In this phase the attendant marks by tapping (`POST …/boardings` with `student_id`) |
+| `DELETE /mobile/driver/trips/{id}/boardings/{boardingId}` | Undo a wrong tap while the trip runs (`boardingId` = the mark's `id` from the checklist). Returns the updated checklist; parents are not told. Undo "got off" before "boarded" (409 `UNDO_ALIGHTED_FIRST`); 404 `BOARDING_NOT_FOUND`; 409 `TRIP_ENDED` |
+| `GET /mobile/driver/trips/history?from=&to=&page=&limit=` | Past trips of my bus, newest first, each with the checklist `summary`. `from`/`to` default to the last 30 days. Open one with `…/{id}/checklist` |
 | `POST /mobile/driver/sos` | SOS button: `{ "trip_id"?, "lat"?, "lng"?, "note"? }` (all optional; the running trip and the bus position are used). School admins and the transport in-charge get a push and an SMS with the name and number to call. Pressing again within 2 minutes returns the same alert with `already_raised: true` |
 | `GET /mobile/driver/profile` | My profile (Module 5): `me` (details, photo, licence and badge, `checks` for licence, badge, medical and police with expiry and document status, `duty_status`, `allowed_today`, `documents`), `duty_message` (one line to show when not cleared, else null) and `vehicle` (my bus: registration, type, fuel, year, chassis and engine number, owner, seats and students, the 9 document expiries, `road_worthy`, routes, driver and attendant). 404 `CREW_NOT_FOUND` when the office has not added me |
 | `PATCH /mobile/driver/profile` | Change my own `email`, `language`, `address`, `emergency_contact_name`, `emergency_contact_mobile` and `photo_file_id` (upload with `POST /files`, purpose `profile_photo`); null clears. Name, mobile, licence, badge, medical and police details stay with the transport office (any other field gives 400) |
@@ -709,12 +715,22 @@ Parents are told automatically: **Bus has started** (whole route), **Bus is N mi
 
 At the end of a pickup, class teachers get the list of expected children who were not scanned on (only when the trip had at least one scan, so a bus without scanning sends no false list).
 
+When a trip ends (by hand, from the office, or by itself) with children still marked on the bus, school admins and the transport in-charge get **{count} still on {bus} after the trip ended** with the names (push, SMS if the push does not reach the phone). It is sent once per trip.
+
+**Boarding history.**
+
+| Call | Use |
+|---|---|
+| `GET /mobile/parent/children/{id}/bus-history?from=&to=&page=&limit=` | The child's trips, newest first: `trip_id`, `trip_date`, `kind`, `trip_status`, `route`, `status` (`waiting`, `on_bus`, `off_bus`, `away`), `flag` (`not_boarded` / `not_alighted` after the trip ends) and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Last 30 days by default |
+| `GET /mobile/teacher/sections/{id}/bus-boarding?date=` | Class teacher: each bus student of the class with that day's pickup and drop trips (same fields as above). `date` defaults to today. 403 `NOT_CLASS_TEACHER` for other sections |
+
 ### Live updates (socket.io)
 Connect to the namespace `/live` on the API host with `{ auth: { token: "<access_token>" } }`, then:
 
 - `emit('trip.subscribe', { trip_id })` → ack `{ ok: true }`. A parent can follow only a trip their child rides; a driver only their own bus; admins any trip of their school. Otherwise `{ ok: false, error: "FORBIDDEN" }`.
 - Receive `trip.position` `{ trip_id, position: { lat, lng, speed, heading, recorded_at, source } }` every few seconds and `trip.event` `{ trip_id, type, stop, eta_seconds, end_reason }` for `trip.started`, `stop.approaching`, `stop.arrived`, `stop.departed`, `trip.ended`.
 - `passenger.boarded` / `passenger.alighted` `{ trip_id, boarding_id, student_id, action, method, stop, occurred_at }` on each scan. The fleet room (admin web) also gets `full_name` and `class_section`; trip followers (parents) get only `student_id`.
+- `passenger.undone` `{ trip_id, route_id, vehicle_id, boarding_id, student_id, action }` when the attendant undoes a wrong tap: drop that mark.
 - Admin web: `emit('fleet.subscribe', {})` to get every trip of the school plus `alert.raised` and `alert.updated` (same shape as an alerts centre row).
 - When the access token expires the socket is closed with an `error` event: refresh the token and connect again.
 

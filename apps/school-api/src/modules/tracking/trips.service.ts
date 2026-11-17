@@ -214,6 +214,7 @@ export class TripsService {
       })),
       riders,
       not_boarded: riders.filter((rider) => !rider.boarded && !rider.away_today),
+      not_alighted: trip.status === 'ended' ? riders.filter((rider) => rider.boarded && !rider.alighted) : [],
       boardings,
     };
   }

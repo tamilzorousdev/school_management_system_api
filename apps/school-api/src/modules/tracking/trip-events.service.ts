@@ -7,6 +7,7 @@ import { appConfig, AppConfig, telematicsConfig, TelematicsConfig } from '../../
 import { VehicleFaultEvent } from '../fleet-ops/fleet-ops.logic';
 import { MaintenanceService } from '../fleet-ops/maintenance.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { BoardingChecklistService } from './boarding-checklist.service';
 import { TransportTrip, TripPosition } from './entities/transport-trip.entity';
 import { TripEvent, TripEventType } from './entities/trip-event.entity';
 import { TelematicsAlertEvent } from './fleet-alerts.logic';
@@ -34,6 +35,7 @@ export class TripEventsService {
     @InjectRepository(TransportTrip) private readonly trips: Repository<TransportTrip>,
     @InjectRepository(TripEvent) private readonly events: Repository<TripEvent>,
     private readonly tripsService: TripsService,
+    private readonly checklist: BoardingChecklistService,
     private readonly gateway: LiveGateway,
     private readonly notifications: NotificationsService,
     private readonly alerts: FleetAlertsService,
@@ -119,6 +121,9 @@ export class TripEventsService {
     if (event.type === 'trip.ended') {
       await this.tripsService.markEnded(trip, event.end_reason ?? 'route_complete', at);
       trip.status = 'ended';
+      await this.checklist.afterTripEnded(trip).catch((error: Error) => {
+        this.logger.warn(`Trip ${trip.id} end-of-trip flags failed: ${error.message}`);
+      });
     }
 
     const notified = await this.notify(trip, event, stopId, at).catch((error: Error) => {
