@@ -39,6 +39,7 @@ import {
   TransportChangeDto,
   UpdateRouteDto,
 } from './dto/transport.dto';
+import { crewLabel } from './bus-pass.logic';
 import { routeIdsRunBy, vehicleOnDay } from './bus-swaps';
 import { RouteBusSwap } from './entities/route-bus-swap.entity';
 import { RouteChange, RouteChangeKind } from './entities/route-change.entity';
@@ -83,6 +84,7 @@ export interface RiderContact {
   photo_url: string | null;
   parents: GuardianContactDto[];
   pass_status: PassStatus;
+  pass_label: string | null;
 }
 
 interface StudentRow {
@@ -191,6 +193,7 @@ const stopStudent = (row: DriverStudentDto): DriverStopStudentDto => ({
   photo_url: row.photo_url,
   parents: row.parents,
   pass_status: row.pass_status,
+  pass_label: row.pass_label,
   away_morning: row.away_morning,
   away_evening: row.away_evening,
   journey: row.journey,
@@ -529,6 +532,7 @@ export class RoutesService {
     if (current.pass_status !== dto.status || current.pass_note !== note) {
       await this.assignments.update(current.id, {
         pass_status: dto.status,
+        hold_kind: dto.status === 'on_hold' ? 'office' : null,
         pass_note: note,
         pass_changed_at: new Date(),
         pass_changed_by: actor.id,
@@ -640,8 +644,9 @@ export class RoutesService {
       guardian_name: string | null;
       guardian_mobile: string | null;
       pass_status: PassStatus;
+      hold_kind: 'fee' | 'office' | null;
     }[] = await this.dataSource.query(
-      `SELECT t.student_id, t.stop_id, t.drop_stop_id, t.mode, t.pass_status, s.first_name, s.last_name, s.admission_no,
+      `SELECT t.student_id, t.stop_id, t.drop_stop_id, t.mode, t.pass_status, t.hold_kind, s.first_name, s.last_name, s.admission_no,
               c.name AS class_name, sec.name AS section_name, g.name AS guardian_name, g.mobile AS guardian_mobile
        FROM student_transport t
        JOIN students s ON s.id = t.student_id AND s.deleted_at IS NULL AND s.status = 'active'
@@ -674,6 +679,7 @@ export class RoutesService {
         guardian_name: row.guardian_name,
         guardian_mobile: row.guardian_mobile,
         pass_status: row.pass_status,
+        pass_label: crewLabel(row.pass_status, row.hold_kind),
         ...awayNotes(away, Number(row.student_id), row.mode, today),
       };
       return {
@@ -1083,6 +1089,10 @@ export class RoutesService {
     });
   }
 
+  async crewBusId(schoolId: number, userId: number): Promise<number | null> {
+    return (await this.driverVehicle(schoolId, userId))?.id ?? null;
+  }
+
   private async driverVehicle(schoolId: number, userId: number): Promise<Vehicle | null> {
     return this.vehicles.findOne({
       where: [
@@ -1095,11 +1105,16 @@ export class RoutesService {
   async riderContacts(studentIds: number[]): Promise<Map<number, RiderContact>> {
     if (!studentIds.length) return new Map();
     const [students, guardians]: [
-      { id: number; photo_file_id: number | null; pass_status: PassStatus | null }[],
+      {
+        id: number;
+        photo_file_id: number | null;
+        pass_status: PassStatus | null;
+        hold_kind: 'fee' | 'office' | null;
+      }[],
       { student_id: number; name: string; relation: string; mobile: string; is_primary: boolean }[],
     ] = await Promise.all([
       this.dataSource.query(
-        `SELECT s.id, s.photo_file_id, t.pass_status FROM students s
+        `SELECT s.id, s.photo_file_id, t.pass_status, t.hold_kind FROM students s
          LEFT JOIN student_transport t ON t.student_id = s.id AND t.deleted_at IS NULL
          WHERE s.id = ANY($1)`,
         [studentIds],
@@ -1123,7 +1138,16 @@ export class RoutesService {
             is_primary: item.is_primary,
           }));
         const photo = student.photo_file_id === null ? null : Number(student.photo_file_id);
-        return [id, { photo_url: this.files.linkFor(photo), parents, pass_status: student.pass_status ?? 'active' }];
+        const status = student.pass_status ?? 'active';
+        return [
+          id,
+          {
+            photo_url: this.files.linkFor(photo),
+            parents,
+            pass_status: status,
+            pass_label: crewLabel(status, student.hold_kind),
+          },
+        ];
       }),
     );
   }
@@ -1147,6 +1171,7 @@ export class RoutesService {
         photo_url: contact?.photo_url ?? null,
         parents: contact?.parents ?? [],
         pass_status: row.pass_status,
+        pass_label: contact?.pass_label ?? null,
         ...awayNotes(away, row.student.id, row.mode, today),
         journey: journeyText(row.mode, row.stop, row.drop_stop),
         route: row.route,

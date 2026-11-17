@@ -46,4 +46,7 @@ export class StudentTransport extends SchoolScopedEntity {
 
   @Column({ type: 'int', nullable: true })
   pass_changed_by: number | null;
+
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  hold_kind: 'fee' | 'office' | null;
 }

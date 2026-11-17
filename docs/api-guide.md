@@ -726,6 +726,27 @@ Errors are `400 VALIDATION_FAILED` with `field` `items.N.pickup_time` or `items.
 | `GET /admin/transport/driver-ratings?driver_user_id&vehicle_id&rating&low=true&from&to&search&sort` | The ratings with driver, bus, student, parent, chips and comment. search: driver, parent or student name, or comment. sort: `updated_at` (default), `created_at`, `rating` |
 | `GET /admin/transport/driver-ratings/insights` | `average`, `count`, `month_count`, `month_low`, `drivers_rated` |
 
+**Bus pass (digital).** Every student with a bus stop gets one pass a year (`pass_no` like `TZMS-BP-2026-0042`, `valid_from` = year start, `valid_until` = the settings date or the year end). State:
+- `awaiting_payment` until the first bus fee invoice of the year is fully paid (free stops are active at once);
+- `active`;
+- `on_hold` when the office restricts it. A hold made while a bus fee is pending (`hold_kind: fee`) lifts by itself once nothing is past the grace days; an office hold (`hold_kind: office`) stays until the office activates it;
+- `expired` after `valid_until`. A new pass with a new number comes with the next academic year.
+
+The bus fee is the transport line on the fee plan installment invoices (the cycle is the installments). A bus fee counts as paid when its invoice is fully paid. `fee.standing`: `clear`, `due` (unpaid, within the grace days) or `past_grace` (the fee pending list). A job every 10 minutes issues passes that became paid (`BUS_PASS_ISSUED`), sends one reminder the day the grace ends (`BUS_FEE_REMINDER`) and reactivates paid fee holds (`BUS_PASS_ACTIVE`).
+
+| Call | Use |
+|---|---|
+| `GET /admin/transport/bus-passes?search&state&fee&route_id` | Passes with `student`, `route`, `pickup`, `drop`, `bus` (of today), `fee { standing, oldest_due, grace_ends, pending_amount }`. `fee=past_grace` is the fee pending list |
+| `GET /admin/transport/bus-passes/insights` | `total`, `active`, `awaiting_payment`, `on_hold`, `fee_due`, `fee_past_grace`, `expired` |
+| `GET` / `PUT /admin/transport/bus-passes/settings` | `{ grace_days (0-90), valid_until? }` (`null` = end of year) |
+| `POST /admin/transport/bus-passes/restrict` `{ student_ids, note? }` / `activate` `{ student_ids }` | One or many. Parents get `BUS_PASS_HELD` ("The bus pass for Kavin is on hold as the bus fee is pending. Please pay in the app or contact the school office.") or `BUS_PASS_ACTIVE` |
+| `GET` / `PATCH /admin/transport/bus-passes/{studentId}` `{ valid_until }` | One pass (print card); change its end date |
+| `POST /admin/transport/bus-passes/check-payments` | Run the 10-minute job now |
+| `GET /mobile/parent/children/{id}/bus-pass` | Parent app (Module 2): the digital pass with `school`, `message` and `qr` (the signed ID card QR, only while active); `null` when the child does not use the bus |
+| `GET /mobile/driver/passes-on-hold` | Driver app (Module 3): children on my bus today whose pass is on hold, with `label` ("Pass on hold – fee pending, contact office"). No amounts. Still take the child |
+
+Crew lists (duty, students, roster, trip checklist) also have `pass_label` (null when active).
+
 **Reason for a change.** `PATCH /admin/transport/routes/{id}` and `PUT /admin/transport/routes/{id}/stops` take an optional `reason` (up to 200 letters, for example "Road work on 2nd Avenue"). Parents read it at the end of their note ("… Reason: Road work on 2nd Avenue") and the route history keeps it in `reason`.
 
 **Bus for a day (breakdown).** `PUT /admin/transport/routes/{id}/swap { vehicle_id, date?, reason? }` runs the route with another bus on one day (today by default, up to 30 days ahead; sending again for the same day replaces it); the next day the usual bus is back without any step. The other bus must be free at the route times (409 `BUS_TIME_CLASH`, `CREW_TIME_CLASH`); in an emergency send `force: true` to change anyway: the answer has `warning`, and the parents of the route that bus also runs get a note that it may be late. 400 `SAME_BUS`, `ROUTE_INACTIVE`. Parents of the route and the driver and attendant of both buses get `BUS_SWAPPED` (push) with the reason, and the route history gets a `bus_swapped` entry. On that day the swap bus's driver sees the route on the home screen, roster and student lists and can start its trips; the parent's transport card and live bus show the swap bus. `DELETE /admin/transport/routes/{id}/swap?date=` undoes it (parents get a note; 404 `SWAP_NOT_FOUND`). `GET /admin/transport/bus-swaps?date=` lists swaps from today on (or for one date). Route list items have `swap_today { vehicle, reason }`.

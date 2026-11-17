@@ -102,6 +102,9 @@ export class ChecklistStudentDto {
     description: 'on_hold: show "Bus pass on hold – contact office" next to the name. Never leave a child behind.',
   })
   pass_status: PassStatus;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Pass on hold – fee pending, contact office' })
+  pass_label: string | null;
 }
 
 export class TripChecklistDto {

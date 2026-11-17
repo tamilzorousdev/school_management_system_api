@@ -1247,6 +1247,14 @@ export class DriverStopStudentDto extends TransportStudentRefDto {
   @ApiProperty({
     nullable: true,
     type: String,
+    example: 'Pass on hold – fee pending, contact office',
+    description: 'What the crew sees when the pass is on hold; null when active. Still take the child.',
+  })
+  pass_label: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
     example: null,
     description:
       'Why the student is not riding the morning bus today (On leave, Half-day leave: comes in the afternoon, Sports OD – …, Marked absent); null = pick up as usual',
@@ -1371,6 +1379,14 @@ export class RosterStudentDto extends TransportStudentRefDto {
 
   @ApiProperty({ enum: PASS_STATUSES, example: 'active' })
   pass_status: PassStatus;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Pass on hold – fee pending, contact office',
+    description: 'What the crew sees when the pass is on hold; null when active. Still take the child.',
+  })
+  pass_label: string | null;
 
   @ApiProperty({
     nullable: true,

@@ -66,6 +66,8 @@ import {
   BusSwapInputDto,
   BusSwapQueryDto,
 } from './dto/transport.dto';
+import { BusPassService } from './bus-pass.service';
+import { CrewHeldPassDto } from './dto/bus-pass.dto';
 import { RoutesService } from './routes.service';
 import { VehicleDocumentsService } from './vehicle-documents.service';
 import { VehiclesService } from './vehicles.service';
@@ -560,7 +562,23 @@ export class StudentTransportController {
 @RequireRoles(ROLES.DRIVER, ROLES.ATTENDANT)
 @Controller('mobile/driver')
 export class MobileDriverController {
-  constructor(private readonly routes: RoutesService) {}
+  constructor(
+    private readonly routes: RoutesService,
+    private readonly busPasses: BusPassService,
+  ) {}
+
+  @Get('passes-on-hold')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_3)
+  @ApiOperation({
+    summary: 'Students on my bus today whose bus pass is on hold',
+    description:
+      'label: "Pass on hold – fee pending, contact office" or "Pass on hold – contact office". Only for the crew to know: still take the child; the office talks to the parent. No fee amounts.',
+  })
+  @ApiEnvelope(CrewHeldPassDto, { isArray: true })
+  async passesOnHold(@CurrentUser() user: AuthUser) {
+    const busId = await this.routes.crewBusId(user.school_id ?? 0, user.id);
+    return busId ? this.busPasses.crewHeld(user.school_id ?? 0, busId) : [];
+  }
 
   @Get('duty')
   @ApiTags(DRIVER_MODULE_TAGS.MODULE_1)

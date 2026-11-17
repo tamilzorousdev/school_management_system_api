@@ -72,6 +72,8 @@ import {
   ParentTransportCardDto,
   StudentTripDto,
 } from '../tracking/dto/checklist.dto';
+import { BusPassService } from '../transport/bus-pass.service';
+import { ParentBusPassDto } from '../transport/dto/bus-pass.dto';
 import { DriverRatingsService } from '../transport/driver-ratings.service';
 import { DriverRatingInputDto, ParentDriverRatingDto } from '../transport/dto/driver-rating.dto';
 import { RoutesService } from '../transport/routes.service';
@@ -95,6 +97,7 @@ export class MobileParentAttendanceController {
     private readonly tracking: TripsService,
     private readonly boarding: BoardingChecklistService,
     private readonly driverRatings: DriverRatingsService,
+    private readonly busPasses: BusPassService,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
@@ -133,6 +136,17 @@ export class MobileParentAttendanceController {
     const schoolId = await this.access.childSchool(user.id, id);
     const card = await this.transport.forParent(schoolId, id);
     return card ? { ...card, today: await this.boarding.childToday(schoolId, id) } : null;
+  }
+
+  @Get('bus-pass')
+  @ApiOperation({
+    summary: 'The child’s digital bus pass',
+    description:
+      'state: awaiting_payment (shown once the bus fee is paid), active (show it when boarding; qr is the signed ID card QR), on_hold (message asks to contact the office) or expired. route, pickup and drop stops with times, and the bus of the day. null when the child does not use the bus.',
+  })
+  @ApiEnvelope(ParentBusPassDto)
+  async busPass(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.busPasses.forParent(await this.access.childSchool(user.id, id), id);
   }
 
   @Get('driver-rating')

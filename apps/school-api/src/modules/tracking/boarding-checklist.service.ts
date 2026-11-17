@@ -82,6 +82,7 @@ export class BoardingChecklistService {
           photo_url: contacts.get(rider.student_id)?.photo_url ?? null,
           parents: contacts.get(rider.student_id)?.parents ?? [],
           pass_status: contacts.get(rider.student_id)?.pass_status ?? 'active',
+          pass_label: contacts.get(rider.student_id)?.pass_label ?? null,
         };
       }),
     };

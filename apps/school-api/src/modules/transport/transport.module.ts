@@ -18,6 +18,9 @@ import { DriverRatingsController } from './driver-ratings.controller';
 import { DriverRatingsService } from './driver-ratings.service';
 import { DriverRating } from './entities/driver-rating.entity';
 import { RouteBusSwap } from './entities/route-bus-swap.entity';
+import { BusFeeReminder, BusPass, BusPassSettings } from './entities/bus-pass.entity';
+import { BusPassController } from './bus-pass.controller';
+import { BusPassService } from './bus-pass.service';
 import { MobileDriverProfileController } from './mobile-driver-profile.controller';
 
 @Module({
@@ -33,6 +36,9 @@ import { MobileDriverProfileController } from './mobile-driver-profile.controlle
       RouteChange,
       DriverRating,
       RouteBusSwap,
+      BusPass,
+      BusPassSettings,
+      BusFeeReminder,
     ]),
     CrewModule,
   ],
@@ -42,8 +48,16 @@ import { MobileDriverProfileController } from './mobile-driver-profile.controlle
     MobileDriverController,
     MobileDriverProfileController,
     DriverRatingsController,
+    BusPassController,
   ],
-  providers: [VehicleDocumentsService, VehiclesService, RoutesService, DriverProfileService, DriverRatingsService],
-  exports: [VehiclesService, RoutesService, DriverRatingsService],
+  providers: [
+    VehicleDocumentsService,
+    VehiclesService,
+    RoutesService,
+    DriverProfileService,
+    DriverRatingsService,
+    BusPassService,
+  ],
+  exports: [VehiclesService, RoutesService, DriverRatingsService, BusPassService],
 })
 export class TransportModule {}

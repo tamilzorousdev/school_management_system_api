@@ -69,6 +69,10 @@ export const TEMPLATES = {
   BUS_DELAYED: 'BUS_DELAYED',
   BUS_HANDOVER: 'BUS_HANDOVER',
   BUS_HANDOVER_ONBOARD: 'BUS_HANDOVER_ONBOARD',
+  BUS_PASS_ISSUED: 'BUS_PASS_ISSUED',
+  BUS_FEE_REMINDER: 'BUS_FEE_REMINDER',
+  BUS_PASS_HELD: 'BUS_PASS_HELD',
+  BUS_PASS_ACTIVE: 'BUS_PASS_ACTIVE',
   PARENT_SIGNATURE_CHANGED: 'PARENT_SIGNATURE_CHANGED',
   SIGNATURE_SET_BY_SCHOOL: 'SIGNATURE_SET_BY_SCHOOL',
 } as const;
@@ -267,6 +271,82 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{student}} {{new_bus}} பேருந்துக்கு மாறுகிறார்',
         body: '{{trip_ta}} பயணத்தில் {{old_bus}} பழுதானது. {{student}} பாதுகாப்பாக உள்ளார்; பயணத்தை முடிக்க {{new_bus}} பேருந்துக்கு மாறுகிறார். {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PASS_ISSUED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus pass ready for {{student}}',
+        body: 'Thank you for paying the bus fee. The bus pass {{pass_no}} for {{student}} is ready in the app, valid until {{valid_until}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்து அனுமதிச் சீட்டு தயார்',
+        body: 'பேருந்துக் கட்டணம் செலுத்தியதற்கு நன்றி. {{student}} பேருந்து அனுமதிச் சீட்டு {{pass_no}} செயலியில் உள்ளது; {{valid_until}} வரை செல்லும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_FEE_REMINDER,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus fee reminder for {{student}}',
+        body: 'Dear Parent, the bus fee for {{student}} is pending. Please pay by {{grace_ends}} to keep the bus pass active.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்துக் கட்டண நினைவூட்டல்',
+        body: 'அன்புள்ள பெற்றோரே, {{student}} பேருந்துக் கட்டணம் நிலுவையில் உள்ளது. பேருந்து அனுமதிச் சீட்டு தொடர {{grace_ends}}-க்குள் செலுத்தவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PASS_HELD,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus pass on hold for {{student}}',
+        body: '{{reason}} Please pay in the app or contact the school office.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்து அனுமதிச் சீட்டு நிறுத்திவைப்பு',
+        body: '{{reason_ta}} செயலியில் செலுத்தவும் அல்லது பள்ளி அலுவலகத்தைத் தொடர்புகொள்ளவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PASS_ACTIVE,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus pass active again for {{student}}',
+        body: 'Thank you. The bus pass for {{student}} is active again.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்து அனுமதிச் சீட்டு மீண்டும் செயலில்',
+        body: 'நன்றி. {{student}} பேருந்து அனுமதிச் சீட்டு மீண்டும் செயலில் உள்ளது.',
         sms_body: null,
       },
     },
