@@ -10,13 +10,13 @@ import {
   ResponseMessage,
 } from '@app/common';
 import { ROLES } from '../access/access.catalog';
+import { DRIVER_MODULE_TAGS } from '../mobile/driver-modules.catalog';
 import { BoardingService } from './boarding.service';
 import { BoardingResultDto, RecordBoardingDto } from './dto/boarding.dto';
 import { RaiseSosDto, SosResultDto } from './dto/fleet-alert.dto';
 import { FleetAlertsService } from './fleet-alerts.service';
 import { TripsService } from './trips.service';
 
-@ApiTags('Mobile · Driver')
 @ApiBearerAuth()
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
 @RequireRoles(ROLES.DRIVER, ROLES.ATTENDANT)
@@ -29,6 +29,7 @@ export class DriverSafetyController {
   ) {}
 
   @Post('trips/:id/boardings')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_3)
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Saved')
   @ApiOperation({
@@ -49,6 +50,7 @@ export class DriverSafetyController {
   }
 
   @Post('sos')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_4)
   @ResponseMessage('SOS sent to the school office')
   @ApiOperation({
     summary: 'SOS: tell the school office and the transport in-charge right now (push and SMS)',

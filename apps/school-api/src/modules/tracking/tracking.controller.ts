@@ -27,6 +27,7 @@ import {
 } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS, ROLES } from '../access/access.catalog';
+import { DRIVER_MODULE_TAGS } from '../mobile/driver-modules.catalog';
 import {
   DriverTodayDto,
   PhonePositionDto,
@@ -93,7 +94,6 @@ export class AdminTripsController {
   }
 }
 
-@ApiTags('Mobile · Driver')
 @ApiBearerAuth()
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
 @RequireRoles(ROLES.DRIVER, ROLES.ATTENDANT)
@@ -102,6 +102,7 @@ export class DriverTripsController {
   constructor(private readonly trips: TripsService) {}
 
   @Get('today')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_1)
   @ApiOperation({
     summary: 'Home screen: my bus, the trip running now, and each route with today’s trips',
     description: 'Show a Start button per route (Morning pickup / Evening drop) when active_trip is null.',
@@ -112,6 +113,7 @@ export class DriverTripsController {
   }
 
   @Post()
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_2)
   @ResponseMessage('Trip started')
   @ApiOperation({
     summary: 'Start a trip on my bus',
@@ -126,6 +128,7 @@ export class DriverTripsController {
   }
 
   @Get(':id')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_2)
   @ApiOperation({
     summary: 'Trip screen: stops with status and ETA, the route path, students per stop and not-boarded list',
   })
@@ -139,6 +142,7 @@ export class DriverTripsController {
   }
 
   @Post(':id/end')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_2)
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Trip ended')
   @ApiOperation({ summary: 'End my trip by hand (it also ends by itself at school or after the last stop)' })
@@ -149,6 +153,7 @@ export class DriverTripsController {
   }
 
   @Post(':id/positions')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_2)
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiOperation({
     summary: 'Phone GPS fallback: send the phone location every 5–10 s while the trip runs',

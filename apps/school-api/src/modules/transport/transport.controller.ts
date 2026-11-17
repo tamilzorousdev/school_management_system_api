@@ -26,6 +26,7 @@ import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { VerifyDocumentDto } from '../../shared/verification';
 import { PERMISSIONS, ROLES } from '../access/access.catalog';
 import { ClearanceService } from '../crew/clearance.service';
+import { DRIVER_MODULE_TAGS } from '../mobile/driver-modules.catalog';
 import {
   AllowedTodayDto,
   AllowTodayDto,
@@ -415,7 +416,7 @@ export class StudentTransportController {
   }
 }
 
-@ApiTags('Mobile · Driver')
+@ApiTags(DRIVER_MODULE_TAGS.MODULE_1)
 @ApiBearerAuth()
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
 @RequireRoles(ROLES.DRIVER, ROLES.ATTENDANT)

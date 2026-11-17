@@ -11,14 +11,16 @@ import { Vehicle } from './entities/vehicle.entity';
 import { RoutesService } from './routes.service';
 import { MobileDriverController, StudentTransportController, TransportController } from './transport.controller';
 import { VehiclesService } from './vehicles.service';
+import { DriverProfileService } from './driver-profile.service';
+import { MobileDriverProfileController } from './mobile-driver-profile.controller';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Vehicle, TransportRoute, RouteStop, StudentTransport, ExpiryAlert, VehicleDocument]),
     CrewModule,
   ],
-  controllers: [TransportController, StudentTransportController, MobileDriverController],
-  providers: [VehicleDocumentsService, VehiclesService, RoutesService],
+  controllers: [TransportController, StudentTransportController, MobileDriverController, MobileDriverProfileController],
+  providers: [VehicleDocumentsService, VehiclesService, RoutesService, DriverProfileService],
   exports: [VehiclesService, RoutesService],
 })
 export class TransportModule {}

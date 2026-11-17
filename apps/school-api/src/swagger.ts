@@ -27,6 +27,7 @@ const TAGS: [string, string][] = [
   ['Me', 'Signed-in user profile and push device registration'],
   ['Me · Notifications', 'In-app notification centre'],
   ['Me · Announcements', 'School announcements sent to me, unread count and read receipts'],
+  ['Me · Emergency', 'Emergency alerts sent to me (Parent, Staff and Driver apps) and the "I have seen this" button'],
   ['Files', 'Uploads and signed download links'],
   [
     'Mobile · Parent · Module 1: Home, Children & Profile',
@@ -124,7 +125,26 @@ const TAGS: [string, string][] = [
     'Admin · Trips',
     'Live bus trips: start and end, stop timeline with ETA, riders and not-boarded list. Live updates over the /live socket.',
   ],
-  ['Mobile · Driver', 'Driver and attendant app: my bus, route, stops and students'],
+  [
+    'Mobile · Driver · Module 1: Home, My Bus & Duty',
+    'Home screen with my bus, the trip running now and today’s trips; my routes and stops in order with the students at each stop',
+  ],
+  [
+    'Mobile · Driver · Module 2: Trips & Live Tracking',
+    'Start the morning pickup or evening drop, the trip screen with stop status and ETA, phone GPS fallback, end the trip',
+  ],
+  [
+    'Mobile · Driver · Module 3: Student Boarding',
+    'Mark students on and off the bus by ID card QR scan or tap; parents are told at once',
+  ],
+  [
+    'Mobile · Driver · Module 4: Safety & SOS',
+    'SOS button that alerts the school office and the transport in-charge by push and SMS',
+  ],
+  [
+    'Mobile · Driver · Module 5: My Profile & Vehicle',
+    'My details, licence and badge, duty clearance checks and documents, my bus with its details and documents; edit my contact details and photo',
+  ],
   ['Integrations', 'Machine-to-machine webhooks such as biometric punches (X-Device-Key)'],
   ['Admin · Admissions', 'Applications: applied, approved, rejected, enrolled'],
   ['Admin · Parents and guardians', 'Parents with their children'],
@@ -308,8 +328,9 @@ const AUDIENCES: AudienceConfig[] = [
     jsonSlug: 'mobile-driver',
     title: 'Tamilzorous School Management API · Mobile · Driver App',
     intro:
-      'Routes for the Driver and Attendant mobile app: bus route, stops, riders and trips, plus sign-in, `/me` and files.',
+      'Routes for the Driver and Attendant mobile app: Modules 1 to 5 (home and duty, trips and live tracking, student boarding, safety and SOS, my profile and vehicle), plus sign-in, `/me` and files.',
     owns: /^\/api\/v\d+\/mobile\/driver\//,
+    stripPrefix: 'Mobile · Driver · ',
   },
 ];
 
@@ -467,8 +488,8 @@ const SWAGGER_CUSTOM_JS = `
         inGroupClass: 'in-group-driver',
         icon: '🚌',
         title: 'Mobile · Driver App',
-        badge: 'Driver App',
-        desc: 'Driver and attendant operations: bus route, stops and riders',
+        badge: '5 Modules',
+        desc: 'Home and duty, Trips and live tracking, Student boarding, Safety and SOS, My profile and vehicle',
         match: function(tag) { return tag.indexOf('Driver') !== -1; }
       },
       {
@@ -480,7 +501,7 @@ const SWAGGER_CUSTOM_JS = `
         badge: 'Auth & Files',
         desc: 'OTP sign-in, token refresh, user profile, notifications, announcements and file uploads',
         match: function(tag) {
-          return ['Auth', 'Me', 'Me · Notifications', 'Me · Announcements', 'Files', 'Health'].indexOf(tag) !== -1;
+          return ['Auth', 'Me', 'Me · Notifications', 'Me · Announcements', 'Me · Emergency', 'Files', 'Health'].indexOf(tag) !== -1;
         }
       }
     ];
@@ -544,12 +565,13 @@ function cleanTags(document: OpenAPIObject): OpenAPIObject {
       const operations = Object.fromEntries(
         Object.entries(item).map(([method, operation]) => {
           if (typeof operation !== 'object' || !operation || !('tags' in operation)) return [method, operation];
-          const tags =
+          const kept =
             (operation.tags as string[] | undefined)?.filter((tag) => {
               if (tag.startsWith('Mobile')) return validTagNames.has(tag);
               return true;
             }) ?? [];
-          return [method, { ...operation, tags }];
+          const modules = kept.filter((tag) => tag.startsWith('Mobile'));
+          return [method, { ...operation, tags: modules.length ? modules : kept }];
         }),
       );
       return [path, operations];
@@ -629,7 +651,7 @@ export function setupSwagger(app: INestApplication): void {
     { name: 'Mobile app (All)', url: '/api/docs/mobile-json' },
     { name: 'Mobile · Teacher App (Modules 1 - 10)', url: '/api/docs/mobile-teacher-json' },
     { name: 'Mobile · Parent App (Modules 1 - 8)', url: '/api/docs/mobile-parent-json' },
-    { name: 'Mobile · Driver App', url: '/api/docs/mobile-driver-json' },
+    { name: 'Mobile · Driver App (Modules 1 - 5)', url: '/api/docs/mobile-driver-json' },
   ];
 
   for (const audience of AUDIENCES) {

@@ -148,3 +148,29 @@ async function seedCrew(manager: EntityManager, schoolId: number, today: string)
     }
   }
 }
+
+const CREW_PROFILES: Record<string, { email: string; contact: string }> = {
+  '9000000007': { email: 'ganesan.driver@tamilzorous.in', contact: 'Lakshmi Ganesan (wife)' },
+  '9000000008': { email: 'revathi.attendant@tamilzorous.in', contact: 'Kannan R (husband)' },
+  '9000000701': { email: 'muthu.driver@tamilzorous.in', contact: 'Selvi Muthu (wife)' },
+  '9000000702': { email: 'saroja.attendant@tamilzorous.in', contact: 'Velu S (husband)' },
+};
+
+export async function seedDriverProfiles(manager: EntityManager, school: School): Promise<void> {
+  const users = await manager.findBy(User, { school_id: school.id, mobile: In(Object.keys(CREW_PROFILES)) });
+  let filled = 0;
+  for (const user of users) {
+    const profile = CREW_PROFILES[user.mobile]!;
+    const staff = await manager.findOneBy(Staff, { school_id: school.id, user_id: user.id });
+    if (!staff) continue;
+    if (!user.email) {
+      await manager.update(User, user.id, { email: profile.email });
+      filled += 1;
+    }
+    if (!staff.emergency_contact_name || staff.emergency_contact_name === 'Family contact') {
+      await manager.update(Staff, staff.id, { emergency_contact_name: profile.contact });
+      filled += 1;
+    }
+  }
+  console.log(`  Driver profiles: ${filled ? `${filled} details filled` : 'already set up: kept'}`);
+}
