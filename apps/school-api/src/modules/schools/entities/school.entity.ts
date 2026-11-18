@@ -87,6 +87,9 @@ export class School extends TrackedEntity {
   @Column({ type: 'smallint', default: 15 })
   attendance_grace_minutes: number;
 
+  @Column({ type: 'smallint', default: 30 })
+  class_periods_per_week: number;
+
   @Column({ type: 'varchar', length: 10, default: 'session' })
   attendance_mode: AttendanceMode;
 

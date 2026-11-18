@@ -10,6 +10,7 @@ import { StaffBankAccount } from './entities/staff-bank-account.entity';
 import { StaffDocument } from './entities/staff-document.entity';
 import { StaffQualification } from './entities/staff-qualification.entity';
 import { Staff } from './entities/staff.entity';
+import { TeacherAssignmentChange } from './entities/teacher-assignment-change.entity';
 import { TeacherAssignment } from './entities/teacher-assignment.entity';
 import { AppraisalsService } from './appraisals.service';
 import { StaffAppraisalController } from './staff-appraisal.controller';
@@ -19,6 +20,7 @@ import { StaffService } from './staff.service';
 @Module({
   imports: [
     TypeOrmModule.forFeature([
+      TeacherAssignmentChange,
       Staff,
       StaffQualification,
       StaffDocument,

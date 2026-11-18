@@ -39,6 +39,8 @@ import {
   ExpiryUnit,
   RECIPIENT_KINDS,
   RecipientKind,
+  STAFF_GROUPS,
+  StaffGroup,
 } from '../entities/emergency.entity';
 import { BROADCAST_STATES, BroadcastState } from '../emergency.logic';
 
@@ -85,6 +87,20 @@ export class EmergencyAudienceDto {
   @IsOptional()
   @IsBoolean()
   include_teachers?: boolean;
+
+  @ApiPropertyOptional({
+    type: [String],
+    enum: STAFF_GROUPS,
+    example: ['drivers'],
+    description:
+      'With audience staff: only these groups. teachers = teaching staff, drivers = drivers and attendants, office = other non-teaching staff. Leave out for all staff.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Choose at least one staff group' })
+  @ArrayUnique()
+  @IsIn(STAFF_GROUPS, { each: true, message: 'staff_groups must be teachers, drivers or office' })
+  staff_groups?: StaffGroup[];
 }
 
 export class ExpiryDto {
@@ -322,6 +338,9 @@ export class EmergencyBroadcastDto {
 
   @ApiProperty()
   include_teachers: boolean;
+
+  @ApiProperty({ type: [String], enum: STAFF_GROUPS, description: 'Staff groups it went to; empty = all staff' })
+  staff_groups: StaffGroup[];
 
   @ApiProperty({ type: [String], enum: EMERGENCY_CHANNELS })
   channels: EmergencyChannel[];

@@ -18,6 +18,9 @@ export type EmergencySeverity = (typeof EMERGENCY_SEVERITIES)[number];
 export const EMERGENCY_AUDIENCES = ['everyone', 'parents', 'staff', 'classes', 'sections', 'students'] as const;
 export type EmergencyAudience = (typeof EMERGENCY_AUDIENCES)[number];
 
+export const STAFF_GROUPS = ['teachers', 'drivers', 'office'] as const;
+export type StaffGroup = (typeof STAFF_GROUPS)[number];
+
 export const EMERGENCY_CHANNELS = ['push', 'sms'] as const;
 export type EmergencyChannel = (typeof EMERGENCY_CHANNELS)[number];
 
@@ -92,6 +95,9 @@ export class EmergencyBroadcast extends SchoolScopedEntity {
 
   @Column({ type: 'boolean', default: false })
   include_teachers: boolean;
+
+  @Column({ type: 'varchar', length: 10, array: true, nullable: true })
+  staff_groups: StaffGroup[] | null;
 
   @Column({ type: 'varchar', length: 10, array: true })
   channels: EmergencyChannel[];
