@@ -1,8 +1,9 @@
-import { Column, Entity, Index } from 'typeorm';
+import { Check, Column, Entity, Index } from 'typeorm';
 import { SchoolScopedEntity } from '@app/common';
 import { money } from '../../payroll/entities/money';
 
 @Entity('fee_invoice_lines')
+@Check('CHK_fee_invoice_lines_amount', `"amount" >= 0`)
 export class FeeInvoiceLine extends SchoolScopedEntity {
   @Index()
   @Column({ type: 'int' })

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import { AppException } from '@app/common';
+import { AppException, AuthUser } from '@app/common';
 import {
   AcademicYearDto,
   AcademicYearInputDto,
@@ -9,7 +9,7 @@ import {
   UpdateAcademicYearDto,
   UpdateTermDto,
 } from './dto/setup.dto';
-import { AcademicYear } from './entities/academic-year.entity';
+import { AcademicYear, AcademicYearStatus } from './entities/academic-year.entity';
 import { Term } from './entities/term.entity';
 import { yearWhere } from '../../shared/year-context';
 
@@ -27,7 +27,8 @@ export class AcademicYearsService {
       relations: { terms: true },
       order: { start_date: 'DESC', terms: { sort_order: 'ASC', start_date: 'ASC' } },
     });
-    return years.map((year) => this.present(year));
+    const names = await this.userNames(years.flatMap((year) => actorsOf(year)));
+    return years.map((year) => this.present(year, names));
   }
 
   async current(schoolId: number): Promise<AcademicYear> {
@@ -44,7 +45,7 @@ export class AcademicYearsService {
       relations: { terms: true },
       order: { terms: { sort_order: 'ASC' } },
     });
-    return year ? this.present(year) : null;
+    return year ? this.present(year, await this.userNames(actorsOf(year))) : null;
   }
 
   async resolve(schoolId: number, yearId?: number): Promise<AcademicYear> {
@@ -58,27 +59,43 @@ export class AcademicYearsService {
     return year;
   }
 
-  async create(schoolId: number, dto: AcademicYearInputDto): Promise<AcademicYearDto> {
+  async create(schoolId: number, dto: AcademicYearInputDto, actor: AuthUser): Promise<AcademicYearDto> {
     this.assertRange(dto.start_date, dto.end_date);
     await this.assertNameFree(schoolId, dto.name);
+    await this.assertNoOverlap(schoolId, dto.start_date, dto.end_date);
     const hasCurrent = await this.years.exists({ where: { school_id: schoolId, is_current: true } });
     const id = await this.dataSource.transaction(async (manager) => {
       const makeCurrent = dto.is_current ?? !hasCurrent;
-      if (makeCurrent) await this.clearCurrent(manager, schoolId);
+      if (makeCurrent) await this.closeCurrent(manager, schoolId, actor.id);
       const year = await manager.save(
-        manager.create(AcademicYear, { ...dto, school_id: schoolId, is_current: makeCurrent }),
+        manager.create(AcademicYear, {
+          ...dto,
+          school_id: schoolId,
+          is_current: makeCurrent,
+          status: makeCurrent ? 'active' : 'draft',
+          activated_at: makeCurrent ? new Date() : null,
+          activated_by: makeCurrent ? actor.id : null,
+        }),
       );
       return year.id;
     });
     return this.get(schoolId, id);
   }
 
-  async update(schoolId: number, id: number, dto: UpdateAcademicYearDto): Promise<AcademicYearDto> {
+  async update(schoolId: number, id: number, dto: UpdateAcademicYearDto, actor: AuthUser): Promise<AcademicYearDto> {
     const year = await this.find(schoolId, id);
     const start = dto.start_date ?? year.start_date;
     const end = dto.end_date ?? year.end_date;
     this.assertRange(start, end);
     if (dto.name && dto.name !== year.name) await this.assertNameFree(schoolId, dto.name);
+    const datesChanged = start !== year.start_date || end !== year.end_date;
+    if (datesChanged && (year.status === 'closed' || year.status === 'archived')) {
+      throw AppException.conflict(`${year.name} is ${year.status}. Its dates cannot change.`, 'YEAR_CLOSED');
+    }
+    if (datesChanged) await this.assertNoOverlap(schoolId, start, end, id);
+    if (dto.is_current && !year.is_current && year.status === 'archived') {
+      throw AppException.conflict(`Restore ${year.name} before making it current`, 'YEAR_ARCHIVED');
+    }
     if (dto.is_current === false && year.is_current) {
       throw AppException.badRequest(
         'Make another year current instead of switching this one off',
@@ -96,10 +113,36 @@ export class AcademicYearsService {
         'TERMS_OUTSIDE_YEAR',
       );
 
+    const { is_current: makeCurrent, ...changes } = dto;
     await this.dataSource.transaction(async (manager) => {
-      if (dto.is_current && !year.is_current) await this.clearCurrent(manager, schoolId);
-      await manager.update(AcademicYear, id, dto);
+      if (Object.keys(changes).length) await manager.update(AcademicYear, id, changes);
+      if (makeCurrent && !year.is_current) await this.makeActive(manager, year, actor.id);
     });
+    return this.get(schoolId, id);
+  }
+
+  async activate(schoolId: number, id: number, actor: AuthUser): Promise<AcademicYearDto> {
+    const year = await this.find(schoolId, id);
+    if (year.status === 'archived') {
+      throw AppException.conflict(`Restore ${year.name} before making it current`, 'YEAR_ARCHIVED');
+    }
+    if (!year.is_current) {
+      await this.dataSource.transaction((manager) => this.makeActive(manager, year, actor.id));
+    }
+    return this.get(schoolId, id);
+  }
+
+  async archive(schoolId: number, id: number, actor: AuthUser): Promise<AcademicYearDto> {
+    const year = await this.find(schoolId, id);
+    this.assertTransition(year, 'archived', ['closed']);
+    await this.years.update(id, { status: 'archived', archived_at: new Date(), archived_by: actor.id });
+    return this.get(schoolId, id);
+  }
+
+  async restore(schoolId: number, id: number): Promise<AcademicYearDto> {
+    const year = await this.find(schoolId, id);
+    this.assertTransition(year, 'closed', ['archived']);
+    await this.years.update(id, { status: 'closed', archived_at: null, archived_by: null });
     return this.get(schoolId, id);
   }
 
@@ -153,11 +196,58 @@ export class AcademicYearsService {
       order: { terms: { sort_order: 'ASC', start_date: 'ASC' } },
     });
     if (!year) throw AppException.notFound('Academic year not found', 'YEAR_NOT_FOUND');
-    return this.present(year);
+    return this.present(year, await this.userNames(actorsOf(year)));
   }
 
-  private async clearCurrent(manager: EntityManager, schoolId: number): Promise<void> {
-    await manager.update(AcademicYear, { school_id: schoolId, is_current: true }, { is_current: false });
+  private async makeActive(manager: EntityManager, year: AcademicYear, actorId: number): Promise<void> {
+    await this.closeCurrent(manager, year.school_id, actorId);
+    await manager.update(AcademicYear, year.id, {
+      is_current: true,
+      status: 'active',
+      activated_at: new Date(),
+      activated_by: actorId,
+    });
+  }
+
+  private async closeCurrent(manager: EntityManager, schoolId: number, actorId: number): Promise<void> {
+    await manager.update(
+      AcademicYear,
+      { school_id: schoolId, is_current: true },
+      { is_current: false, status: 'closed', closed_at: new Date(), closed_by: actorId },
+    );
+  }
+
+  private assertTransition(year: AcademicYear, to: AcademicYearStatus, from: AcademicYearStatus[]): void {
+    if (from.includes(year.status)) return;
+    const hint =
+      year.status === 'active'
+        ? 'Make another year current first; the current year is then closed.'
+        : `Only a ${from.join(' or ')} year can be ${to === 'closed' ? 'restored' : to}.`;
+    throw AppException.conflict(`${year.name} is ${year.status}. ${hint}`, 'INVALID_STATUS_TRANSITION');
+  }
+
+  private async assertNoOverlap(schoolId: number, start: string, end: string, exceptId?: number): Promise<void> {
+    const qb = this.years
+      .createQueryBuilder('y')
+      .where('y.school_id = :schoolId AND y.start_date <= :end AND y.end_date >= :start', { schoolId, start, end });
+    if (exceptId) qb.andWhere('y.id <> :exceptId', { exceptId });
+    const clash = await qb.getOne();
+    if (clash) {
+      throw AppException.conflict(
+        `These dates overlap ${clash.name} (${clash.start_date} to ${clash.end_date})`,
+        'YEAR_OVERLAPS',
+      );
+    }
+  }
+
+  private async userNames(ids: (number | null)[]): Promise<Map<number, string>> {
+    const unique = [...new Set(ids.filter((id): id is number => id !== null))];
+    if (!unique.length) return new Map();
+    const rows: { id: number; name: string }[] = await this.dataSource.query(
+      `SELECT u.id, u.name FROM users u WHERE u.id = ANY($1)`,
+      [unique],
+    );
+    return new Map(rows.map((row) => [Number(row.id), row.name]));
   }
 
   private async assertNameFree(schoolId: number, name: string): Promise<void> {
@@ -180,16 +270,29 @@ export class AcademicYearsService {
     }
   }
 
-  private present(year: AcademicYear): AcademicYearDto {
+  private present(year: AcademicYear, names: Map<number, string>): AcademicYearDto {
+    const nameOf = (id: number | null) => (id === null ? null : (names.get(id) ?? null));
     return {
       id: year.id,
       name: year.name,
       start_date: year.start_date,
       end_date: year.end_date,
       is_current: year.is_current,
+      status: year.status,
+      description: year.description,
+      activated_at: year.activated_at,
+      activated_by: nameOf(year.activated_by),
+      closed_at: year.closed_at,
+      closed_by: nameOf(year.closed_by),
+      archived_at: year.archived_at,
+      archived_by: nameOf(year.archived_by),
       terms: (year.terms ?? [])
         .filter((term) => !term.deleted_at)
         .map(({ id, name, start_date, end_date, sort_order }) => ({ id, name, start_date, end_date, sort_order })),
     };
   }
+}
+
+function actorsOf(year: AcademicYear): (number | null)[] {
+  return [year.activated_by, year.closed_by, year.archived_by];
 }

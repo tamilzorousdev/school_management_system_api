@@ -204,7 +204,9 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 | `PAYMENT_EXCEEDS_BALANCE`, `DISCOUNT_TOO_HIGH`, `NO_PLAN_FOR_INSTALLMENT` | 400 | Fees: the amount is more than the invoice balance, the discount goes below what is paid, or no plan has that installment |
 | `INVOICE_PAID`, `INVOICE_CANCELLED`, `INVOICE_HAS_PAYMENTS` | 409 | Fees: nothing left to pay, the invoice is cancelled, or it has payments and cannot be cancelled |
 | `FEE_HEAD_EXISTS`, `TRANSPORT_HEAD_EXISTS`, `FEE_HEAD_IN_USE` | 409 | Fees: head code taken, a transport head already exists, or the head is on plans or invoices |
-| `INVOICE_NOT_FOUND`, `RECEIPT_NOT_FOUND`, `FEE_HEAD_NOT_FOUND` | 404 | Fees: not found or in another school (or another child for parents) |
+| `INVOICE_NOT_FOUND`, `RECEIPT_NOT_FOUND`, `FEE_HEAD_NOT_FOUND`, `PAYMENT_NOT_FOUND` | 404 | Fees: not found or in another school (or another child for parents) |
+| `YEAR_OVERLAPS`, `YEAR_CLOSED`, `YEAR_ARCHIVED`, `INVALID_STATUS_TRANSITION` | 409 | Academic years: the dates overlap another year; a closed or archived year's dates or fee plans cannot change; an archived year takes no fee changes (restore it first); the year is not in a status that allows this step |
+| `PAYMENT_ALREADY_REVERSED`, `IDEMPOTENCY_CONFLICT`, `BALANCE_MISMATCH` | 409 | Fees: the payment was reversed before; the `Idempotency-Key` was used for another invoice or amount; the invoice shows less paid than the payment being reversed (run the balance check) |
 | `EXAM_NOT_FOUND`, `SECTION_NOT_IN_EXAM`, `SUBJECT_NOT_IN_EXAM`, `CLASS_NOT_IN_EXAM` | 404 | Exams: the exam, or this section or subject in it, does not exist |
 | `NOT_YOUR_SUBJECT` | 403 | Staff app: the teacher neither teaches this subject in the section nor is its class teacher |
 | `EXAM_PUBLISHED` | 409 | Results are out: teachers can no longer change marks and the exam cannot be deleted |
@@ -909,7 +911,195 @@ Parents get `FEE_DUE` (category `fees`) when the school raises an invoice, and `
 
 ### Admin web
 
-`/admin/fees/heads` (CRUD; one transport head), `/admin/fees/plans` and `/admin/fees/plans/{classId}` (`GET`, `PUT` the lines of a class: head, installment, amount, due date), `/admin/fees/installments`, `POST /admin/fees/invoices/generate` `{ class_id?, installment, due_date? }` (safe to run again), `/admin/fees/invoices` (search, `status`, `class_id`, `section_id`, `installment`, `overdue`), `/admin/fees/invoices/{id}`, `PATCH .../discount`, `POST .../cancel`, `POST .../payments`, `/admin/fees/payments` (+ `/summary`, `from`, `to`, `mode`), `/admin/fees/payments/{id}/receipt`, `/admin/fees/insights` and `/admin/students/{id}/fees`. Transport line on an invoice = stop `monthly_fee` × months since the previous installment's due date (the year start for the first one), at least 1. Permissions `fees.view` (Principal, AO) and `fees.manage` (AO).
+`/admin/fees/heads` (CRUD; one transport head; see **Fee head details** below), `/admin/fees/plans` and `/admin/fees/plans/{classId}` (`GET`, `PUT` saves a draft of the lines: head, installment, amount, due date; see **Fee plan approval** below), `/admin/fees/installments`, `POST /admin/fees/invoices/generate` `{ class_id?, installment, due_date? }` (safe to run again), `/admin/fees/invoices` (search, `status`, `class_id`, `section_id`, `installment`, `overdue`), `/admin/fees/invoices/{id}`, `PATCH .../discount`, `POST .../cancel`, `POST .../payments`, `/admin/fees/payments` (+ `/summary`, `from`, `to`, `mode`), `/admin/fees/payments/{id}/receipt`, `/admin/fees/insights` and `/admin/students/{id}/fees`. Transport line on an invoice = stop `monthly_fee` × months since the previous installment's due date (the year start for the first one), at least 1.
+
+**Permissions.** Each fee action has its own permission, so a school can keep setup, collection and corrections apart:
+
+| Permission | Routes | Roles |
+|---|---|---|
+| `fees.view` | Every `GET` above | Admin, Principal, AO |
+| `fees.configure` | Heads (`POST`, `PATCH`, `DELETE`), `PUT /admin/fees/plans/{classId}` | Admin, AO |
+| `fees.assign` | `POST /admin/fees/invoices/generate` | Admin, AO |
+| `fees.collect` | `POST /admin/fees/invoices/{id}/payments`, `POST /admin/fees/overdue-reminders` | Admin, AO |
+| `fees.adjust` | Ask for: `PATCH .../discount`, `POST .../cancel`, `POST .../refunds`, `POST /admin/fees/payments/{id}/reverse`; `POST /admin/fees/requests/{id}/withdraw` | Admin, AO |
+| `fees.audit` | `GET /admin/fees/audit-logs`, `GET /admin/fees/reconciliation` | Admin, Principal |
+
+The **Accountant** role (`ACCOUNTANT`, admin web) has `fees.view`, `fees.collect` and `fees.adjust`, plus `students.view`. An accountant can see fees, record payments and ask for discounts, refunds, cancellations, reversals, write-offs and due date changes, but cannot approve them or change fee plans and settings. Demo user: `9000000009`.
+| `fees.approve` | `POST /admin/fees/plans/{classId}/approve` and `/reject`, `POST /admin/fees/requests/{id}/approve` and `/reject` | Admin, AO |
+
+Concessions and scholarships: creating, changing and deleting them needs `fees.configure`; giving and withdrawing them needs `fees.adjust`.
+
+`fees.manage` is still given to Admin and AO for the admin web's buttons, but no route checks it any more. The web should switch to the permissions above.
+
+**Recording a payment safely.** Send an `Idempotency-Key` header (8 to 80 letters, digits, `_ . : -`; a UUID made when the payment form opens) with `POST /admin/fees/invoices/{id}/payments`. If the same request is sent again (double click, retry after a timeout), the API returns the first payment instead of recording a second one. The same key with another invoice or amount is refused with `409 IDEMPOTENCY_CONFLICT`. The header is optional, but without it a repeated request records the payment twice.
+
+**Approval of discounts, cancellations, reversals and refunds.** These four routes no longer change anything directly. Each one validates the change, then creates a pending request and answers **202** with the request:
+
+- `PATCH .../discount` `{ discount, reason }`: `reason` is now required.
+- `POST .../cancel` `{ reason }`: `reason` is now required.
+- `POST /admin/fees/payments/{id}/reverse` `{ reason }`.
+- `POST /admin/fees/invoices/{id}/refunds` `{ amount, mode, reference?, paid_on?, reason }`.
+- `POST /admin/fees/invoices/{id}/reschedule` `{ due_date, reason }` moves the due date. The new date must be inside the invoice's year, and the invoice must still have a balance (409 `INVOICE_PAID`). On approval, `original_due_date` keeps the first date and overdue reminders start again from the new one.
+
+The invoice changes only when someone with `fees.approve` approves:
+
+- `POST /admin/fees/requests/{id}/approve` `{ comment? }` checks the change again and applies it in the same transaction.
+- `POST /admin/fees/requests/{id}/reject` `{ comment }`.
+- The person who asked cannot approve it (403 `SELF_APPROVAL`). With only an AO and the School Admin, one approves the other's requests.
+- The person who asked can `POST .../withdraw` (403 `NOT_REQUESTER` for anyone else).
+- Only one request of a kind can wait per invoice, or per payment for a reversal (409 `REQUEST_PENDING`). A decided request returns 409 `REQUEST_NOT_PENDING`.
+- `GET /admin/fees/requests` filters by `status`, `kind`, `invoice_id` and `student_id`; `search` matches the student, invoice number and reason.
+- Each request has `kind` (`discount`, `cancel`, `reversal`, `refund`, `reschedule`, `write_off`), `status` (`pending`, `approved`, `rejected`, `withdrawn`), `invoice`, `payment`, `student`, `amount`, `details`, `reason`, `requested_by`/`requested_at` and `decided_by`/`decided_at`/`decision_comment`.
+- The invoice detail adds `pending_requests[]` (with `details`), so screens can show what is waiting.
+
+Notifications are sent in-app and by push only, never SMS:
+
+| Template | When | To |
+|---|---|---|
+| `FEE_APPROVAL_NEEDED` | A request is made | Everyone in the school with `fees.approve`, except the person who asked |
+| `FEE_REQUEST_APPROVED`, `FEE_REQUEST_REJECTED` | A request is decided | The person who asked |
+| `FEE_REFUND_PAID` | A refund is approved | The student's guardians who receive alerts |
+| `FEE_PAYMENT_REVERSED` | A reversal is approved | Same |
+| `FEE_DUE_DATE_CHANGED` | A new due date is approved | Same |
+| `FEE_LATE_FEE` | A late fee is added | Same |
+
+`GET /admin/fees/insights` adds `concessions`, `discounts`, `late_fees`, `refunded` (this year) and `pending_requests` (waiting now).
+
+**Refunds.** Only the paid amount of refundable fee heads (`is_refundable`) can be refunded, less earlier refunds (409 `NOTHING_TO_REFUND`, 400 `REFUND_TOO_HIGH`).
+
+- An approved refund gets its own number (`<SCHOOL>-RFD-<year>-NNNN`) and adds to the invoice's `refunded`.
+- `paid` still shows what was received, and `balance` does not change.
+- The invoice detail adds `refunds[]`.
+- The daily collection report has Refunds and Net columns.
+
+**Late fee and grace days.**
+
+- `GET /admin/fees/settings` returns the school's settings. `PUT /admin/fees/settings` `{ grace_days (0–90), late_fee_type (none, flat, percent), late_fee_value }` changes them and needs `fees.configure`. Defaults: no late fee, 0 grace days.
+- Every day at 06:30, an unpaid or partly paid invoice whose due date plus the grace days has passed gets the late fee **once**. It is added as a "Late fee" line (no fee head) that raises `gross`, `total` and `balance`. The invoice's `late_fee` holds the amount.
+  - `flat` is `late_fee_value` rupees.
+  - `percent` is `late_fee_value` % of the balance at that time, rounded to the paisa.
+- `POST /admin/fees/late-fees/run` applies it now.
+- Invoices of archived years are skipped.
+- Overdue reminders to parents also wait for the grace days.
+- To remove a late fee from an invoice, ask for a discount.
+
+**One payment across invoices and advance credit.** `POST /admin/fees/students/{id}/payments` `{ amount, mode, reference?, paid_on?, notes? }` needs `fees.collect`. Send an `Idempotency-Key` header; a retry returns the first result with `replayed: true`.
+
+- It pays the student's unpaid invoices oldest due date first. Earlier years are included; archived years are left out. Each invoice gets its own payment and receipt, linked by `collection_id`.
+- Anything left over is kept as **advance credit**, with its own receipt number (`advance_receipt_no`).
+- The answer is `{ collection_id, amount, applied_amount, advance_amount, advance_receipt_no, credit_balance, replayed, payments[] }`.
+- Credit is used automatically when invoices are raised (`POST /admin/fees/invoices/generate`). `POST /admin/fees/students/{id}/apply-credit` uses it on unpaid invoices now. Credit used this way is a payment with `mode: "credit"`.
+- Reversing a credit payment returns the amount to the credit.
+- `mode` on every payment input is `cash`, `upi`, `card`, `bank_transfer` or `cheque`. Payments can also show `online` (Razorpay) and `credit`.
+- Money-received figures (today's collection, `/payments/summary`, the collection report) leave out `credit` payments, because that money was already counted as advance when it came in. `GET /admin/fees/insights` adds `todays_advance`. The collection report has an Advance column.
+- The student fee summary (admin and parent) adds `credit_balance` and `advances[]` (`{ collection_id, receipt_no, amount, collected, mode, paid_on }`, newest first): one entry per payment that had a part kept as advance.
+- Advance receipt PDF: `GET /admin/fees/collections/{collection_id}/advance-receipt` (`fees.view`) and `GET /mobile/parent/children/{id}/fees/advance-receipts/{collection_id}`. It shows the amount paid, the part paid towards each invoice (those have their own receipts) and the part kept as advance. 404 `RECEIPT_NOT_FOUND` when the payment had no advance.
+
+**Transfer certificate with dues.** `POST /admin/students/{id}/exit` answers 409 `FEE_DUES_PENDING` (the message gives the amount) when the student has unpaid fees. Send `acknowledge_dues: true` to issue the TC anyway. The dues stay on record, and the TC stores `fee_balance`. To stop collecting them, ask for a write-off: `POST /admin/fees/invoices/{id}/write-off` `{ reason }` (needs approval, kind `write_off`). On approval the balance is added to the discount as "Written off: <reason>" and the invoice becomes paid.
+
+**Online payment (Razorpay).** It is switched off until `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` are set (otherwise 503 `ONLINE_PAYMENTS_OFF`).
+
+1. The parent app calls `POST /mobile/parent/children/{id}/fees/invoices/{invoiceId}/pay-online` `{ amount? }`. The amount defaults to the balance and cannot be more. It returns `{ gateway, key_id, order_id, amount_paise, amount, currency, name, description, prefill }` for the Razorpay checkout.
+2. After the checkout succeeds, the app sends `razorpay_order_id`, `razorpay_payment_id` and `razorpay_signature` to `POST /mobile/parent/children/{id}/fees/online-payments/verify`.
+3. The API checks the signature (400 `INVALID_PAYMENT_SIGNATURE`) and records the payment as a collection with `mode: "online"`. The paid invoice comes first; anything over becomes credit.
+
+Also set up the webhook `POST /api/v1/integrations/razorpay/webhook`:
+
+- Add it in Razorpay Dashboard → Webhooks with the events `payment.captured`, `order.paid` and `payment.failed`, and the secret `RAZORPAY_WEBHOOK_SECRET`.
+- It records payments the app could not confirm.
+- A payment is recorded only once, whichever arrives first.
+
+`GET /admin/fees/online-payments` lists orders (`status`: `created`, `paid`, `failed`).
+
+**Previous dues.** `GET /mobile/parent/children/{id}/fees` and `GET /admin/students/{id}/fees` add `previous_dues: { amount, invoices, academic_years }`. This is the unpaid balance of invoices from academic years before the current one. It is already part of `balance`; it is shown apart so parents can see what is left from earlier years.
+
+**Reversing a payment.** A reversal (after approval) is for a bounced cheque or a payment entered by mistake. The payment is never deleted: it keeps its receipt number and gets `status: "reversed"`, `reversed_at`, `reversed_by` and `reversal_reason`, and the invoice's `paid`, `balance` and `status` go back. Reversing twice returns `409 PAYMENT_ALREADY_REVERSED`. Its receipt PDF is marked REVERSED.
+
+Every payment in every response (admin and parent) now carries `status` (`success` or `reversed`) and the three reversal fields. Reversed payments are still listed in payment history, but they never count as paid: they are left out of invoice and student totals, `last_payment`, `/payments/summary`, today's collection and the dashboard. `GET /admin/fees/payments?status=success|reversed` filters the list.
+
+**Fee head details.** Besides `name`, `code`, `is_transport` and `is_active`, a head has `description`, `fee_group` (free text such as Academic or Activities), `is_mandatory` (default `true`; `false` marks an optional fee such as sports or uniform), `frequency` (`one_time`, `monthly`, `quarterly`, `half_yearly`, `yearly`, `per_term`, `custom`; default `custom`; for display and reports, the plan still sets the installments), `is_refundable` (default `false`) and `applicable_class_ids` (empty = every class). `GET /admin/fees/heads` filters by `is_mandatory`, `frequency` and `fee_group`. A head limited to some classes cannot go on another class's plan (400 on `lines.N.fee_head_id`), and its classes cannot be narrowed while a plan of the current or a draft year for a left-out class uses it (400 on `applicable_class_ids`).
+
+**Fee plan approval.** A class's fee plan changes only through an approved version, and only the version in use (`fee_plans`) is used for invoices.
+
+- `PUT /admin/fees/plans/{classId}` now saves a **draft**. The first save creates version n+1; later saves replace the same draft. It no longer changes the plan in use. While a version is waiting for approval it returns 409 `PLAN_PENDING_APPROVAL`.
+- `POST .../submit` `{ note? }` sends the draft for approval.
+- `POST .../approve` `{ comment? }` makes it the plan in use. The previous version becomes `superseded`. The person who sent it cannot approve it (403 `SELF_APPROVAL`).
+- `POST .../reject` `{ comment }` (at least 3 characters) sends it back as a draft, with the comment.
+- `DELETE .../draft` throws the draft away.
+- With nothing waiting, approve and reject return 409 `PLAN_NOT_PENDING`. With no draft, submit and discard return 404 `PLAN_DRAFT_NOT_FOUND`.
+- `GET /admin/fees/plans/{classId}` adds `version` (the version in use, `null` if none) and `draft` (the open version, or `null`). Each version has `id`, `version`, `status` (`draft`, `pending_approval`, `published`, `superseded`), `lines` (with `head_name`), `installments`, `total`, `note`, `created_by`, `submitted_by`/`submitted_at`, `reviewed_by`/`reviewed_at`, `review_comment` and `published_at`. The `_by` fields are `{ id, name }`.
+- `GET /admin/fees/plans` adds `version` and `draft_status` (`draft`, `pending_approval` or `null`) for each class.
+- `GET /admin/fees/plans/{classId}/versions` lists every version, newest first.
+- These routes accept `?academic_year_id=` and default to the current year.
+- The upgrade marks each class's existing plan as version 1, in use.
+- Invoices already raised never change.
+
+**Copying plans.** Both routes make drafts only. Plans in use never change until a draft is approved. They need `fees.configure`.
+
+- `POST /admin/fees/plans/{classId}/copy` `{ to_class_ids, academic_year_id? }` copies a class's plan in use to other classes of the same year.
+- `POST /admin/fees/plans/copy-year` `{ from_academic_year_id, to_academic_year_id?, class_ids? }` copies every plan in use from an earlier year. The target defaults to the current year. Due dates move by the difference in years (29 February becomes 28 February) and are kept inside the target year.
+- Both return `{ drafted, skipped, classes: [{ class_id, class_name, status: 'drafted' | 'skipped', version, lines, left_out, reason }] }`.
+- Heads that are switched off, transport, or not for the target class are left out (`left_out`).
+- A class that already has a draft or a change waiting is skipped with a `reason`.
+- Nothing to copy returns 409 `PLAN_EMPTY`. Copying a year onto itself returns 400.
+
+**Reports.** `GET /admin/fees/reports/{type}` (`fees.view`) returns `{ title, academic_year, note, from, to, columns: [{ key, label, kind }], rows, totals }`. `kind` is `text`, `money`, `number`, `percent` or `date`, and each row is an object keyed by the column keys. `GET /admin/fees/reports/{type}/xlsx` downloads the same report as Excel.
+
+Every report takes `academic_year_id`, `class_id`, `section_id` and `installment`, and leaves out cancelled invoices.
+
+| `type` | Rows |
+|---|---|
+| `classes` | Per class: students, invoices, billed, concessions and scholarships, discounts, net due, collected, outstanding, overdue, collected % |
+| `heads` | The same per fee head (`fee_head_id` filters). An invoice's discount and payments are shared across its heads by amount |
+| `installments` | The same per installment, with the due date and how many invoices are fully paid |
+| `benefits` | Each concession and scholarship: students who have it, students billed with it, invoices, amount taken off (`kind` filters) |
+| `defaulters` | Students with a balance: net due, paid, balance, overdue, oldest due date, days overdue, most overdue first (`overdue_only=true`) |
+| `collections` | Payments per day by mode between `from` and `to` (default: this month); reversed payments are left out |
+
+**Concessions and scholarships.** Both use the same routes. `kind` is `concession` or `scholarship`, and they belong to an academic year.
+
+- `GET /admin/fees/benefits` filters by `kind`, `type`, `is_active` and `academic_year_id`; `search` matches the name and description; sort by `name`, `value` or `created_at`. `GET`/`PATCH`/`DELETE /admin/fees/benefits/{id}`, `POST /admin/fees/benefits`.
+- Fields:
+  - `name`: unique per year and kind, otherwise 409 `BENEFIT_EXISTS`.
+  - `type` for a concession: `sibling`, `staff_child`, `merit`, `sports`, `financial`, `management` or `other`.
+  - `type` for a scholarship (who funds it): `government`, `institution`, `trust`, `private` or `other`.
+  - `calc_type` is `percent` (`value` up to 100) or `fixed` (`value` is rupees a year).
+  - `fee_head_ids`: empty means every head except transport.
+  - `class_ids`: empty means every class.
+  - `description` and `is_active`.
+- Responses add `active_awards` and `amount_given` (taken off invoices that are not cancelled).
+- One that was ever given cannot be deleted (409 `BENEFIT_IN_USE`). Switch it off instead.
+- `POST /admin/fees/benefit-awards` `{ benefit_id, student_ids, reason }` gives it to students.
+  - Each student must be studying that year, in a class it is open to. Otherwise 400 on `student_ids.N`.
+  - Students who already have it are skipped (`already_awarded`).
+  - A switched-off one returns 409 `BENEFIT_INACTIVE`.
+- `POST /admin/fees/benefit-awards/{id}/revoke` `{ reason }` withdraws it. Doing it twice returns 409 `AWARD_REVOKED`.
+- `GET /admin/fees/benefit-awards` filters by `benefit_id`, `kind`, `student_id`, `status` (`active`, `revoked`) and `academic_year_id`; `search` matches the student name, admission number and the concession or scholarship name.
+- Writes in a closed or archived year return 409 `YEAR_CLOSED`.
+- Scholarships are managed only in the admin web. Parents do not apply in the app.
+
+How they are applied when invoices are raised:
+
+1. Concessions first, then scholarships, each in the order they were created.
+2. A percentage is taken from the fee head's amount on the invoice, never compounded.
+3. A fixed amount is a yearly figure, spread over the plan's installments in proportion to the eligible amount of each. The last installment takes the rounding remainder, so the year adds up exactly.
+4. The total taken off a line never goes above the line, so no fee goes below 0.
+5. Amounts are rounded to the paisa.
+
+Giving, withdrawing or changing one affects only invoices raised afterwards.
+
+- Invoices add `benefit` (the total taken off), so `total = gross − benefit − discount`. The invoice detail adds `benefits[]`: `benefit_id`, `kind`, `name`, `fee_head_id` and `amount`.
+- A manual discount can be at most `gross − benefit − paid`.
+- An invoice whose total comes to 0 is raised as `paid`, and no due notice is sent for it.
+- `POST /admin/fees/invoices/generate` adds `with_benefits` and `benefit_amount`.
+- Receipt PDFs show a "Concessions and scholarships" line.
+- The parent and teacher fee screens are unchanged. They already show `total`, which is net of these.
+
+**Audit log.** `GET /admin/fees/audit-logs` lists every change to fee heads, plans, invoices and payments, newest first. Each row has `entity` (`fee_head`, `fee_plan`, `fee_invoice`, `fee_payment`, `invoice_run`, `fee_benefit`, `benefit_award`), `entity_id` (the class id for `fee_plan`, `null` for an invoice run), `action` (`created`, `updated`, `deleted`, `replaced`, `generated`, `discounted`, `cancelled`, `paid`, `reversed`, `submitted`, `approved`, `rejected`, `discarded`, `awarded`, `revoked`), the values `before` and `after`, `reason`, `user` and `created_at`. Filters: `entity`, `entity_id`, `action`, `user_id`, `from`, `to`; `search` matches the reason and the user's name. Each row is written in the same transaction as the change it records.
+
+**Balance check.** `GET /admin/fees/reconciliation` returns `invoices_checked` and `mismatches`: invoices whose `paid` differs from the sum of their non-reversed payments, or whose `total` or `balance` does not add up. It only reads; nothing is fixed automatically. The same check runs every night at 02:30 and logs a warning for each school with mismatches.
+
+The database also refuses negative amounts, payments of 0, and invoices whose totals do not add up (`CHECK` constraints, enforced on new and changed rows).
 
 ## Academic year
 
@@ -923,6 +1113,17 @@ Meetings, diary posts, announcements and chats belong to the academic year they 
 | Earlier year, `POST`/`PUT`/`PATCH`/`DELETE` | 403 `YEAR_READ_ONLY` (earlier years are read only) |
 | Year of another school | 404 `ACADEMIC_YEAR_NOT_FOUND` |
 | Not a number | 400 `INVALID_ACADEMIC_YEAR` |
+
+**Year status.** Every academic year has a `status`, with who and when for each step (`activated_at`/`activated_by`, `closed_at`/`closed_by`, `archived_at`/`archived_by`; the `_by` fields are names) and an optional `description`:
+
+| Status | Meaning | How it gets there |
+|---|---|---|
+| `draft` | Planned, not started | New year without `is_current` |
+| `active` | The current year (`is_current: true`); only one per school | `POST /admin/academic-years/{id}/activate` (or `PATCH` with `is_current: true`) |
+| `closed` | An earlier year: its dates and fee plans are locked, but dues can still be collected, discounted, cancelled and reversed | Automatically, when another year is activated; or restore from archived |
+| `archived` | Frozen: no fee changes at all, not even payments (409 `YEAR_ARCHIVED`) | `POST /admin/academic-years/{id}/archive`, only from `closed` |
+
+`POST /admin/academic-years/{id}/restore` takes an archived year back to `closed`. An archived year must be restored before it can be activated. The active year cannot be archived; activate another year first. Dates of a new or edited year may not overlap another year (409 `YEAR_OVERLAPS`). Permission `schools.manage`. Existing years were set on upgrade: the current year `active`, years that ended before it `closed`, the rest `draft`.
 
 `/mobile/*`, `auth/*` and `me/*` ignore the header: the Staff and Parent apps always show the current year.
 

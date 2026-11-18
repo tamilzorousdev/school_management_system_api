@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Not, Repository, SelectQueryBuilder } from 'typeorm';
+import { DataSource, EntityManager, In, MoreThan, Not, Repository, SelectQueryBuilder } from 'typeorm';
 import { AppException, AuthUser, listQuery, Paginated } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
@@ -9,9 +9,15 @@ import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { rupees } from '../payroll/payroll.calc';
 import { Student } from '../students/entities/student.entity';
+import { User } from '../users/entities/user.entity';
 import {
-  CancelInvoiceDto,
-  DiscountDto,
+  CopyPlanDto,
+  CopyPlanResultDto,
+  CopyPlanRowDto,
+  CollectionResultDto,
+  CopyYearDto,
+  FeeAuditLogDto,
+  FeeAuditQueryDto,
   FeeHeadDto,
   FeeHeadInputDto,
   FeeHeadQueryDto,
@@ -22,6 +28,7 @@ import {
   FeePlanDto,
   FeePlanInputDto,
   FeePlanSummaryDto,
+  FeePlanVersionDto,
   FeeStatusDto,
   FeeStudentRefDto,
   FeeTotalsDto,
@@ -29,32 +36,46 @@ import {
   GenerateResultDto,
   InstallmentTotalDto,
   InvoiceQueryDto,
+  PreviousDuesDto,
   PaymentInputDto,
   PaymentQueryDto,
   PaymentSummaryDto,
   PaymentSummaryQueryDto,
+  ReconciliationDto,
+  RejectPlanDto,
+  ReviewPlanDto,
   SectionFeesDto,
   StudentFeesDto,
+  AdvanceReceiptDto,
+  SubmitPlanDto,
   UpdateFeeHeadDto,
 } from './dto/fees.dto';
+import { FeeAuditLog } from './entities/fee-audit-log.entity';
 import { FeeHead } from './entities/fee-head.entity';
+import { FeeInvoiceBenefit } from './entities/fee-invoice-benefit.entity';
 import { FeeInvoice } from './entities/fee-invoice.entity';
 import { FeeInvoiceLine } from './entities/fee-invoice-line.entity';
 import { FeePayment } from './entities/fee-payment.entity';
 import { FeePlan } from './entities/fee-plan.entity';
+import { FeePlanVersion, PlanLineValue, PlanVersionStatus } from './entities/fee-plan-version.entity';
+import { FeeRefund } from './entities/fee-refund.entity';
+import { FeeRequest } from './entities/fee-request.entity';
+import { applyCredit, collectForStudent, creditBalance } from './fee-credits';
+import { pick, recordFeeAudit } from './fee-audit';
 import { FeeYear, generateInvoices, recordPayment } from './fee-ledger';
 import {
-  applyDiscount,
   daysBetween,
   feeTotals,
   isOverdue,
   round2,
+  shiftDate,
   shortDate,
   STUDENT_FEE_STATUSES,
   StudentFeeStatus,
   sumAmounts,
 } from './fees.logic';
-import { receiptPdf } from './receipt.pdf';
+import { advanceReceiptPdf, receiptPdf } from './receipt.pdf';
+import { FeeCollection } from './entities/fee-collection.entity';
 import { yearClause } from '../../shared/year-context';
 
 interface StudentRow {
@@ -79,6 +100,9 @@ export class FeesService {
     @InjectRepository(FeeInvoice) private readonly invoices: Repository<FeeInvoice>,
     @InjectRepository(FeeInvoiceLine) private readonly lines: Repository<FeeInvoiceLine>,
     @InjectRepository(FeePayment) private readonly payments: Repository<FeePayment>,
+    @InjectRepository(FeeAuditLog) private readonly auditLogs: Repository<FeeAuditLog>,
+    @InjectRepository(FeePlanVersion) private readonly versions: Repository<FeePlanVersion>,
+    @InjectRepository(FeeInvoiceBenefit) private readonly invoiceBenefits: Repository<FeeInvoiceBenefit>,
     private readonly notifications: NotificationsService,
     private readonly files: FilesService,
     private readonly dataSource: DataSource,
@@ -92,6 +116,11 @@ export class FeesService {
   async listHeads(schoolId: number, query: FeeHeadQueryDto): Promise<Paginated<FeeHeadDto>> {
     const qb = this.heads.createQueryBuilder('h').where('h.school_id = :schoolId', { schoolId });
     if (query.is_active !== undefined) qb.andWhere('h.is_active = :active', { active: query.is_active });
+    if (query.is_mandatory !== undefined) {
+      qb.andWhere('h.is_mandatory = :mandatory', { mandatory: query.is_mandatory });
+    }
+    if (query.frequency) qb.andWhere('h.frequency = :frequency', { frequency: query.frequency });
+    if (query.fee_group) qb.andWhere('lower(h.fee_group) = lower(:group)', { group: query.fee_group });
     const page = await listQuery(qb, query, {
       searchable: ['h.name', 'h.code'],
       sortable: { name: 'h.name', code: 'h.code', created_at: 'h.created_at' },
@@ -100,41 +129,88 @@ export class FeesService {
     return { ...page, items: await this.presentHeads(schoolId, page.items) };
   }
 
-  async createHead(schoolId: number, dto: FeeHeadInputDto): Promise<FeeHeadDto> {
+  async createHead(schoolId: number, dto: FeeHeadInputDto, actor: AuthUser): Promise<FeeHeadDto> {
     await this.assertHeadFree(schoolId, dto);
-    const saved = await this.heads.save(
-      this.heads.create({
+    await this.assertClasses(schoolId, dto.applicable_class_ids);
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const head = await manager.save(
+        manager.create(FeeHead, {
+          school_id: schoolId,
+          name: dto.name,
+          code: dto.code,
+          is_transport: dto.is_transport ?? false,
+          is_active: dto.is_active ?? true,
+          description: dto.description || null,
+          fee_group: dto.fee_group || null,
+          is_mandatory: dto.is_mandatory ?? true,
+          frequency: dto.frequency ?? 'custom',
+          is_refundable: dto.is_refundable ?? false,
+          applicable_class_ids: dto.applicable_class_ids ?? [],
+        }),
+      );
+      await recordFeeAudit(manager, {
         school_id: schoolId,
-        name: dto.name,
-        code: dto.code,
-        is_transport: dto.is_transport ?? false,
-        is_active: dto.is_active ?? true,
-      }),
-    );
+        entity: 'fee_head',
+        entity_id: head.id,
+        action: 'created',
+        after: pick(head, HEAD_FIELDS),
+        actor_id: actor.id,
+      });
+      return head;
+    });
     return (await this.presentHeads(schoolId, [saved]))[0]!;
   }
 
-  async updateHead(schoolId: number, id: number, dto: UpdateFeeHeadDto): Promise<FeeHeadDto> {
+  async updateHead(schoolId: number, id: number, dto: UpdateFeeHeadDto, actor: AuthUser): Promise<FeeHeadDto> {
     const head = await this.head(schoolId, id);
     const next = {
       name: dto.name ?? head.name,
       code: dto.code ?? head.code,
       is_transport: dto.is_transport ?? head.is_transport,
       is_active: dto.is_active ?? head.is_active,
+      description: dto.description === undefined ? head.description : dto.description || null,
+      fee_group: dto.fee_group === undefined ? head.fee_group : dto.fee_group || null,
+      is_mandatory: dto.is_mandatory ?? head.is_mandatory,
+      frequency: dto.frequency ?? head.frequency,
+      is_refundable: dto.is_refundable ?? head.is_refundable,
+      applicable_class_ids: dto.applicable_class_ids ?? head.applicable_class_ids,
     };
     await this.assertHeadFree(schoolId, next, id);
+    await this.assertClasses(schoolId, dto.applicable_class_ids);
+    const usedElsewhere = await this.classesPlannedOutside(schoolId, id, next.applicable_class_ids);
+    if (usedElsewhere.length) {
+      throw AppException.validation([
+        {
+          field: 'applicable_class_ids',
+          message: `Fee plans of ${usedElsewhere.join(', ')} use this head. Take it off those plans first.`,
+        },
+      ]);
+    }
     if (next.is_transport && !head.is_transport && (await this.plans.existsBy({ fee_head_id: id }))) {
       throw AppException.conflict(
         'This head is used in fee plans. Take it out of the plans before making it the transport head.',
         'FEE_HEAD_IN_USE',
       );
     }
-    const saved = await this.heads.save(Object.assign(head, next));
+    const before = pick(head, HEAD_FIELDS);
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const updated = await manager.save(Object.assign(head, next));
+      await recordFeeAudit(manager, {
+        school_id: schoolId,
+        entity: 'fee_head',
+        entity_id: id,
+        action: 'updated',
+        before,
+        after: pick(updated, HEAD_FIELDS),
+        actor_id: actor.id,
+      });
+      return updated;
+    });
     return (await this.presentHeads(schoolId, [saved]))[0]!;
   }
 
-  async removeHead(schoolId: number, id: number): Promise<void> {
-    await this.head(schoolId, id);
+  async removeHead(schoolId: number, id: number, actor: AuthUser): Promise<void> {
+    const head = await this.head(schoolId, id);
     const used = (await this.plans.existsBy({ fee_head_id: id })) || (await this.lines.existsBy({ fee_head_id: id }));
     if (used) {
       throw AppException.conflict(
@@ -142,12 +218,23 @@ export class FeesService {
         'FEE_HEAD_IN_USE',
       );
     }
-    await this.heads.softDelete(id);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.softDelete(FeeHead, id);
+      await recordFeeAudit(manager, {
+        school_id: schoolId,
+        entity: 'fee_head',
+        entity_id: id,
+        action: 'deleted',
+        before: pick(head, HEAD_FIELDS),
+        actor_id: actor.id,
+      });
+    });
   }
 
   async year(schoolId: number, yearId?: number): Promise<FeeYear> {
     const [row] = await this.dataSource.query(
-      `SELECT id, name, to_char(start_date, 'YYYY-MM-DD') AS start_date, to_char(end_date, 'YYYY-MM-DD') AS end_date
+      `SELECT id, name, status, to_char(start_date, 'YYYY-MM-DD') AS start_date,
+              to_char(end_date, 'YYYY-MM-DD') AS end_date
        FROM academic_years WHERE school_id = $1 AND deleted_at IS NULL AND ${yearId ? 'id = $2' : yearClause('academic_years')}`,
       yearId ? [schoolId, yearId] : [schoolId],
     );
@@ -168,15 +255,29 @@ export class FeesService {
        FROM classes c WHERE c.school_id = $1 AND c.deleted_at IS NULL ORDER BY c.grade_level, c.name`,
       [schoolId, year.id],
     );
-    const lines = await this.plans.find({ where: { school_id: schoolId, academic_year_id: year.id } });
+    const [lines, versions] = await Promise.all([
+      this.plans.find({ where: { school_id: schoolId, academic_year_id: year.id } }),
+      this.versions.find({
+        where: {
+          school_id: schoolId,
+          academic_year_id: year.id,
+          status: In(['draft', 'pending_approval', 'published']),
+        },
+        select: { id: true, class_id: true, status: true, version: true },
+      }),
+    ]);
     return classes.map((row) => {
       const own = lines.filter((line) => line.class_id === Number(row.id));
+      const mine = versions.filter((version) => version.class_id === Number(row.id));
+      const open = mine.find((version) => version.status !== 'published');
       return {
         class_id: Number(row.id),
         class_name: row.name,
         student_count: Number(row.student_count),
         installments: installmentTotals(own),
         total: sumAmounts(own.map((line) => line.amount)),
+        version: mine.find((version) => version.status === 'published')?.version ?? null,
+        draft_status: open ? (open.status as 'draft' | 'pending_approval') : null,
       };
     });
   }
@@ -189,11 +290,22 @@ export class FeesService {
       order: { due_date: 'ASC', id: 'ASC' },
     });
     const heads = new Map((await this.heads.findBy({ school_id: schoolId })).map((head) => [head.id, head.name]));
+    const versions = await this.versions.find({
+      where: {
+        school_id: schoolId,
+        academic_year_id: year.id,
+        class_id: classId,
+        status: In(['draft', 'pending_approval', 'published']),
+      },
+    });
+    const open = versions.find((version) => version.status !== 'published');
     return {
       class_id: classId,
       class_name: schoolClass.name,
       academic_year_id: year.id,
       academic_year: year.name,
+      version: versions.find((version) => version.status === 'published')?.version ?? null,
+      draft: open ? (await this.presentVersions(schoolId, [open]))[0]! : null,
       lines: rows.map((row) => ({
         id: row.id,
         fee_head_id: row.fee_head_id,
@@ -207,57 +319,159 @@ export class FeesService {
     };
   }
 
-  async setPlan(schoolId: number, classId: number, dto: FeePlanInputDto): Promise<FeePlanDto> {
-    const year = await this.year(schoolId, dto.academic_year_id);
+  async setPlan(schoolId: number, classId: number, dto: FeePlanInputDto, actor: AuthUser): Promise<FeePlanDto> {
+    const year = await this.writableYear(schoolId, dto.academic_year_id);
     await this.schoolClass(schoolId, classId);
-    const heads = new Map((await this.heads.findBy({ school_id: schoolId })).map((head) => [head.id, head]));
-    const seen = new Set<string>();
-    const dueByInstallment = new Map<string, string>();
-    dto.lines.forEach((line, index) => {
-      const head = heads.get(line.fee_head_id);
-      const field = (name: string) => `lines.${index}.${name}`;
-      if (!head) throw AppException.validation([{ field: field('fee_head_id'), message: 'Fee head not found' }]);
-      if (!head.is_active) {
-        throw AppException.validation([
-          {
-            field: field('fee_head_id'),
-            message: `${head.name} is switched off. Switch it on or take it off the plan.`,
-          },
-        ]);
-      }
-      if (head.is_transport) {
-        throw AppException.validation([
-          {
-            field: field('fee_head_id'),
-            message: `${head.name} is charged from the bus stop fee and cannot be on the plan`,
-          },
-        ]);
-      }
-      const key = `${line.fee_head_id}|${line.installment.toLowerCase()}`;
-      if (seen.has(key)) {
-        throw AppException.validation([
-          { field: field('installment'), message: `${head.name} is listed twice for ${line.installment}` },
-        ]);
-      }
-      seen.add(key);
-      if (line.due_date < year.start_date || line.due_date > year.end_date) {
-        throw AppException.validation([
-          { field: field('due_date'), message: `Due date must be within the ${year.name} academic year` },
-        ]);
-      }
-      const due = dueByInstallment.get(line.installment);
-      if (due && due !== line.due_date) {
-        throw AppException.validation([
-          { field: field('due_date'), message: `Every line of ${line.installment} must have the same due date` },
-        ]);
-      }
-      dueByInstallment.set(line.installment, line.due_date);
+    await this.validatePlanLines(schoolId, classId, year, dto.lines);
+    const lines = dto.lines.map((line) => ({
+      fee_head_id: line.fee_head_id,
+      installment: line.installment,
+      amount: line.amount,
+      due_date: line.due_date,
+    }));
+    await this.dataSource.transaction((manager) =>
+      this.writeDraft(manager, { schoolId, yearId: year.id, classId, lines, actorId: actor.id }),
+    );
+    return this.getPlan(schoolId, classId, year.id);
+  }
+
+  async copyPlan(schoolId: number, classId: number, dto: CopyPlanDto, actor: AuthUser): Promise<CopyPlanResultDto> {
+    const year = await this.writableYear(schoolId, dto.academic_year_id);
+    const source = await this.schoolClass(schoolId, classId);
+    const lines = await this.plans.find({
+      where: { school_id: schoolId, academic_year_id: year.id, class_id: classId },
+      order: { due_date: 'ASC', id: 'ASC' },
     });
+    if (!lines.length) {
+      throw AppException.conflict(`Class ${source.name} has no plan in use to copy`, 'PLAN_EMPTY');
+    }
+    const targets = await this.classesById(
+      schoolId,
+      dto.to_class_ids.filter((id) => id !== classId),
+      'to_class_ids',
+    );
+    const rows: CopyPlanRowDto[] = [];
+    for (const target of targets) {
+      rows.push(
+        await this.copyInto(schoolId, year, target, planLineValues(lines), actor, `Copied from class ${source.name}`),
+      );
+    }
+    return copyResult(rows);
+  }
+
+  async copyYear(schoolId: number, dto: CopyYearDto, actor: AuthUser): Promise<CopyPlanResultDto> {
+    const from = await this.year(schoolId, dto.from_academic_year_id);
+    const to = await this.writableYear(schoolId, dto.to_academic_year_id);
+    if (from.id === to.id) {
+      throw AppException.validation([
+        { field: 'from_academic_year_id', message: 'Choose a different year to copy from' },
+      ]);
+    }
+    const shift = Number(to.start_date.slice(0, 4)) - Number(from.start_date.slice(0, 4));
+    const where = {
+      school_id: schoolId,
+      academic_year_id: from.id,
+      ...(dto.class_ids?.length ? { class_id: In(dto.class_ids) } : {}),
+    };
+    const lines = await this.plans.find({ where, order: { due_date: 'ASC', id: 'ASC' } });
+    const classIds = [...new Set(lines.map((line) => line.class_id))];
+    if (!classIds.length) {
+      throw AppException.conflict(`${from.name} has no fee plans to copy`, 'PLAN_EMPTY');
+    }
+    const targets = await this.classesById(schoolId, classIds, 'class_ids');
+    const rows: CopyPlanRowDto[] = [];
+    for (const target of targets) {
+      const own = planLineValues(lines.filter((line) => line.class_id === target.id)).map((line) => ({
+        ...line,
+        due_date: shiftDate(line.due_date, shift, to.start_date, to.end_date),
+      }));
+      rows.push(await this.copyInto(schoolId, to, target, own, actor, `Copied from ${from.name}`));
+    }
+    return copyResult(rows);
+  }
+
+  async discardPlanDraft(schoolId: number, classId: number, actor: AuthUser, yearId?: number): Promise<FeePlanDto> {
+    const year = await this.year(schoolId, yearId);
     await this.dataSource.transaction(async (manager) => {
+      await lockPlan(manager, schoolId, year.id, classId);
+      const draft = await this.openVersion(manager, schoolId, year.id, classId);
+      if (draft.status === 'pending_approval') throw pendingApproval();
+      await manager.softDelete(FeePlanVersion, draft.id);
+      await recordFeeAudit(manager, {
+        school_id: schoolId,
+        entity: 'fee_plan',
+        entity_id: classId,
+        action: 'discarded',
+        before: { academic_year_id: year.id, version: draft.version, status: draft.status, lines: draft.lines },
+        actor_id: actor.id,
+      });
+    });
+    return this.getPlan(schoolId, classId, year.id);
+  }
+
+  async submitPlan(
+    schoolId: number,
+    classId: number,
+    dto: SubmitPlanDto,
+    actor: AuthUser,
+    yearId?: number,
+  ): Promise<FeePlanDto> {
+    const year = await this.writableYear(schoolId, yearId);
+    await this.dataSource.transaction(async (manager) => {
+      await lockPlan(manager, schoolId, year.id, classId);
+      const draft = await this.openVersion(manager, schoolId, year.id, classId);
+      if (draft.status === 'pending_approval') throw pendingApproval();
+      await this.validatePlanLines(schoolId, classId, year, draft.lines);
+      const change = {
+        status: 'pending_approval' as const,
+        note: dto.note || null,
+        submitted_by: actor.id,
+        submitted_at: new Date(),
+        reviewed_by: null,
+        reviewed_at: null,
+        review_comment: null,
+      };
+      await manager.update(FeePlanVersion, draft.id, change);
+      await recordFeeAudit(manager, {
+        school_id: schoolId,
+        entity: 'fee_plan',
+        entity_id: classId,
+        action: 'submitted',
+        before: { version: draft.version, status: draft.status },
+        after: { version: draft.version, status: change.status },
+        reason: change.note,
+        actor_id: actor.id,
+      });
+    });
+    return this.getPlan(schoolId, classId, year.id);
+  }
+
+  async approvePlan(
+    schoolId: number,
+    classId: number,
+    dto: ReviewPlanDto,
+    actor: AuthUser,
+    yearId?: number,
+  ): Promise<FeePlanDto> {
+    const year = await this.writableYear(schoolId, yearId);
+    await this.dataSource.transaction(async (manager) => {
+      await lockPlan(manager, schoolId, year.id, classId);
+      const pending = await this.pendingVersion(manager, schoolId, year.id, classId);
+      if (pending.submitted_by === actor.id) {
+        throw AppException.forbidden(
+          'You sent this change for approval, so someone else must approve it',
+          'SELF_APPROVAL',
+        );
+      }
+      await this.validatePlanLines(schoolId, classId, year, pending.lines);
+      const previous = await manager.find(FeePlan, {
+        where: { school_id: schoolId, academic_year_id: year.id, class_id: classId },
+        order: { due_date: 'ASC', id: 'ASC' },
+      });
       await manager.delete(FeePlan, { school_id: schoolId, academic_year_id: year.id, class_id: classId });
-      if (dto.lines.length) {
+      if (pending.lines.length) {
         await manager.save(
-          dto.lines.map((line) =>
+          pending.lines.map((line) =>
             manager.create(FeePlan, {
               school_id: schoolId,
               academic_year_id: year.id,
@@ -266,12 +480,77 @@ export class FeesService {
               installment: line.installment,
               amount: line.amount,
               due_date: line.due_date,
+              created_by: actor.id,
             }),
           ),
         );
       }
+      await manager.update(
+        FeePlanVersion,
+        { school_id: schoolId, academic_year_id: year.id, class_id: classId, status: 'published' },
+        { status: 'superseded' },
+      );
+      const now = new Date();
+      await manager.update(FeePlanVersion, pending.id, {
+        status: 'published',
+        reviewed_by: actor.id,
+        reviewed_at: now,
+        review_comment: dto.comment || null,
+        published_at: now,
+      });
+      await recordFeeAudit(manager, {
+        school_id: schoolId,
+        entity: 'fee_plan',
+        entity_id: classId,
+        action: 'approved',
+        before: { academic_year_id: year.id, lines: previous.map((line) => pick(line, PLAN_LINE_FIELDS)) },
+        after: { academic_year_id: year.id, version: pending.version, lines: pending.lines },
+        reason: dto.comment,
+        actor_id: actor.id,
+      });
     });
     return this.getPlan(schoolId, classId, year.id);
+  }
+
+  async rejectPlan(
+    schoolId: number,
+    classId: number,
+    dto: RejectPlanDto,
+    actor: AuthUser,
+    yearId?: number,
+  ): Promise<FeePlanDto> {
+    const year = await this.year(schoolId, yearId);
+    await this.dataSource.transaction(async (manager) => {
+      await lockPlan(manager, schoolId, year.id, classId);
+      const pending = await this.pendingVersion(manager, schoolId, year.id, classId);
+      await manager.update(FeePlanVersion, pending.id, {
+        status: 'draft',
+        reviewed_by: actor.id,
+        reviewed_at: new Date(),
+        review_comment: dto.comment,
+      });
+      await recordFeeAudit(manager, {
+        school_id: schoolId,
+        entity: 'fee_plan',
+        entity_id: classId,
+        action: 'rejected',
+        before: { version: pending.version, status: pending.status },
+        after: { version: pending.version, status: 'draft' },
+        reason: dto.comment,
+        actor_id: actor.id,
+      });
+    });
+    return this.getPlan(schoolId, classId, year.id);
+  }
+
+  async planVersions(schoolId: number, classId: number, yearId?: number): Promise<FeePlanVersionDto[]> {
+    const year = await this.year(schoolId, yearId);
+    await this.schoolClass(schoolId, classId);
+    const versions = await this.versions.find({
+      where: { school_id: schoolId, academic_year_id: year.id, class_id: classId },
+      order: { version: 'DESC' },
+    });
+    return this.presentVersions(schoolId, versions);
   }
 
   async installments(schoolId: number, yearId?: number): Promise<InstallmentTotalDto[]> {
@@ -297,24 +576,123 @@ export class FeesService {
         { field: 'due_date', message: `Due date must be within the ${year.name} academic year` },
       ]);
     }
-    const outcome = await this.dataSource.transaction((manager) =>
-      generateInvoices(manager, {
+    const outcome = await this.dataSource.transaction(async (manager) => {
+      const result = await generateInvoices(manager, {
         school_id: schoolId,
         year,
         installment: dto.installment,
         class_id: dto.class_id,
         due_date: dto.due_date,
         created_by: actor.id,
-      }),
-    );
-    if (outcome.created.length) void this.notifyDue(outcome.created);
+      });
+      await this.useCredit(manager, schoolId, result.created, actor.id);
+      return result;
+    });
+    const due = outcome.created.filter((invoice) => invoice.total > 0);
+    if (due.length) void this.notifyDue(due);
     return {
       installment: dto.installment,
       classes: outcome.classes,
       created: outcome.created.length,
       already_invoiced: outcome.already_invoiced,
       with_transport: outcome.with_transport,
+      with_benefits: outcome.with_benefits,
+      benefit_amount: outcome.benefit_amount,
       total_amount: outcome.total_amount,
+    };
+  }
+
+  async collect(
+    schoolId: number,
+    studentId: number,
+    dto: PaymentInputDto,
+    idempotencyKey: string | undefined,
+    actor: AuthUser,
+  ): Promise<CollectionResultDto> {
+    const student = await this.dataSource.getRepository(Student).findOneBy({ id: studentId, school_id: schoolId });
+    if (!student) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
+    const outcome = await this.dataSource.transaction((manager) =>
+      collectForStudent(manager, schoolId, studentId, {
+        amount: dto.amount,
+        mode: dto.mode,
+        reference: dto.reference || null,
+        paid_on: dto.paid_on ?? this.today(),
+        notes: dto.notes || null,
+        received_by: actor.id,
+        idempotency_key: paymentKey(idempotencyKey),
+      }),
+    );
+    return this.collectionResult(studentId, outcome.payments, {
+      collection_id: outcome.collection.id,
+      amount: outcome.collection.amount,
+      applied_amount: outcome.collection.applied_amount,
+      advance_amount: outcome.collection.advance_amount,
+      advance_receipt_no: outcome.collection.advance_receipt_no,
+      replayed: outcome.replayed,
+    });
+  }
+
+  async applyCreditNow(schoolId: number, studentId: number, actor: AuthUser): Promise<CollectionResultDto> {
+    const student = await this.dataSource.getRepository(Student).findOneBy({ id: studentId, school_id: schoolId });
+    if (!student) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
+    const payments = await this.dataSource.transaction((manager) =>
+      applyCredit(manager, schoolId, studentId, actor.id, this.today()),
+    );
+    const applied = sumAmounts(payments.map((payment) => payment.amount));
+    return this.collectionResult(studentId, payments, {
+      collection_id: null,
+      amount: applied,
+      applied_amount: applied,
+      advance_amount: 0,
+      advance_receipt_no: null,
+      replayed: false,
+    });
+  }
+
+  private async useCredit(
+    manager: EntityManager,
+    schoolId: number,
+    invoices: FeeInvoice[],
+    actorId: number | null,
+  ): Promise<void> {
+    const studentIds = [
+      ...new Set(invoices.filter((invoice) => invoice.total > 0).map((invoice) => invoice.student_id)),
+    ];
+    if (!studentIds.length) return;
+    const rows: { student_id: number }[] = await manager.query(
+      `SELECT student_id FROM fee_credits WHERE student_id = ANY($1) AND deleted_at IS NULL
+       GROUP BY student_id HAVING sum(amount) > 0`,
+      [studentIds],
+    );
+    for (const row of rows) {
+      const own = invoices
+        .filter((invoice) => invoice.student_id === Number(row.student_id))
+        .map((invoice) => invoice.id);
+      await applyCredit(manager, schoolId, Number(row.student_id), actorId, this.today(), own);
+    }
+  }
+
+  private async collectionResult(
+    studentId: number,
+    payments: FeePayment[],
+    head: Omit<CollectionResultDto, 'payments' | 'credit_balance'>,
+  ): Promise<CollectionResultDto> {
+    const invoices = payments.length
+      ? await this.invoices.find({ where: { id: In(payments.map((payment) => payment.invoice_id)) } })
+      : [];
+    const byId = new Map(invoices.map((invoice) => [invoice.id, invoice]));
+    return {
+      ...head,
+      credit_balance: await creditBalance(this.dataSource.manager, studentId),
+      payments: payments.map((payment) => ({
+        id: payment.id,
+        invoice_id: payment.invoice_id,
+        invoice_no: byId.get(payment.invoice_id)?.invoice_no ?? '',
+        installment: byId.get(payment.invoice_id)?.installment ?? '',
+        amount: payment.amount,
+        receipt_no: payment.receipt_no,
+        mode: payment.mode,
+      })),
     };
   }
 
@@ -359,60 +737,20 @@ export class FeesService {
     return (await this.detailInvoices(schoolId, [invoice]))[0]!;
   }
 
-  async setDiscount(schoolId: number, id: number, dto: DiscountDto): Promise<FeeInvoiceDetailDto> {
-    if (dto.discount > 0 && (dto.reason ?? '').length < 3) {
-      throw AppException.validation([{ field: 'reason', message: 'Give the reason for the discount' }]);
-    }
-    await this.dataSource.transaction(async (manager) => {
-      const invoice = await manager.findOne(FeeInvoice, {
-        where: { id, school_id: schoolId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!invoice) throw AppException.notFound('Invoice not found', 'INVOICE_NOT_FOUND');
-      const next = applyDiscount(invoice, dto.discount);
-      await manager.update(FeeInvoice, id, {
-        ...next,
-        discount: dto.discount,
-        discount_reason: dto.discount > 0 ? (dto.reason ?? null) : null,
-      });
-    });
-    return this.getInvoice(schoolId, id);
-  }
-
-  async cancel(schoolId: number, id: number, dto: CancelInvoiceDto, actor: AuthUser): Promise<FeeInvoiceDetailDto> {
-    await this.dataSource.transaction(async (manager) => {
-      const invoice = await manager.findOne(FeeInvoice, {
-        where: { id, school_id: schoolId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!invoice) throw AppException.notFound('Invoice not found', 'INVOICE_NOT_FOUND');
-      if (invoice.status === 'cancelled') {
-        throw AppException.conflict('This invoice is already cancelled', 'INVOICE_CANCELLED');
-      }
-      if (invoice.paid > 0) {
-        throw AppException.conflict(
-          'A payment is recorded on this invoice, so it cannot be cancelled',
-          'INVOICE_HAS_PAYMENTS',
-        );
-      }
-      await manager.update(FeeInvoice, id, {
-        status: 'cancelled',
-        balance: 0,
-        cancelled_at: new Date(),
-        cancelled_by: actor.id,
-        cancel_reason: dto.reason || null,
-      });
-    });
-    return this.getInvoice(schoolId, id);
-  }
-
-  async pay(schoolId: number, invoiceId: number, dto: PaymentInputDto, actor: AuthUser): Promise<FeePaymentDto> {
+  async pay(
+    schoolId: number,
+    invoiceId: number,
+    dto: PaymentInputDto,
+    actor: AuthUser,
+    idempotencyKey?: string,
+  ): Promise<FeePaymentDto> {
     const today = this.today();
     const paidOn = dto.paid_on ?? today;
     if (paidOn > today) {
       throw AppException.validation([{ field: 'paid_on', message: 'Payment date cannot be in the future' }]);
     }
-    const payment = await this.dataSource.transaction((manager) =>
+    const key = paymentKey(idempotencyKey);
+    const { payment } = await this.dataSource.transaction((manager) =>
       recordPayment(manager, schoolId, invoiceId, {
         amount: dto.amount,
         mode: dto.mode,
@@ -420,6 +758,7 @@ export class FeesService {
         paid_on: paidOn,
         notes: dto.notes,
         received_by: actor.id,
+        idempotency_key: key,
       }),
     );
     return (await this.presentPayments(schoolId, [payment]))[0]!;
@@ -433,6 +772,7 @@ export class FeesService {
       .where('p.school_id = :schoolId', { schoolId });
     this.paymentFilters(qb, query);
     if (query.student_id) qb.andWhere('p.student_id = :studentId', { studentId: query.student_id });
+    if (query.status) qb.andWhere('p.status = :status', { status: query.status });
     const page = await listQuery(qb, query, {
       searchable: ['s.first_name', 's.last_name', 's.admission_no', 'p.receipt_no', 'i.invoice_no', 'p.reference'],
       sortable: { paid_on: 'p.paid_on', amount: 'p.amount', receipt_no: 'p.receipt_no', created_at: 'p.created_at' },
@@ -448,7 +788,7 @@ export class FeesService {
       .select('p.mode', 'mode')
       .addSelect('count(*)', 'count')
       .addSelect('coalesce(sum(p.amount), 0)', 'amount')
-      .where('p.school_id = :schoolId', { schoolId })
+      .where("p.school_id = :schoolId AND p.status = 'success' AND p.mode <> 'credit'", { schoolId })
       .groupBy('p.mode')
       .orderBy('amount', 'DESC');
     this.paymentFilters(qb, query);
@@ -478,7 +818,7 @@ export class FeesService {
     ]);
     const paidToDate = sumAmounts(
       (await this.payments.find({ where: { invoice_id: invoice.id }, order: { id: 'ASC' } }))
-        .filter((row) => row.id <= payment.id)
+        .filter((row) => row.id <= payment.id && (row.status === 'success' || row.id === payment.id))
         .map((row) => row.amount),
     );
     const student = refs.get(payment.student_id)!;
@@ -505,10 +845,18 @@ export class FeesService {
         line.description ? `${line.head_name} (${line.description})` : line.head_name,
         line.amount,
       ]),
+      benefit: invoice.benefit,
       discount: invoice.discount,
       invoice_total: invoice.total,
       paid_to_date: paidToDate,
       balance: round2(invoice.total - paidToDate),
+      reversed:
+        payment.status === 'reversed'
+          ? {
+              on: payment.reversed_at ? todayIn(this.app.timeZone, payment.reversed_at) : null,
+              reason: payment.reversal_reason,
+            }
+          : null,
     });
     return { name: `Receipt-${payment.receipt_no}`, pdf };
   }
@@ -516,7 +864,7 @@ export class FeesService {
   async insights(schoolId: number): Promise<FeeInsightsDto> {
     const year = await this.year(schoolId);
     const today = this.today();
-    const [[totals], [collection]] = await Promise.all([
+    const [[totals], [collection], [waiting]] = await Promise.all([
       this.dataSource.query(
         `SELECT count(*) AS invoices, coalesce(sum(total), 0) AS billed, coalesce(sum(paid), 0) AS collected,
                 coalesce(sum(balance), 0) AS outstanding,
@@ -524,26 +872,41 @@ export class FeesService {
                 count(DISTINCT student_id) FILTER (WHERE balance > 0 AND due_date < $3) AS students_overdue,
                 count(*) FILTER (WHERE status = 'unpaid') AS unpaid,
                 count(*) FILTER (WHERE status = 'partly_paid') AS partly_paid,
-                count(*) FILTER (WHERE status = 'paid') AS paid
+                count(*) FILTER (WHERE status = 'paid') AS paid,
+                coalesce(sum(benefit), 0) AS benefit, coalesce(sum(discount), 0) AS discount,
+                coalesce(sum(late_fee), 0) AS late_fee, coalesce(sum(refunded), 0) AS refunded
          FROM fee_invoices WHERE school_id = $1 AND academic_year_id = $2 AND deleted_at IS NULL
            AND status <> 'cancelled'`,
         [schoolId, year.id, today],
       ),
       this.dataSource.query(
-        `SELECT count(*) AS count, coalesce(sum(amount), 0) AS amount FROM fee_payments
-         WHERE school_id = $1 AND paid_on = $2 AND deleted_at IS NULL`,
+        `SELECT count(*) AS count, coalesce(sum(amount), 0) AS amount,
+                (SELECT coalesce(sum(advance_amount), 0) FROM fee_collections
+                 WHERE school_id = $1 AND paid_on = $2 AND deleted_at IS NULL) AS advance
+         FROM fee_payments
+         WHERE school_id = $1 AND paid_on = $2 AND deleted_at IS NULL AND status = 'success' AND mode <> 'credit'`,
         [schoolId, today],
+      ),
+      this.dataSource.query(
+        `SELECT count(*) AS count FROM fee_requests WHERE school_id = $1 AND status = 'pending' AND deleted_at IS NULL`,
+        [schoolId],
       ),
     ]);
     return {
       academic_year: year.name,
+      concessions: Number(totals.benefit),
+      discounts: Number(totals.discount),
+      late_fees: Number(totals.late_fee),
+      refunded: Number(totals.refunded),
+      pending_requests: Number(waiting.count),
       invoices: Number(totals.invoices),
       total_billed: Number(totals.billed),
       collected: Number(totals.collected),
       outstanding: Number(totals.outstanding),
       overdue_amount: Number(totals.overdue_amount),
       students_overdue: Number(totals.students_overdue),
-      todays_collection: Number(collection.amount),
+      todays_collection: round2(Number(collection.amount) + Number(collection.advance)),
+      todays_advance: Number(collection.advance),
       todays_payments: Number(collection.count),
       by_status: { unpaid: Number(totals.unpaid), partly_paid: Number(totals.partly_paid), paid: Number(totals.paid) },
     };
@@ -566,7 +929,122 @@ export class FeesService {
       .flatMap((invoice) => invoice.payments)
       .sort((a, b) => b.paid_on.localeCompare(a.paid_on) || b.id - a.id);
     const totals = (await this.totalsFor(schoolId, [studentId])).get(studentId)!;
-    return { student, ...totals, invoices: details, payments };
+    return {
+      student,
+      ...totals,
+      credit_balance: await creditBalance(this.dataSource.manager, studentId),
+      previous_dues: await this.previousDues(schoolId, ordered),
+      invoices: details,
+      payments,
+      advances: await this.advances(schoolId, studentId),
+    };
+  }
+
+  private async advances(schoolId: number, studentId: number): Promise<AdvanceReceiptDto[]> {
+    const rows = await this.dataSource.getRepository(FeeCollection).find({
+      where: { school_id: schoolId, student_id: studentId, advance_amount: MoreThan(0) },
+      order: { paid_on: 'DESC', id: 'DESC' },
+    });
+    return rows
+      .filter((row) => row.advance_receipt_no)
+      .map((row) => ({
+        collection_id: row.id,
+        receipt_no: row.advance_receipt_no!,
+        amount: row.advance_amount,
+        collected: row.amount,
+        mode: row.mode,
+        paid_on: row.paid_on,
+      }));
+  }
+
+  async advanceReceipt(
+    schoolId: number,
+    collectionId: number,
+    studentId?: number,
+  ): Promise<{ name: string; pdf: Buffer }> {
+    const collection = await this.dataSource
+      .getRepository(FeeCollection)
+      .findOneBy({ id: collectionId, school_id: schoolId });
+    if (
+      !collection ||
+      !collection.advance_receipt_no ||
+      collection.advance_amount <= 0 ||
+      (studentId && collection.student_id !== studentId)
+    ) {
+      throw AppException.notFound('Advance receipt not found', 'RECEIPT_NOT_FOUND');
+    }
+    const payments = await this.payments.find({
+      where: { collection_id: collection.id },
+      order: { id: 'ASC' },
+    });
+    const invoices = await this.invoices.findBy({ id: In(payments.map((row) => row.invoice_id)) });
+    const invoiceById = new Map(invoices.map((row) => [row.id, row]));
+    const [refs, [school], users] = await Promise.all([
+      this.studentRefs(schoolId, [collection.student_id]),
+      this.dataSource.query(
+        `SELECT name, address, city, state, pincode, logo_file_id, signature_file_id, seal_file_id FROM schools WHERE id = $1`,
+        [schoolId],
+      ),
+      this.userNames(collection.created_by ? [collection.created_by] : []),
+    ]);
+    const student = refs.get(collection.student_id)!;
+    const pdf = await advanceReceiptPdf({
+      school_name: school?.name ?? '',
+      school_address:
+        [school?.address, school?.city, school?.state, school?.pincode].filter(Boolean).join(', ') || null,
+      school_logo: await this.files.readImage(school?.logo_file_id ?? null),
+      school_signature: await this.files.readImage(school?.signature_file_id ?? null),
+      school_seal: await this.files.readImage(school?.seal_file_id ?? null),
+      receipt_no: collection.advance_receipt_no,
+      paid_on: collection.paid_on,
+      student_name: student.full_name,
+      admission_no: student.admission_no,
+      class_section: student.class_section,
+      mode: collection.mode,
+      reference: collection.reference,
+      received_by: collection.created_by ? (users.get(collection.created_by) ?? null) : null,
+      collected: collection.amount,
+      applied: payments.map((payment): [string, number] => {
+        const invoice = invoiceById.get(payment.invoice_id);
+        return [
+          invoice ? `${invoice.installment}, receipt ${payment.receipt_no}` : `receipt ${payment.receipt_no}`,
+          payment.amount,
+        ];
+      }),
+      advance: collection.advance_amount,
+    });
+    return { name: `Advance-receipt-${collection.advance_receipt_no}`, pdf };
+  }
+
+  private async previousDues(schoolId: number, invoices: FeeInvoice[]): Promise<PreviousDuesDto> {
+    const [current] = await this.dataSource.query(
+      `SELECT id, to_char(start_date, 'YYYY-MM-DD') AS start_date FROM academic_years
+       WHERE school_id = $1 AND is_current = true AND deleted_at IS NULL`,
+      [schoolId],
+    );
+    const yearIds = [...new Set(invoices.map((invoice) => invoice.academic_year_id))];
+    const years: { id: number; name: string; start_date: string }[] = yearIds.length
+      ? await this.dataSource.query(
+          `SELECT id, name, to_char(start_date, 'YYYY-MM-DD') AS start_date FROM academic_years WHERE id = ANY($1)`,
+          [yearIds],
+        )
+      : [];
+    const earlier = new Map(
+      years
+        .filter((year) => current && Number(year.id) !== Number(current.id) && year.start_date < current.start_date)
+        .map((year) => [Number(year.id), year]),
+    );
+    const open = invoices.filter(
+      (invoice) => earlier.has(invoice.academic_year_id) && invoice.status !== 'cancelled' && invoice.balance > 0,
+    );
+    return {
+      amount: sumAmounts(open.map((invoice) => invoice.balance)),
+      invoices: open.length,
+      academic_years: [...new Set(open.map((invoice) => invoice.academic_year_id))]
+        .map((id) => earlier.get(id)!)
+        .sort((a, b) => a.start_date.localeCompare(b.start_date))
+        .map((year) => year.name),
+    };
   }
 
   async statusFor(schoolId: number, studentIds: number[]): Promise<Map<number, FeeStatusDto>> {
@@ -597,6 +1075,7 @@ export class FeesService {
       this.dataSource.query(
         `SELECT DISTINCT ON (student_id) student_id, to_char(paid_on, 'YYYY-MM-DD') AS paid_on, amount
          FROM fee_payments WHERE school_id = $1 AND student_id = ANY($2) AND deleted_at IS NULL
+           AND status = 'success'
          ORDER BY student_id, paid_on DESC, id DESC`,
         [schoolId, ids],
       ) as Promise<{ student_id: number; paid_on: string; amount: string }[]>,
@@ -698,6 +1177,85 @@ export class FeesService {
     return Number(row.school_id);
   }
 
+  async listAuditLogs(schoolId: number, query: FeeAuditQueryDto): Promise<Paginated<FeeAuditLogDto>> {
+    const qb = this.auditLogs
+      .createQueryBuilder('a')
+      .leftJoin(User, 'u', 'u.id = a.created_by')
+      .where('a.school_id = :schoolId', { schoolId });
+    if (query.entity) qb.andWhere('a.entity = :entity', { entity: query.entity });
+    if (query.entity_id) qb.andWhere('a.entity_id = :entityId', { entityId: query.entity_id });
+    if (query.action) qb.andWhere('a.action = :action', { action: query.action });
+    if (query.user_id) qb.andWhere('a.created_by = :userId', { userId: query.user_id });
+    if (query.from) {
+      qb.andWhere('a.created_at >= timezone(:zone, CAST(:from AS timestamp))', {
+        from: query.from,
+        zone: this.app.timeZone,
+      });
+    }
+    if (query.to) {
+      qb.andWhere(`a.created_at < timezone(:zone, CAST(:to AS timestamp) + interval '1 day')`, {
+        to: query.to,
+        zone: this.app.timeZone,
+      });
+    }
+    const page = await listQuery(qb, query, {
+      searchable: ['a.reason', 'u.name'],
+      sortable: { created_at: 'a.created_at' },
+      defaultSort: 'created_at',
+    });
+    const users = await this.userNames(page.items.map((row) => row.created_by).filter((id): id is number => !!id));
+    return {
+      ...page,
+      items: page.items.map((row) => ({
+        id: row.id,
+        entity: row.entity,
+        entity_id: row.entity_id,
+        action: row.action,
+        before: row.before,
+        after: row.after,
+        reason: row.reason,
+        user: row.created_by ? { id: row.created_by, name: users.get(row.created_by) ?? '' } : null,
+        created_at: row.created_at,
+      })),
+    };
+  }
+
+  async reconciliation(schoolId: number): Promise<ReconciliationDto> {
+    const [rows, [{ checked }]] = await Promise.all([
+      this.dataSource.query(MISMATCH_SQL + ` AND i.school_id = $1 ORDER BY i.id`, [schoolId]) as Promise<MismatchRow[]>,
+      this.dataSource.query(
+        `SELECT count(*) AS checked FROM fee_invoices WHERE school_id = $1 AND deleted_at IS NULL`,
+        [schoolId],
+      ) as Promise<{ checked: string }[]>,
+    ]);
+    return {
+      invoices_checked: Number(checked),
+      mismatches: rows.map((row) => ({
+        invoice_id: Number(row.id),
+        invoice_no: row.invoice_no,
+        student_id: Number(row.student_id),
+        status: row.status,
+        gross: Number(row.gross),
+        benefit: Number(row.benefit),
+        discount: Number(row.discount),
+        total: Number(row.total),
+        paid: Number(row.paid),
+        balance: Number(row.balance),
+        payments_total: Number(row.payments_total),
+      })),
+    };
+  }
+
+  @Cron('30 2 * * *', { name: 'fee-reconciliation', timeZone: process.env.APP_TIMEZONE || 'Asia/Kolkata' })
+  async nightlyReconciliation(): Promise<void> {
+    const rows: { school_id: number; count: string }[] = await this.dataSource.query(
+      `SELECT school_id, count(*) AS count FROM (${MISMATCH_SQL}) m GROUP BY school_id`,
+    );
+    for (const row of rows) {
+      this.logger.warn(`School ${row.school_id}: ${row.count} fee invoices do not match their payments`);
+    }
+  }
+
   @Cron('0 8 * * *', { name: 'fee-overdue', timeZone: process.env.APP_TIMEZONE || 'Asia/Kolkata' })
   async dailyOverdueReminders(): Promise<void> {
     const sent = await this.sendOverdueReminders(null);
@@ -709,7 +1267,9 @@ export class FeesService {
     const rows: { id: number; student_id: number; balance: string; due_date: string }[] = await this.dataSource.query(
       `WITH alerted AS (
          UPDATE fee_invoices SET overdue_alerted_at = now()
-         WHERE deleted_at IS NULL AND status IN ('unpaid', 'partly_paid') AND balance > 0 AND due_date < $1
+         WHERE deleted_at IS NULL AND status IN ('unpaid', 'partly_paid') AND balance > 0
+           AND due_date + coalesce((SELECT fs.grace_days FROM fee_settings fs
+                                    WHERE fs.school_id = fee_invoices.school_id AND fs.deleted_at IS NULL), 0) < $1
            AND (overdue_alerted_at IS NULL OR overdue_alerted_at < now() - interval '7 days')
            ${schoolId ? 'AND school_id = $2' : ''}
          RETURNING id, student_id, balance, due_date
@@ -737,6 +1297,37 @@ export class FeesService {
         installment: invoice.installment,
       })),
     );
+  }
+
+  async notifyGuardians(
+    template: string,
+    items: { student_id: number; data: Record<string, string> }[],
+  ): Promise<void> {
+    if (!items.length) return;
+    const rows: { student_id: number; first_name: string; last_name: string | null; user_ids: number[] }[] =
+      await this.dataSource.query(
+        `SELECT s.id AS student_id, s.first_name, s.last_name,
+                array_remove(array_agg(DISTINCT g.user_id), NULL) AS user_ids
+         FROM students s
+         LEFT JOIN student_guardians sg ON sg.student_id = s.id AND sg.receives_alerts = true
+         LEFT JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
+         WHERE s.id = ANY($1) GROUP BY s.id`,
+        [[...new Set(items.map((item) => item.student_id))]],
+      );
+    const byStudent = new Map(rows.map((row) => [Number(row.student_id), row]));
+    for (const item of items) {
+      const row = byStudent.get(item.student_id);
+      if (!row?.user_ids.length) continue;
+      await this.notifications
+        .dispatch({
+          template,
+          audience: { user_ids: row.user_ids.map(Number) },
+          data: { student: fullName(row), student_id: String(item.student_id), ...item.data },
+        })
+        .catch((error: Error) =>
+          this.logger.warn(`${template} for student ${item.student_id} not sent: ${error.message}`),
+        );
+    }
   }
 
   private async notifyParents(
@@ -790,11 +1381,19 @@ export class FeesService {
   private async detailInvoices(schoolId: number, invoices: FeeInvoice[]): Promise<FeeInvoiceDetailDto[]> {
     if (!invoices.length) return [];
     const ids = invoices.map((invoice) => invoice.id);
-    const [base, lines, payments] = await Promise.all([
+    const [base, lines, payments, benefits, refunds, pending] = await Promise.all([
       this.presentInvoices(schoolId, invoices),
       this.lines.find({ where: { invoice_id: In(ids) }, order: { sort_order: 'ASC', id: 'ASC' } }),
       this.payments.find({ where: { invoice_id: In(ids) }, order: { paid_on: 'DESC', id: 'DESC' } }),
+      this.invoiceBenefits.find({ where: { invoice_id: In(ids) }, order: { id: 'ASC' } }),
+      this.dataSource
+        .getRepository(FeeRefund)
+        .find({ where: { invoice_id: In(ids) }, order: { paid_on: 'DESC', id: 'DESC' } }),
+      this.dataSource
+        .getRepository(FeeRequest)
+        .find({ where: { invoice_id: In(ids), status: 'pending' }, order: { created_at: 'ASC' } }),
     ]);
+    const requesters = await this.userNames(pending.map((row) => row.created_by).filter((id): id is number => !!id));
     const presented = await this.presentPayments(schoolId, payments, invoices);
     return base.map((invoice) => ({
       ...invoice,
@@ -806,6 +1405,40 @@ export class FeesService {
           head_name: line.head_name,
           description: line.description,
           amount: line.amount,
+        })),
+      benefits: benefits
+        .filter((benefit) => benefit.invoice_id === invoice.id)
+        .map((benefit) => ({
+          benefit_id: benefit.benefit_id,
+          kind: benefit.kind,
+          name: benefit.name,
+          fee_head_id: benefit.fee_head_id,
+          amount: benefit.amount,
+        })),
+      refunds: refunds
+        .filter((refund) => refund.invoice_id === invoice.id)
+        .map((refund) => ({
+          id: refund.id,
+          refund_no: refund.refund_no,
+          amount: refund.amount,
+          mode: refund.mode,
+          reference: refund.reference,
+          paid_on: refund.paid_on,
+          reason: refund.reason,
+        })),
+      pending_requests: pending
+        .filter((request) => request.invoice_id === invoice.id)
+        .map((request) => ({
+          id: request.id,
+          kind: request.kind,
+          amount: request.amount,
+          details: request.details as Record<string, unknown>,
+          payment_id: request.payment_id || null,
+          reason: request.reason,
+          requested_by: request.created_by
+            ? { id: request.created_by, name: requesters.get(request.created_by) ?? '' }
+            : null,
+          requested_at: request.created_at,
         })),
       payments: presented.filter((payment) => payment.invoice_id === invoice.id),
     }));
@@ -829,8 +1462,12 @@ export class FeesService {
         class_id: invoice.class_id,
         section_id: invoice.section_id,
         gross: invoice.gross,
+        benefit: invoice.benefit,
         discount: invoice.discount,
         discount_reason: invoice.discount_reason,
+        original_due_date: invoice.original_due_date,
+        late_fee: invoice.late_fee,
+        refunded: invoice.refunded,
         total: invoice.total,
         paid: invoice.paid,
         balance: invoice.balance,
@@ -859,7 +1496,11 @@ export class FeesService {
         schoolId,
         payments.map((payment) => payment.student_id),
       ),
-      this.userNames(payments.map((payment) => payment.received_by).filter((id): id is number => id !== null)),
+      this.userNames(
+        payments
+          .flatMap((payment) => [payment.received_by, payment.reversed_by])
+          .filter((id): id is number => id !== null),
+      ),
     ]);
     return payments.map((payment) => {
       const invoice = known.get(payment.invoice_id);
@@ -877,12 +1518,16 @@ export class FeesService {
         received_by: payment.received_by ? (users.get(payment.received_by) ?? null) : null,
         notes: payment.notes,
         invoice_balance: invoice?.balance ?? 0,
+        status: payment.status,
+        reversed_at: payment.reversed_at,
+        reversed_by: payment.reversed_by ? (users.get(payment.reversed_by) ?? null) : null,
+        reversal_reason: payment.reversal_reason,
         created_at: payment.created_at,
       };
     });
   }
 
-  private async studentRefs(schoolId: number, ids: number[]): Promise<Map<number, FeeStudentRefDto>> {
+  async studentRefs(schoolId: number, ids: number[]): Promise<Map<number, FeeStudentRefDto>> {
     const unique = [...new Set(ids)];
     if (!unique.length) return new Map();
     const rows: StudentRow[] = await this.dataSource.query(
@@ -912,7 +1557,7 @@ export class FeesService {
     );
   }
 
-  private async userNames(ids: number[]): Promise<Map<number, string>> {
+  async userNames(ids: number[]): Promise<Map<number, string>> {
     const unique = [...new Set(ids)];
     if (!unique.length) return new Map();
     const rows: { id: number; name: string }[] = await this.dataSource.query(
@@ -920,6 +1565,265 @@ export class FeesService {
       [unique],
     );
     return new Map(rows.map((row) => [Number(row.id), row.name]));
+  }
+
+  private async writeDraft(
+    manager: EntityManager,
+    input: {
+      schoolId: number;
+      yearId: number;
+      classId: number;
+      lines: PlanLineValue[];
+      actorId: number | null;
+      reason?: string;
+      onlyIfFree?: boolean;
+    },
+  ): Promise<{ version: number } | { busy: PlanVersionStatus }> {
+    const { schoolId, yearId, classId, lines } = input;
+    await lockPlan(manager, schoolId, yearId, classId);
+    const open = await manager.findOneBy(FeePlanVersion, {
+      school_id: schoolId,
+      academic_year_id: yearId,
+      class_id: classId,
+      status: In(['draft', 'pending_approval']),
+    });
+    if (open?.status === 'pending_approval' && !input.onlyIfFree) throw pendingApproval();
+    if (open && input.onlyIfFree) return { busy: open.status };
+    let version = open?.version ?? 0;
+    if (open) {
+      await manager.update(FeePlanVersion, open.id, { lines });
+    } else {
+      const [{ max }] = await manager.query(
+        `SELECT coalesce(max(version), 0) AS max FROM fee_plan_versions
+         WHERE school_id = $1 AND academic_year_id = $2 AND class_id = $3`,
+        [schoolId, yearId, classId],
+      );
+      version = Number(max) + 1;
+      await manager.save(
+        manager.create(FeePlanVersion, {
+          school_id: schoolId,
+          academic_year_id: yearId,
+          class_id: classId,
+          version,
+          status: 'draft',
+          lines,
+          created_by: input.actorId,
+        }),
+      );
+    }
+    await recordFeeAudit(manager, {
+      school_id: schoolId,
+      entity: 'fee_plan',
+      entity_id: classId,
+      action: 'updated',
+      before: open ? { academic_year_id: yearId, version, status: 'draft', lines: open.lines } : null,
+      after: { academic_year_id: yearId, version, status: 'draft', lines },
+      reason: input.reason,
+      actor_id: input.actorId,
+    });
+    return { version };
+  }
+
+  private async copyInto(
+    schoolId: number,
+    year: FeeYear,
+    target: { id: number; name: string },
+    source: PlanLineValue[],
+    actor: AuthUser,
+    reason: string,
+  ): Promise<CopyPlanRowDto> {
+    const heads = new Map((await this.heads.findBy({ school_id: schoolId })).map((head) => [head.id, head]));
+    const lines = source.filter((line) => {
+      const head = heads.get(line.fee_head_id);
+      return (
+        head &&
+        head.is_active &&
+        !head.is_transport &&
+        (!head.applicable_class_ids.length || head.applicable_class_ids.includes(target.id))
+      );
+    });
+    const row = { class_id: target.id, class_name: target.name, lines: lines.length };
+    const skipped = (why: string): CopyPlanRowDto => ({
+      ...row,
+      status: 'skipped',
+      version: null,
+      left_out: source.length - lines.length,
+      reason: why,
+    });
+    if (!lines.length) return skipped('None of the fee heads apply to this class');
+    try {
+      await this.validatePlanLines(schoolId, target.id, year, lines);
+    } catch (error) {
+      return skipped(error instanceof AppException ? copyError(error) : 'The lines are not valid for this class');
+    }
+    const outcome = await this.dataSource.transaction((manager) =>
+      this.writeDraft(manager, {
+        schoolId,
+        yearId: year.id,
+        classId: target.id,
+        lines,
+        actorId: actor.id,
+        reason,
+        onlyIfFree: true,
+      }),
+    );
+    if ('busy' in outcome) {
+      return skipped(
+        outcome.busy === 'pending_approval' ? 'A change is waiting for approval' : 'It already has a draft',
+      );
+    }
+    return {
+      ...row,
+      status: 'drafted',
+      version: outcome.version,
+      left_out: source.length - lines.length,
+      reason: null,
+    };
+  }
+
+  private async classesById(schoolId: number, ids: number[], field: string): Promise<{ id: number; name: string }[]> {
+    if (!ids.length) return [];
+    const rows: { id: number; name: string }[] = await this.dataSource.query(
+      `SELECT id, name FROM classes WHERE school_id = $1 AND id = ANY($2) AND deleted_at IS NULL
+       ORDER BY grade_level, name`,
+      [schoolId, ids],
+    );
+    if (rows.length !== new Set(ids).size) {
+      throw AppException.validation([{ field, message: 'Class not found in this school' }]);
+    }
+    return rows.map((row) => ({ id: Number(row.id), name: row.name }));
+  }
+
+  private async writableYear(schoolId: number, yearId?: number): Promise<FeeYear> {
+    const year = await this.year(schoolId, yearId);
+    if (year.status === 'closed' || year.status === 'archived') {
+      throw AppException.conflict(`${year.name} is ${year.status}. Its fee plans cannot change.`, 'YEAR_CLOSED');
+    }
+    return year;
+  }
+
+  private async validatePlanLines(
+    schoolId: number,
+    classId: number,
+    year: FeeYear,
+    lines: PlanLineValue[],
+  ): Promise<void> {
+    const heads = new Map((await this.heads.findBy({ school_id: schoolId })).map((head) => [head.id, head]));
+    const seen = new Set<string>();
+    const dueByInstallment = new Map<string, string>();
+    lines.forEach((line, index) => {
+      const head = heads.get(line.fee_head_id);
+      const field = (name: string) => `lines.${index}.${name}`;
+      if (!head) throw AppException.validation([{ field: field('fee_head_id'), message: 'Fee head not found' }]);
+      if (!head.is_active) {
+        throw AppException.validation([
+          {
+            field: field('fee_head_id'),
+            message: `${head.name} is switched off. Switch it on or take it off the plan.`,
+          },
+        ]);
+      }
+      if (head.applicable_class_ids.length && !head.applicable_class_ids.includes(classId)) {
+        throw AppException.validation([{ field: field('fee_head_id'), message: `${head.name} is not for this class` }]);
+      }
+      if (head.is_transport) {
+        throw AppException.validation([
+          {
+            field: field('fee_head_id'),
+            message: `${head.name} is charged from the bus stop fee and cannot be on the plan`,
+          },
+        ]);
+      }
+      const key = `${line.fee_head_id}|${line.installment.toLowerCase()}`;
+      if (seen.has(key)) {
+        throw AppException.validation([
+          { field: field('installment'), message: `${head.name} is listed twice for ${line.installment}` },
+        ]);
+      }
+      seen.add(key);
+      if (line.due_date < year.start_date || line.due_date > year.end_date) {
+        throw AppException.validation([
+          { field: field('due_date'), message: `Due date must be within the ${year.name} academic year` },
+        ]);
+      }
+      const due = dueByInstallment.get(line.installment);
+      if (due && due !== line.due_date) {
+        throw AppException.validation([
+          { field: field('due_date'), message: `Every line of ${line.installment} must have the same due date` },
+        ]);
+      }
+      dueByInstallment.set(line.installment, line.due_date);
+    });
+  }
+
+  private async openVersion(
+    manager: EntityManager,
+    schoolId: number,
+    yearId: number,
+    classId: number,
+  ): Promise<FeePlanVersion> {
+    const open = await manager.findOneBy(FeePlanVersion, {
+      school_id: schoolId,
+      academic_year_id: yearId,
+      class_id: classId,
+      status: In(['draft', 'pending_approval']),
+    });
+    if (!open) throw AppException.notFound('This class has no draft fee plan', 'PLAN_DRAFT_NOT_FOUND');
+    return open;
+  }
+
+  private async pendingVersion(
+    manager: EntityManager,
+    schoolId: number,
+    yearId: number,
+    classId: number,
+  ): Promise<FeePlanVersion> {
+    const pending = await manager.findOneBy(FeePlanVersion, {
+      school_id: schoolId,
+      academic_year_id: yearId,
+      class_id: classId,
+      status: 'pending_approval',
+    });
+    if (!pending) {
+      throw AppException.conflict('No change to this fee plan is waiting for approval', 'PLAN_NOT_PENDING');
+    }
+    return pending;
+  }
+
+  private async presentVersions(schoolId: number, versions: FeePlanVersion[]): Promise<FeePlanVersionDto[]> {
+    if (!versions.length) return [];
+    const [heads, users] = await Promise.all([
+      this.heads.findBy({ school_id: schoolId }),
+      this.userNames(
+        versions.flatMap((version) =>
+          [version.created_by, version.submitted_by, version.reviewed_by].filter((id): id is number => id !== null),
+        ),
+      ),
+    ]);
+    const names = new Map(heads.map((head) => [head.id, head.name]));
+    const user = (id: number | null) => (id ? { id, name: users.get(id) ?? '' } : null);
+    return versions.map((version) => {
+      const lines = [...version.lines].sort(
+        (a, b) => a.due_date.localeCompare(b.due_date) || a.installment.localeCompare(b.installment),
+      );
+      return {
+        id: version.id,
+        version: version.version,
+        status: version.status,
+        lines: lines.map((line) => ({ ...line, head_name: names.get(line.fee_head_id) ?? '' })),
+        installments: installmentTotals(lines),
+        total: sumAmounts(lines.map((line) => line.amount)),
+        note: version.note,
+        created_by: user(version.created_by),
+        submitted_by: user(version.submitted_by),
+        submitted_at: version.submitted_at,
+        reviewed_by: user(version.reviewed_by),
+        reviewed_at: version.reviewed_at,
+        review_comment: version.review_comment,
+        published_at: version.published_at,
+        updated_at: version.updated_at,
+      };
+    });
   }
 
   private async presentHeads(schoolId: number, heads: FeeHead[]): Promise<FeeHeadDto[]> {
@@ -937,6 +1841,12 @@ export class FeesService {
       code: head.code,
       is_transport: head.is_transport,
       is_active: head.is_active,
+      description: head.description,
+      fee_group: head.fee_group,
+      is_mandatory: head.is_mandatory,
+      frequency: head.frequency,
+      is_refundable: head.is_refundable,
+      applicable_class_ids: head.applicable_class_ids,
       plan_lines: counts.get(head.id) ?? 0,
       created_at: head.created_at,
     }));
@@ -955,6 +1865,34 @@ export class FeesService {
         throw AppException.conflict(`${transport.name} is already the transport head`, 'TRANSPORT_HEAD_EXISTS');
       }
     }
+  }
+
+  private async assertClasses(schoolId: number, ids: number[] | undefined): Promise<void> {
+    if (!ids?.length) return;
+    const rows: { id: number }[] = await this.dataSource.query(
+      `SELECT id FROM classes WHERE school_id = $1 AND id = ANY($2) AND deleted_at IS NULL`,
+      [schoolId, ids],
+    );
+    const found = new Set(rows.map((row) => Number(row.id)));
+    const missing = ids.filter((id) => !found.has(id));
+    if (missing.length) {
+      throw AppException.validation([
+        { field: 'applicable_class_ids', message: `Class ${missing.join(', ')} not found in this school` },
+      ]);
+    }
+  }
+
+  private async classesPlannedOutside(schoolId: number, headId: number, allowed: number[]): Promise<string[]> {
+    if (!allowed.length) return [];
+    const rows: { name: string }[] = await this.dataSource.query(
+      `SELECT DISTINCT c.name, c.grade_level FROM fee_plans p
+       JOIN academic_years y ON y.id = p.academic_year_id AND y.status IN ('draft', 'active') AND y.deleted_at IS NULL
+       JOIN classes c ON c.id = p.class_id
+       WHERE p.school_id = $1 AND p.fee_head_id = $2 AND p.deleted_at IS NULL AND NOT (p.class_id = ANY($3))
+       ORDER BY c.grade_level, c.name`,
+      [schoolId, headId, allowed],
+    );
+    return rows.map((row) => `class ${row.name}`);
   }
 
   private async head(schoolId: number, id: number): Promise<FeeHead> {
@@ -979,7 +1917,58 @@ export class FeesService {
   }
 }
 
-function installmentTotals(lines: FeePlan[]): InstallmentTotalDto[] {
+const HEAD_FIELDS = [
+  'name',
+  'code',
+  'is_transport',
+  'is_active',
+  'description',
+  'fee_group',
+  'is_mandatory',
+  'frequency',
+  'is_refundable',
+  'applicable_class_ids',
+] as const;
+const PLAN_LINE_FIELDS = ['fee_head_id', 'installment', 'amount', 'due_date'] as const;
+const IDEMPOTENCY_KEY = /^[A-Za-z0-9_.:-]{8,80}$/;
+
+interface MismatchRow {
+  id: number;
+  invoice_no: string;
+  student_id: number;
+  status: FeeInvoice['status'];
+  gross: string;
+  benefit: string;
+  discount: string;
+  total: string;
+  paid: string;
+  balance: string;
+  payments_total: string;
+}
+
+const MISMATCH_SQL = `SELECT i.id, i.school_id, i.invoice_no, i.student_id, i.status, i.gross, i.benefit, i.discount,
+    i.total,
+    i.paid, i.balance, coalesce(p.amount, 0) AS payments_total
+  FROM fee_invoices i
+  LEFT JOIN (SELECT invoice_id, sum(amount) AS amount FROM fee_payments
+             WHERE deleted_at IS NULL AND status = 'success' GROUP BY invoice_id) p ON p.invoice_id = i.id
+  WHERE i.deleted_at IS NULL
+    AND (i.paid <> coalesce(p.amount, 0)
+      OR i.total <> i.gross - i.benefit - i.discount
+      OR (i.status <> 'cancelled' AND i.balance <> i.total - i.paid))`;
+
+function paymentKey(value: string | undefined): string | null {
+  const key = value?.trim();
+  if (!key) return null;
+  if (!IDEMPOTENCY_KEY.test(key)) {
+    throw AppException.validation([
+      { field: 'Idempotency-Key', message: 'Idempotency-Key must be 8 to 80 letters, digits, _ . : or -' },
+    ]);
+  }
+  return key;
+}
+
+function installmentTotals(lines: Pick<FeePlan, 'installment' | 'due_date' | 'amount'>[]): InstallmentTotalDto[] {
   const groups = new Map<string, InstallmentTotalDto>();
   for (const line of lines) {
     const group = groups.get(line.installment) ?? { installment: line.installment, due_date: line.due_date, amount: 0 };
@@ -988,6 +1977,39 @@ function installmentTotals(lines: FeePlan[]): InstallmentTotalDto[] {
     groups.set(line.installment, group);
   }
   return [...groups.values()].sort((a, b) => a.due_date.localeCompare(b.due_date));
+}
+
+async function lockPlan(manager: EntityManager, schoolId: number, yearId: number, classId: number): Promise<void> {
+  await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`fee_plan:${schoolId}:${yearId}:${classId}`]);
+}
+
+function pendingApproval(): AppException {
+  return AppException.conflict(
+    'This fee plan change is waiting for approval. The approver must approve it or send it back first.',
+    'PLAN_PENDING_APPROVAL',
+  );
+}
+
+function planLineValues(lines: FeePlan[]): PlanLineValue[] {
+  return lines.map((line) => ({
+    fee_head_id: line.fee_head_id,
+    installment: line.installment,
+    amount: line.amount,
+    due_date: line.due_date,
+  }));
+}
+
+function copyError(error: AppException): string {
+  const body = error.getResponse() as { message?: string; errors?: { message: string }[] };
+  return body.errors?.[0]?.message ?? body.message ?? 'The lines are not valid for this class';
+}
+
+function copyResult(rows: CopyPlanRowDto[]): CopyPlanResultDto {
+  return {
+    drafted: rows.filter((row) => row.status === 'drafted').length,
+    skipped: rows.filter((row) => row.status === 'skipped').length,
+    classes: rows,
+  };
 }
 
 function missingStudent(id: number): FeeStudentRefDto {

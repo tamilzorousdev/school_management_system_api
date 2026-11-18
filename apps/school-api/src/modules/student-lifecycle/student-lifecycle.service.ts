@@ -30,6 +30,7 @@ import { UploadedIdCardDesign, uploadedIdCardPdf, uploadedIdCardSheetPdf } from 
 import { parseIdCardLayout } from '../../shared/id-card-layout';
 import { GroupResult, groupResults, studentResults } from './promotion-results';
 import { tcPdf } from './pdf/tc.pdf';
+import { rupees } from '../payroll/payroll.calc';
 import { yearClause, yearWhere } from '../../shared/year-context';
 
 interface CardRow {
@@ -166,6 +167,18 @@ export class StudentLifecycleService {
       if (student.status !== 'active') {
         throw AppException.conflict(`This student is already ${student.status}`, 'STUDENT_NOT_ACTIVE');
       }
+      const [{ balance }] = await manager.query(
+        `SELECT coalesce(sum(balance), 0) AS balance FROM fee_invoices
+         WHERE school_id = $1 AND student_id = $2 AND status <> 'cancelled' AND deleted_at IS NULL`,
+        [schoolId, studentId],
+      );
+      const feeBalance = Number(balance);
+      if (feeBalance > 0 && !dto.acknowledge_dues) {
+        throw AppException.conflict(
+          `${rupees(feeBalance)} of fees is unpaid. Confirm to issue the TC anyway; the dues stay on record.`,
+          'FEE_DUES_PENDING',
+        );
+      }
       if (dto.leaving_date < student.admission_date) {
         throw AppException.validation([
           { field: 'leaving_date', message: 'Leaving date cannot be before the admission date' },
@@ -205,6 +218,7 @@ export class StudentLifecycleService {
           conduct: dto.conduct ?? 'Good',
           promotion_eligible: dto.promotion_eligible ?? true,
           remarks: dto.remarks ?? null,
+          fee_balance: feeBalance,
           academic_year_name: year?.name ?? null,
           class_name: enrollment?.school_class?.name ?? null,
           section_name: enrollment?.section?.name ?? null,
@@ -485,6 +499,7 @@ export class StudentLifecycleService {
       academic_year_name: tc.academic_year_name,
       promotion_eligible: tc.promotion_eligible,
       remarks: tc.remarks,
+      fee_balance: tc.fee_balance,
     };
   }
 

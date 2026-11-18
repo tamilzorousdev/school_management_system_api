@@ -283,6 +283,7 @@ export async function seedDemoAcademics(manager: EntityManager, school: School):
       start_date: '2025-06-02',
       end_date: '2026-04-30',
       is_current: false,
+      status: 'closed',
     }),
   );
   const year = await manager.save(
@@ -292,6 +293,7 @@ export async function seedDemoAcademics(manager: EntityManager, school: School):
       start_date: '2026-06-01',
       end_date: '2027-04-30',
       is_current: true,
+      status: 'active',
     }),
   );
   await manager.save(

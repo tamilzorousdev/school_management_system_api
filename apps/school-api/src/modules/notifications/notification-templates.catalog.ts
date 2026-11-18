@@ -31,6 +31,13 @@ export const TEMPLATES = {
   PAYSLIP_READY: 'PAYSLIP_READY',
   FEE_DUE: 'FEE_DUE',
   FEE_OVERDUE: 'FEE_OVERDUE',
+  FEE_APPROVAL_NEEDED: 'FEE_APPROVAL_NEEDED',
+  FEE_REQUEST_APPROVED: 'FEE_REQUEST_APPROVED',
+  FEE_REQUEST_REJECTED: 'FEE_REQUEST_REJECTED',
+  FEE_REFUND_PAID: 'FEE_REFUND_PAID',
+  FEE_PAYMENT_REVERSED: 'FEE_PAYMENT_REVERSED',
+  FEE_LATE_FEE: 'FEE_LATE_FEE',
+  FEE_DUE_DATE_CHANGED: 'FEE_DUE_DATE_CHANGED',
   FLEET_DOCUMENT_EXPIRY: 'FLEET_DOCUMENT_EXPIRY',
   TRANSPORT_ASSIGNED: 'TRANSPORT_ASSIGNED',
   TRANSPORT_REMOVED: 'TRANSPORT_REMOVED',
@@ -809,6 +816,139 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
         body: '{{student}}-க்கான {{amount}} கட்டணம் {{due_date}} அன்று செலுத்த வேண்டியது, இன்னும் செலுத்தப்படவில்லை. பள்ளி அலுவலகத்தில் செலுத்தவும்.',
         sms_body:
           'அன்புள்ள பெற்றோரே, {{student}}-க்கான {{amount}} கட்டணம் {{due_date}} முதல் நிலுவையில் உள்ளது. -TAMILZOROUS',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_APPROVAL_NEEDED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Fee request waiting for you',
+        body: '{{name}} asked for {{what}} on {{invoice}} for {{student}}: {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உங்கள் ஒப்புதலுக்கு கட்டணக் கோரிக்கை',
+        body: '{{student}}-க்கான {{invoice}}-இல் {{name}} கோரியது: {{what}}. காரணம்: {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_REQUEST_APPROVED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Fee request approved',
+        body: '{{what}} on {{invoice}} for {{student}} was approved by {{name}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'கட்டணக் கோரிக்கை ஏற்கப்பட்டது',
+        body: '{{student}}-க்கான {{invoice}}-இல் {{what}} கோரிக்கையை {{name}} ஏற்றுக்கொண்டார்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_REQUEST_REJECTED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Fee request rejected',
+        body: '{{what}} on {{invoice}} for {{student}} was rejected by {{name}}: {{comment}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'கட்டணக் கோரிக்கை நிராகரிக்கப்பட்டது',
+        body: '{{student}}-க்கான {{invoice}}-இல் {{what}} கோரிக்கையை {{name}} நிராகரித்தார்: {{comment}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_REFUND_PAID,
+    category: 'fees',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Refund of {{amount}} for {{student}}',
+        body: '{{amount}} was refunded for {{student}} on {{date}} by {{mode}} (refund {{refund_no}}).',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}}-க்கு {{amount}} திருப்பி அளிக்கப்பட்டது',
+        body: '{{student}}-க்கான {{amount}} {{date}} அன்று {{mode}} மூலம் திருப்பி அளிக்கப்பட்டது (எண் {{refund_no}}).',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_PAYMENT_REVERSED,
+    category: 'fees',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Payment for {{student}} reversed',
+        body: 'Receipt {{receipt_no}} of {{amount}} for {{student}} was reversed: {{reason}}. {{balance}} is now due on this installment.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} கட்டணச் செலுத்தல் திரும்பப் பெறப்பட்டது',
+        body: '{{student}}-க்கான {{amount}} ரசீது {{receipt_no}} திரும்பப் பெறப்பட்டது: {{reason}}. இந்தத் தவணைக்கு இப்போது {{balance}} செலுத்த வேண்டும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_LATE_FEE,
+    category: 'fees',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Late fee added for {{student}}',
+        body: 'A late fee of {{amount}} was added to the {{installment}} fee of {{student}}, due on {{due_date}}. {{balance}} is now due.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}}-க்கு தாமதக் கட்டணம்',
+        body: '{{student}}-இன் {{installment}} கட்டணம் ({{due_date}} அன்று செலுத்த வேண்டியது) செலுத்தப்படாததால் {{amount}} தாமதக் கட்டணம் சேர்க்கப்பட்டது. இப்போது {{balance}} செலுத்த வேண்டும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_DUE_DATE_CHANGED,
+    category: 'fees',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'New due date for {{student}}',
+        body: 'The {{installment}} fee of {{student}} is now due on {{due_date}} (was {{old_date}}).',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} கட்டணத்துக்குப் புதிய தேதி',
+        body: '{{student}}-இன் {{installment}} கட்டணம் இப்போது {{due_date}} அன்று செலுத்த வேண்டும் (முன்பு {{old_date}}).',
+        sms_body: null,
       },
     },
   },
