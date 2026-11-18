@@ -196,6 +196,29 @@ export class AlertDto {
   resolution_note: string | null;
 }
 
+export class SosLocationDto {
+  @ApiProperty({ example: 13.0849 })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat: number;
+
+  @ApiProperty({ example: 80.2105 })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng: number;
+}
+
+export class CancelSosDto {
+  @ApiPropertyOptional({ example: 'Pressed by mistake', maxLength: 300 })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(300)
+  note?: string;
+}
+
 export class SosResultDto extends AlertDto {
   @ApiProperty({
     example: false,

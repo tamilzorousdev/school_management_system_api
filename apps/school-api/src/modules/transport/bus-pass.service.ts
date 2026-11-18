@@ -25,6 +25,7 @@ import {
   PASS_MESSAGES,
   passNumber,
 } from './bus-pass.logic';
+import { STOP_FEE_SQL } from './transport.logic';
 import {
   BusPassActionDto,
   BusPassActionResultDto,
@@ -441,8 +442,10 @@ export class BusPassService {
       `SELECT t.student_id, t.route_id, r.name AS route_name, t.mode, t.pass_status, t.pass_note, t.hold_kind,
               s.first_name, s.last_name, s.admission_no, s.photo_file_id, s.card_version,
               c.name AS class_name, sec.name AS section_name,
-              ps.id AS pickup_id, ps.name AS pickup_name, ps.pickup_time, ps.drop_time AS pickup_drop_time, ps.monthly_fee AS pickup_fee,
-              ds.id AS drop_id, ds.name AS drop_name, ds.drop_time, ds.monthly_fee AS drop_fee,
+              ps.id AS pickup_id, ps.name AS pickup_name, ps.pickup_time, ps.drop_time AS pickup_drop_time,
+              ${STOP_FEE_SQL('ps', 'r')} AS pickup_fee,
+              ds.id AS drop_id, ds.name AS drop_name, ds.drop_time,
+              CASE WHEN ds.id IS NULL THEN NULL ELSE ${STOP_FEE_SQL('ds', 'r')} END AS drop_fee,
               v.id AS bus_id, v.name AS bus_name, v.registration_no AS bus_registration_no, (w.id IS NOT NULL) AS today_only
        FROM student_transport t
        JOIN students s ON s.id = t.student_id AND s.deleted_at IS NULL AND s.status = 'active'

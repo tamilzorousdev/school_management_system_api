@@ -49,6 +49,8 @@ import { PassStatus, StudentTransport, TransportMode } from './entities/student-
 import { TransportRoute } from './entities/transport-route.entity';
 import { VEHICLE_EXPIRY_FIELDS } from './entities/vehicle-document.entity';
 import { Vehicle } from './entities/vehicle.entity';
+import { TransportFeeSyncService } from '../fees/transport-fee-sync.service';
+import { TransportFeesReportService } from '../fees/transport-fees-report.service';
 import {
   checkSchedule,
   NOTIFY_MOVE_METRES,
@@ -63,6 +65,7 @@ import {
 } from './route-schedule.logic';
 import {
   autoSequence,
+  RIDER_FEE_SQL,
   expiryState,
   occupancy,
   pathKm,
@@ -70,6 +73,7 @@ import {
   ROAD_KINDS,
   roadBlockers,
   seatCheck,
+  stopFee,
   stopsOf,
   transportChangeSummary,
   tripRiders,
@@ -213,6 +217,8 @@ export class RoutesService {
     @InjectRepository(Vehicle) private readonly vehicles: Repository<Vehicle>,
     private readonly files: FilesService,
     private readonly notifications: NotificationsService,
+    private readonly feeSync: TransportFeeSyncService,
+    private readonly feeReport: TransportFeesReportService,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
@@ -308,6 +314,7 @@ export class RoutesService {
         code: dto.code,
         name: dto.name,
         vehicle_id: dto.vehicle_id ?? null,
+        monthly_fee: dto.monthly_fee ?? 0,
         is_active: dto.is_active ?? true,
       }),
     );
@@ -446,7 +453,7 @@ export class RoutesService {
             pickup_time: item.pickup_time ?? null,
             drop_time: item.drop_time ?? null,
             geofence_radius_m: item.geofence_radius_m ?? existing?.geofence_radius_m ?? 100,
-            monthly_fee: item.monthly_fee ?? existing?.monthly_fee ?? 0,
+            monthly_fee: item.monthly_fee === undefined ? (existing?.monthly_fee ?? null) : item.monthly_fee,
           }),
         );
       }
@@ -578,6 +585,7 @@ export class RoutesService {
     void this.notify(schoolId, [
       { student_id: studentId, action: 'removed', before: placementOf(current), after: null },
     ]);
+    void this.feeSync.sync(schoolId, [studentId]);
   }
 
   async studentTransport(schoolId: number, studentId: number): Promise<StudentTransportDto | null> {
@@ -776,6 +784,7 @@ export class RoutesService {
       ? (stops.find((item) => item.id === assignment.drop_stop_id) ?? null)
       : null;
     if (!route || !stop) return null;
+    const monthlyFee = Math.max(stop.monthly_fee, dropStop?.monthly_fee ?? 0);
     const busToday = await vehicleOnDay(this.dataSource, route, todayIn(this.app.timeZone));
     const vehicle = busToday ? await this.vehicles.findOneBy({ id: busToday }) : null;
     const people: { id: number; name: string; mobile: string }[] = vehicle
@@ -820,7 +829,8 @@ export class RoutesService {
         : null,
       driver: person(vehicle?.driver_user_id),
       attendant: person(vehicle?.attendant_user_id),
-      monthly_fee: Math.max(stop.monthly_fee, dropStop?.monthly_fee ?? 0),
+      monthly_fee: monthlyFee,
+      fee: await this.feeReport.forStudent(schoolId, studentId, monthlyFee),
       route_stops: stops.map((item) => ({
         sequence: item.sequence,
         name: item.name,
@@ -1255,6 +1265,10 @@ export class RoutesService {
       return result;
     });
     void this.notify(schoolId, changes);
+    void this.feeSync.sync(
+      schoolId,
+      changes.map((change) => change.student_id),
+    );
     return changes;
   }
 
@@ -1684,7 +1698,7 @@ export class RoutesService {
               r.id AS route_id, r.name AS route_name, st.id AS stop_id, st.name AS stop_name, st.pickup_time, st.drop_time,
               dst.id AS drop_stop_id, dst.name AS drop_stop_name, dst.pickup_time AS drop_pickup_time,
               dst.drop_time AS drop_drop_time,
-              GREATEST(st.monthly_fee, COALESCE(dst.monthly_fee, 0)) AS monthly_fee,
+              ${RIDER_FEE_SQL('st', 'dst', 'r')} AS monthly_fee,
               t.mode, to_char(t.start_date, 'YYYY-MM-DD') AS start_date, t.passenger_ref,
               t.pass_status, t.pass_note, t.pass_changed_at
        FROM student_transport t
@@ -1733,6 +1747,8 @@ export class RoutesService {
 
   private async stopList(routeId: number): Promise<StopDto[]> {
     const rows = await this.stops.find({ where: { route_id: routeId }, order: { sequence: 'ASC' } });
+    const route = await this.routes.findOne({ where: { id: routeId }, withDeleted: true });
+    const routeFee = Number(route?.monthly_fee ?? 0);
     const counts: { stop_id: number; count: string }[] = rows.length
       ? await this.dataSource.query(
           `SELECT stop_id, COUNT(DISTINCT student_id) AS count FROM (
@@ -1753,7 +1769,8 @@ export class RoutesService {
       pickup_time: row.pickup_time,
       drop_time: row.drop_time,
       geofence_radius_m: row.geofence_radius_m,
-      monthly_fee: row.monthly_fee,
+      monthly_fee: stopFee(row.monthly_fee, routeFee),
+      fee_override: row.monthly_fee,
       students: Number(counts.find((item) => Number(item.stop_id) === row.id)?.count ?? 0),
     }));
   }
@@ -1855,6 +1872,7 @@ export class RoutesService {
         morning_riders: Number(stat?.morning_riders ?? 0),
         evening_riders: Number(stat?.evening_riders ?? 0),
         first_pickup: stat?.first_pickup ?? null,
+        monthly_fee: Number(row.monthly_fee),
         timings: routeTimings(schedule, school, school.point),
         problems: checkSchedule(schedule, school).filter((item) => item.severity === 'error').length,
       };

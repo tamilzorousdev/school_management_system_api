@@ -116,3 +116,36 @@ export function positionFrom(
   if (fallback) return { lat: fallback.lat, lng: fallback.lng, speed_kmh: fallback.speed };
   return null;
 }
+
+export const SOS_REPEAT_MS = 2 * 60 * 1000;
+
+export interface SosCandidate {
+  id: number;
+  raised_by: number | null;
+  vehicle_id: number | null;
+  raised_at: Date;
+  status: AlertStatus;
+}
+
+export function sosDuplicateOf<T extends SosCandidate>(
+  candidates: T[],
+  me: { userId: number; vehicleId: number | null },
+  now = Date.now(),
+): T | null {
+  return (
+    candidates
+      .filter((alert) => alert.status !== 'resolved' && now - alert.raised_at.getTime() < SOS_REPEAT_MS)
+      .filter((alert) => alert.raised_by === me.userId || (me.vehicleId !== null && alert.vehicle_id === me.vehicleId))
+      .sort((a, b) => b.raised_at.getTime() - a.raised_at.getTime())[0] ?? null
+  );
+}
+
+export function sosUpdateRefusal(alert: { kind: AlertKind; status: AlertStatus }): Refusal | null {
+  if (alert.kind !== 'sos') return { code: 'NOT_AN_SOS', message: 'This alert is not an SOS' };
+  if (alert.status === 'resolved') return { code: 'SOS_CLOSED', message: 'This SOS is already closed' };
+  return null;
+}
+
+export function cancelNote(name: string, note?: string | null): string {
+  return `Cancelled by ${name}${note ? `: ${note}` : ' (false alarm)'}`.slice(0, 500);
+}

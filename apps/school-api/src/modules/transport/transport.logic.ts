@@ -91,6 +91,21 @@ export function seatCheck(capacity: number, riders: { pickup: number; drop: numb
   return over.length ? `${capacity} seats, but ${over.join(' and ')}` : null;
 }
 
+export function stopFee(stopOverride: number | null | undefined, routeFee: number): number {
+  return stopOverride === null || stopOverride === undefined ? Number(routeFee) : Number(stopOverride);
+}
+
+export function riderFee(routeFee: number, pickupOverride: number | null, dropOverride?: number | null): number {
+  const pickup = stopFee(pickupOverride, routeFee);
+  return dropOverride === undefined ? pickup : Math.max(pickup, stopFee(dropOverride, routeFee));
+}
+
+export const STOP_FEE_SQL = (stopAlias: string, routeAlias: string) =>
+  `COALESCE(${stopAlias}.monthly_fee, ${routeAlias}.monthly_fee)`;
+
+export const RIDER_FEE_SQL = (stopAlias: string, dropAlias: string, routeAlias: string) =>
+  `(CASE WHEN ${dropAlias}.id IS NULL THEN ${STOP_FEE_SQL(stopAlias, routeAlias)} ELSE GREATEST(${STOP_FEE_SQL(stopAlias, routeAlias)}, ${STOP_FEE_SQL(dropAlias, routeAlias)}) END)`;
+
 export interface Point {
   lat: number;
   lng: number;

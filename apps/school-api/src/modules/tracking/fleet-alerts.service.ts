@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, MoreThan, Not, Repository } from 'typeorm';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AppException, AuthUser, listQuery, Paginated } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { ROLES } from '../access/access.catalog';
@@ -14,8 +15,10 @@ import {
   AlertDto,
   AlertInsightsDto,
   AlertQueryDto,
+  CancelSosDto,
   RaiseSosDto,
   ResolveAlertDto,
+  SosLocationDto,
   SosResultDto,
 } from './dto/fleet-alert.dto';
 import { ALERT_KINDS, AlertKind, FleetAlert } from './entities/fleet-alert.entity';
@@ -23,17 +26,21 @@ import { TransportTrip } from './entities/transport-trip.entity';
 import {
   ALERT_KIND_LABELS,
   alertMoveRefusal,
+  cancelNote,
   positionFrom,
   safetyTemplate,
+  SOS_REPEAT_MS,
+  sosDuplicateOf,
   sosLocation,
+  sosUpdateRefusal,
   telematicsAlert,
   TelematicsAlertEvent,
 } from './fleet-alerts.logic';
 import { LiveGateway } from './live.gateway';
 import { TripsService } from './trips.service';
 
-const SOS_REPEAT_MS = 2 * 60 * 1000;
 const OFFICE_ROLES = [ROLES.ADMIN, ROLES.TRANSPORT_INCHARGE];
+const SOS_ROLES = [...OFFICE_ROLES, ROLES.TEACHER, ROLES.HOD];
 
 interface BusInfo {
   vehicle: Vehicle | null;
@@ -49,6 +56,7 @@ export class FleetAlertsService {
     @InjectRepository(TransportTrip) private readonly tripRows: Repository<TransportTrip>,
     private readonly trips: TripsService,
     private readonly gateway: LiveGateway,
+    private readonly realtime: RealtimeGateway,
     private readonly notifications: NotificationsService,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
@@ -64,16 +72,24 @@ export class FleetAlertsService {
     const vehicle = await this.trips.crewVehicle(user);
     const trip = await this.sosTrip(schoolId, dto.trip_id, vehicle);
 
-    const recent = await this.alerts.findOne({
-      where: {
-        school_id: schoolId,
-        kind: 'sos',
-        raised_by: user.id,
-        status: Not('resolved'),
-        raised_at: MoreThan(new Date(Date.now() - SOS_REPEAT_MS)),
-      },
-      order: { raised_at: 'DESC' },
+    const since = MoreThan(new Date(Date.now() - SOS_REPEAT_MS));
+    const candidates = await this.alerts.find({
+      where: [
+        { school_id: schoolId, kind: 'sos', raised_by: user.id, status: Not('resolved'), raised_at: since },
+        ...(vehicle
+          ? [
+              {
+                school_id: schoolId,
+                kind: 'sos' as const,
+                vehicle_id: vehicle.id,
+                status: Not('resolved' as const),
+                raised_at: since,
+              },
+            ]
+          : []),
+      ],
     });
+    const recent = sosDuplicateOf(candidates, { userId: user.id, vehicleId: vehicle?.id ?? null });
     if (recent) return { ...(await this.presentOne(recent)), already_raised: true };
 
     const bus = await this.busInfo(trip?.vehicle_id ?? vehicle?.id ?? null, trip?.route_id ?? null);
@@ -97,7 +113,7 @@ export class FleetAlertsService {
         raised_at: new Date(),
       }),
     );
-    alert.notified = await this.tell(alert, TEMPLATES.SOS_ALERT, {
+    alert.notified = await this.tell(alert, TEMPLATES.SOS_ALERT, SOS_ROLES, {
       reporter: `${user.name} (${role})`,
       bus: this.busLabel(bus),
       location: sosLocation(trip?.stops ?? [], position),
@@ -107,6 +123,58 @@ export class FleetAlertsService {
     const presented = await this.presentOne(alert);
     this.gateway.alert(schoolId, 'alert.raised', presented);
     return { ...presented, already_raised: false };
+  }
+
+  async activeSos(user: AuthUser): Promise<AlertDto | null> {
+    const vehicle = await this.trips.crewVehicle(user);
+    const alert = await this.alerts.findOne({
+      where: [
+        { school_id: user.school_id!, kind: 'sos', raised_by: user.id, status: Not('resolved') },
+        ...(vehicle
+          ? [
+              {
+                school_id: user.school_id!,
+                kind: 'sos' as const,
+                vehicle_id: vehicle.id,
+                status: Not('resolved' as const),
+              },
+            ]
+          : []),
+      ],
+      order: { raised_at: 'DESC' },
+    });
+    return alert ? this.presentOne(alert) : null;
+  }
+
+  async updateSosLocation(user: AuthUser, id: number, dto: SosLocationDto): Promise<AlertDto> {
+    const alert = await this.crewSos(user, id);
+    await this.alerts.update(alert.id, { position: { lat: dto.lat, lng: dto.lng, speed_kmh: null } });
+    return this.changed(alert.school_id, alert.id);
+  }
+
+  async cancelSos(user: AuthUser, id: number, dto: CancelSosDto): Promise<AlertDto> {
+    const alert = await this.crewSos(user, id);
+    const now = new Date();
+    const note = cancelNote(user.name, dto.note);
+    await this.alerts.update(alert.id, {
+      status: 'resolved',
+      resolved_by: user.id,
+      resolved_at: now,
+      resolution_note: note,
+      data: { ...(alert.data ?? {}), cancelled: true },
+      ...(alert.acknowledged_at ? {} : { acknowledged_by: user.id, acknowledged_at: now }),
+    });
+    const bus = await this.busInfo(alert.vehicle_id, alert.route_id);
+    await this.tell(
+      alert,
+      TEMPLATES.SOS_CANCELLED,
+      SOS_ROLES,
+      { reporter: user.name, bus: this.busLabel(bus), note },
+      false,
+    );
+    const presented = await this.changed(alert.school_id, alert.id);
+    this.realtime.toUsers(await this.crewOf(alert), 'sos.updated', presented);
+    return presented;
   }
 
   async fromTelematics(event: TelematicsAlertEvent): Promise<{ accepted: boolean }> {
@@ -146,7 +214,7 @@ export class FleetAlertsService {
     if (!id) return { accepted: true };
     const alert = await this.alerts.findOneByOrFail({ id: Number(id) });
     const bus = await this.busInfo(vehicle.id, trip?.route_id ?? null);
-    alert.notified = await this.tell(alert, safetyTemplate(alert.severity), {
+    alert.notified = await this.tell(alert, safetyTemplate(alert.severity), OFFICE_ROLES, {
       bus: this.busLabel(bus),
       kind: ALERT_KIND_LABELS[alert.kind],
       message: alert.message,
@@ -219,8 +287,16 @@ export class FleetAlertsService {
         { id: alert.id, status: 'open' },
         { status: 'acknowledged', acknowledged_by: actor.id, acknowledged_at: new Date() },
       );
+      if (alert.kind === 'sos') {
+        await this.tellCrew(alert, TEMPLATES.SOS_ACKNOWLEDGED, {
+          by: actor.name,
+          time: clockIn(new Date(), this.app.timeZone),
+        });
+      }
     }
-    return this.changed(schoolId, id);
+    const presented = await this.changed(schoolId, id);
+    if (alert.kind === 'sos') this.realtime.toUsers(await this.crewOf(alert), 'sos.updated', presented);
+    return presented;
   }
 
   async resolve(schoolId: number, id: number, dto: ResolveAlertDto, actor: AuthUser): Promise<AlertDto> {
@@ -235,7 +311,46 @@ export class FleetAlertsService {
       resolution_note: dto.resolution_note,
       ...(alert.acknowledged_at ? {} : { acknowledged_by: actor.id, acknowledged_at: now }),
     });
-    return this.changed(schoolId, id);
+    const presented = await this.changed(schoolId, id);
+    if (alert.kind === 'sos') {
+      const bus = await this.busInfo(alert.vehicle_id, alert.route_id);
+      const data = { by: actor.name, bus: this.busLabel(bus), note: dto.resolution_note };
+      await this.tellCrew(alert, TEMPLATES.SOS_RESOLVED, data);
+      await this.tell(alert, TEMPLATES.SOS_RESOLVED, SOS_ROLES, data, false);
+      this.realtime.toUsers(await this.crewOf(alert), 'sos.updated', presented);
+    }
+    return presented;
+  }
+
+  private async crewSos(user: AuthUser, id: number): Promise<FleetAlert> {
+    const alert = await this.find(user.school_id!, id);
+    const vehicle = await this.trips.crewVehicle(user);
+    const mine = alert.raised_by === user.id || (vehicle !== null && alert.vehicle_id === vehicle.id);
+    if (!mine) throw AppException.forbidden('This SOS is not from your bus', 'NOT_YOUR_SOS');
+    const refusal = sosUpdateRefusal(alert);
+    if (refusal) throw AppException.conflict(refusal.message, refusal.code);
+    return alert;
+  }
+
+  private async crewOf(alert: FleetAlert): Promise<number[]> {
+    const vehicle = alert.vehicle_id
+      ? await this.dataSource.getRepository(Vehicle).findOneBy({ id: alert.vehicle_id })
+      : null;
+    return [...new Set([alert.raised_by, vehicle?.driver_user_id, vehicle?.attendant_user_id])].filter(
+      (id): id is number => Boolean(id),
+    );
+  }
+
+  private async tellCrew(alert: FleetAlert, template: string, data: Record<string, string>): Promise<void> {
+    const crew = await this.crewOf(alert);
+    if (!crew.length) return;
+    await this.notifications
+      .dispatch({
+        template,
+        audience: { user_ids: crew, school_id: alert.school_id },
+        data: { ...data, alert_id: String(alert.id) },
+      })
+      .catch((error: Error) => this.logger.warn(`SOS ${alert.id} crew notice failed: ${error.message}`));
   }
 
   private async changed(schoolId: number, id: number): Promise<AlertDto> {
@@ -283,11 +398,17 @@ export class FleetAlertsService {
     return route ? `${bus}, ${route.name}` : bus;
   }
 
-  private async tell(alert: FleetAlert, template: string, data: Record<string, string>): Promise<number> {
+  private async tell(
+    alert: FleetAlert,
+    template: string,
+    roles: string[],
+    data: Record<string, string>,
+    count = true,
+  ): Promise<number> {
     const notified = await this.notifications
       .dispatch({
         template,
-        audience: { roles: OFFICE_ROLES, school_id: alert.school_id },
+        audience: { roles, school_id: alert.school_id },
         data: { ...data, alert_id: String(alert.id) },
       })
       .then((result) => result.recipients)
@@ -295,7 +416,7 @@ export class FleetAlertsService {
         this.logger.warn(`Alert ${alert.id} notifications failed: ${error.message}`);
         return 0;
       });
-    if (notified) await this.alerts.update(alert.id, { notified });
+    if (count && notified) await this.alerts.update(alert.id, { notified });
     return notified;
   }
 

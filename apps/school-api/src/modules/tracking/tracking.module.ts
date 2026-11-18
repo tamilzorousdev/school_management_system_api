@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { CrewModule } from '../crew/crew.module';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { StudentLifecycleModule } from '../student-lifecycle/student-lifecycle.module';
 import { TransportModule } from '../transport/transport.module';
 import { BoardingChecklistService } from './boarding-checklist.service';
@@ -32,6 +33,7 @@ import { TripsService } from './trips.service';
     AuthModule,
     StudentLifecycleModule,
     CrewModule,
+    RealtimeModule,
     TransportModule,
   ],
   controllers: [
