@@ -29,6 +29,7 @@ export const PERMISSIONS = {
   FEEDBACK_MANAGE: 'feedback.manage',
   EMERGENCY_VIEW: 'emergency.view',
   EMERGENCY_SEND: 'emergency.send',
+  EMERGENCY_APPROVE: 'emergency.approve',
   NOTIFICATIONS_VIEW: 'notifications.view',
   NOTIFICATIONS_SEND: 'notifications.send',
   MEETINGS_VIEW: 'meetings.view',
@@ -94,6 +95,11 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   {
     code: PERMISSIONS.EMERGENCY_SEND,
     name: 'Send emergency broadcasts to parents and staff, and resend to those not reached',
+    group: 'Emergency',
+  },
+  {
+    code: PERMISSIONS.EMERGENCY_APPROVE,
+    name: 'Approve whole-school and SMS emergency broadcasts; their own go out without approval',
     group: 'Emergency',
   },
   { code: PERMISSIONS.NOTIFICATIONS_VIEW, name: 'View sent notifications and the SMS outbox', group: 'Communication' },
@@ -197,6 +203,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.FLEET_VIEW,
       PERMISSIONS.EMERGENCY_VIEW,
       PERMISSIONS.EMERGENCY_SEND,
+      PERMISSIONS.EMERGENCY_APPROVE,
     ],
   },
   {

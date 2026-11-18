@@ -13,7 +13,7 @@ import { User } from '../../users/entities/user.entity';
 export const CHANNELS = ['in_app', 'push', 'sms'] as const;
 export type Channel = (typeof CHANNELS)[number];
 
-export const NOTIFICATION_STATUSES = ['queued', 'sent', 'delivered', 'read', 'failed', 'skipped'] as const;
+export const NOTIFICATION_STATUSES = ['queued', 'sent', 'delivered', 'read', 'failed', 'skipped', 'expired'] as const;
 export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
 
 export const CATEGORIES = [

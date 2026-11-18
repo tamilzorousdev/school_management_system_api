@@ -425,7 +425,13 @@ Staff leave status moves `pending_hod` → `pending_principal` → `approved` (o
 
 ### Emergency broadcast
 
-An urgent message from the school office to all parents, all staff, everyone, or the parents of chosen classes, sections or students (optionally with their teachers). School admin, Principal and AO can send it (`emergency.send`) and see the history (`emergency.view`).
+An urgent message from the school office to all parents, all staff, everyone, or the parents of chosen classes, sections or students (optionally with their teachers). School admin, Principal and AO can send it (`emergency.send`) and see the history (`emergency.view`). School admin and Principal also have `emergency.approve`.
+
+**Approval.** A broadcast to the whole school (`everyone`, `parents`, `staff`) or with SMS, sent by someone without `emergency.approve` (for example the AO), waits with `status: pending_approval`; admins and the principal get `EMERGENCY_APPROVAL_NEEDED` (push). Approving sends it (or schedules it for its `send_at`); rejecting needs a note. The sender gets `EMERGENCY_REVIEWED`.
+
+**Schedule and expiry.** `send_at` sends later (1 minute to 60 days ahead, `status: scheduled`). `expires_in { value, unit }` with `unit` = `seconds`, `minutes`, `hours`, `days`, `months` or `years` (5 seconds up to 5 years) takes it off every screen when the time is up, counted from when it goes out: pushes and SMS not sent yet are dropped, the push carries a time-to-live so phones that were offline do not get it late, the in-app notification leaves the bell list (`status: expired`), and apps get the socket event `emergency.ended { broadcast_id, reason, ended_at }`. Messages already in a phone's notification tray stay there. `POST /{id}/end` does the same at once (End now). A follow-up with `category: all_clear` ends the broadcast it follows up.
+
+Every broadcast has `state`: `pending_approval`, `scheduled`, `active` (on screen), `expired`, `ended`, `rejected` or `cancelled`, plus `send_at`, `expiry { value, unit, label }`, `expires_at`, `ended_at`, `end_reason` (`expired`, `ended`, `all_clear`), `ended_by`, `reviewed_by`, `reviewed_at`, `review_note`.
 
 **How it is delivered.** On send, the API saves one row per person first (a parent with several children gets one message that lists them), then delivers in the background: an in-app notification at once (category `alert`), a live socket event `emergency.alert { broadcast_id, title, message, category, severity, sent_at }` to everyone with the app open, push to app users and SMS to every mobile number, including parents without the app. Push and SMS each get up to 3 tries (10 s, 30 s, 90 s apart); after a restart the API carries on with whatever was not sent. Tamil readers get the Tamil title and message when given. Push follows `PUSH_AUTO`: while it is `false` the push is marked not sent and the in-app, socket and SMS still go out. SMS goes through Kafka with template `school_emergency_broadcast` (`_ta` for Tamil), variables `school`, `title`, `message`, `name`.
 
@@ -433,24 +439,29 @@ An urgent message from the school office to all parents, all staff, everyone, or
 
 | Call | What it does |
 |---|---|
-| `GET /templates` | Ready-made messages in English and Tamil (rain holiday, early closure, security, transport delay, health, all clear) |
+| `GET /templates?all=` | The school's ready messages in English and Tamil (`id`, `is_active`, `sort_order`, …). A school starts with rain holiday, early closure, security, transport delay, health and all clear; `all=true` also lists switched-off ones |
+| `POST /templates`, `PATCH /templates/{id}`, `DELETE /templates/{id}` | Add, change (`is_active: false` hides it), remove a ready message. 404 `TEMPLATE_NOT_FOUND` |
 | `POST /preview` `{ audience, class_ids?, section_ids?, student_ids?, include_teachers? }` | People it will reach: `recipients`, `parents`, `staff`, `with_app`, `with_mobile`, `sms_only`, `unreachable` |
-| `POST` `{ audience, …, title, message, title_ta?, message_ta?, category, severity?, channels?: ["push","sms"], client_id?, follow_up_of? }` | Sends now (201). `audience` = `everyone`, `parents`, `staff`, `classes`, `sections`, `students`. `category` = `weather`, `school_closed`, `security`, `health`, `transport`, `all_clear`, `other`. `severity` = `info`, `warning`, `critical` (default). `client_id` stops a double click sending twice. `follow_up_of` links an all clear to the original |
-| `GET` | History, paged: `search`, `category`, `status` (`sending`, `sent`, `partly_failed`), `from`, `to`, `sort=sent_at|title` |
+| `POST` `{ audience, …, title, message, title_ta?, message_ta?, category, severity?, channels?: ["push","sms"], client_id?, follow_up_of?, expires_in?: { value, unit }, send_at? }` | Sends now, later or for approval (201). `audience` = `everyone`, `parents`, `staff`, `classes`, `sections`, `students`. `category` = `weather`, `school_closed`, `security`, `health`, `transport`, `all_clear`, `other`. `severity` = `info`, `warning`, `critical` (default). `client_id` stops a double click sending twice. `follow_up_of` links an all clear to the original |
+| `GET` | History, paged: `search`, `category`, `status`, `state` (`active`, `expired`, `ended`, `scheduled`, `pending_approval`, `rejected`, `cancelled`), `from`, `to`, `sort=sent_at|title` |
 | `GET /{id}` | One broadcast with `audience_label` and `counts`: `total`, `parents`, `staff`, `in_app`, `push` and `sms` (`pending`, `sending`, `sent`, `failed`, `skipped`), `reached`, `read`, `acknowledged` and the two percentages. Poll while `status` is `sending` |
 | `GET /{id}/recipients` | Paged people with `push_status`, `sms_status` and the reason when not sent, `read_at`, `acknowledged_at`, and their children. `filter` = `all`, `failed`, `not_read`, `not_acknowledged`, `sms_only`, `unreachable`; `search` = name, mobile or child |
-| `POST /{id}/resend` `{ target: "failed" | "not_acknowledged" }` | Sends again to those it failed for, or by push and SMS to everyone who has not acknowledged (409 `STILL_SENDING` while it is still going out) |
+| `POST /{id}/resend` `{ target: "failed" | "not_acknowledged", channels?: ["sms"] }` | Sends again to those it failed for, or to everyone who has not acknowledged; `channels` limits it, for example SMS only to people who have not seen it. 409 `STILL_SENDING`, `NOT_SENT_YET`, `NOT_ACTIVE` once it has ended |
+| `POST /{id}/approve` `{ note? }`, `POST /{id}/reject` `{ note }` | `emergency.approve` only. 409 `NOT_PENDING_APPROVAL` |
+| `POST /{id}/cancel` | Cancel a scheduled or waiting broadcast. 409 `NOT_CANCELLABLE` |
+| `POST /{id}/end` | End now. 409 `NOT_ACTIVE` |
+| `DELETE /{id}` | `emergency.approve`: remove an expired, ended, cancelled or rejected broadcast from the history and the counts (kept in the database). 409 `STILL_ACTIVE` |
 | `GET /insights` | This month: broadcasts, people, reached % and acknowledged %, broadcasts still sending, and the last broadcast |
 
 **Parent and Staff apps (`/me/emergency-broadcasts`).**
 
 | Call | What it does |
 |---|---|
-| `GET /me/emergency-broadcasts?pending=true` | My emergency messages, newest first, in my language; `pending=true` only the ones I have not acknowledged. Call it on app open and show any pending one as a full-screen alert |
+| `GET /me/emergency-broadcasts?pending=true&include_ended=` | My emergency messages still on screen, newest first, in my language; `pending=true` only the ones I have not acknowledged; `include_ended=true` adds expired and ended ones (history). Call it on app open and show any pending one as a full-screen alert |
 | `GET /me/emergency-broadcasts/{id}` | One message; opening it marks it read (and its in-app notification) |
 | `POST /me/emergency-broadcasts/{id}/acknowledge` | The "I have seen this" button; safe to press twice |
 
-Each item has `title`, `message`, `category`, `severity`, `school`, `students` (my children it is about, for parents), `sent_at`, `read_at`, `acknowledged_at` and `follow_up_of`. The push has `category: "alert"` and `broadcast_id`.
+Each item has `title`, `message`, `category`, `severity`, `school`, `students` (my children it is about, for parents), `sent_at`, `read_at`, `acknowledged_at`, `follow_up_of`, `is_active`, `expires_at`, `ended_at` and `end_reason`. Hide the red strip and close the full-screen alert when `is_active` is false, at `expires_at`, or on the `emergency.ended` socket event. The push has `category: "alert"` and `broadcast_id`; the in-app notification `data` also has `expires_at` when one is set.
 
 ### Digital signature (sign on screen or photo)
 
@@ -672,11 +683,79 @@ Permission `fleet.view` to read, `fleet.manage` to change. A student has one rou
 | `GET /admin/students/{id}/transport/history` | Assignments, moves and removals, newest first: `{ action, from, to, mode, by, at }` |
 | `POST /admin/transport/routes/{id}/stops/{stopId}/students` | Bulk: `{ student_ids, mode? }` put on this stop for both trips (clears any separate drop stop) |
 | `GET /admin/transport/students` | Paged riders. Filters `route_id`, `stop_id` (pickup or drop), `class_id`, `section_id`, `mode`. Sort `name`, `admission_no`, `class`, `stop`, `created_at` |
-| `GET /admin/transport/routes/{id}/roster` | Route list: stops in order, each with `pickup_students` and `drop_students` (name, admission no, class, mode, guardian name and mobile), plus `morning_riders`/`evening_riders` for the route and `bus_morning_riders`/`bus_evening_riders` for the whole bus |
+| `GET /admin/transport/routes/{id}/roster` | Route list: stops in order, each with `pickup_students` and `drop_students` (name, admission no, class, mode, guardian name and mobile, `pass_status`), plus `morning_riders`/`evening_riders` for the route and `bus_morning_riders`/`bus_evening_riders` for the whole bus |
 
 **Seats.** Counted per trip across every active route of the bus: morning riders (`both` + `pickup`) and evening riders (`both` + `drop`) must each fit `capacity`. Only active students count. A pickup-only and a drop-only student share one seat. Over capacity returns 409 `BUS_FULL` naming the trip. Giving a route a different bus checks the new bus the same way.
 
 **Notifications** on every assign, move and removal: parents with alerts on get `TRANSPORT_ASSIGNED` (route, pickup and drop with times) or `TRANSPORT_REMOVED`; the driver and attendant of the old and new bus get `BUS_RIDER_CHANGED`. Drop trips use the drop stop for `BUS_APPROACHING`/`BUS_ARRIVED`, the child bus card, boarding and the trip rider list.
+## Routes, stops and timings (admin web, Parent and Driver apps)
+
+**Route timings.** Every route (`GET /admin/transport/routes`, `GET …/routes/{id}`) has `timings`: `leaves_at` (first pickup), `reaches_school_at` (estimated from the last stop's distance to school, never after school starts), `leaves_school_at` and `last_drop_at`, plus `problems` (number of stop time errors). School start and end come from the bell schedule. `GET /admin/transport/routes?flag=` takes `no_bus`, `inactive` or `has_problems`; `GET /admin/transport/routes/insights` gives `{ routes, active, stops, students, no_bus, with_problems }`.
+
+**Stop time checks** on `PUT /admin/transport/routes/{id}/stops` (they block saving):
+- Once one stop has a pickup (or drop) time, every stop needs one.
+- Pickup times go up stop by stop, at least 2 minutes apart, and the last pickup is before school starts.
+- Drop times go up from the last stop outwards (the evening order), at least 2 minutes apart, and the first drop is after school ends.
+- A stop cannot lose the time its students need (a morning rider needs a pickup time, an evening rider a drop time).
+
+Errors are `400 VALIDATION_FAILED` with `field` `items.N.pickup_time` or `items.N.drop_time` and a message naming the stop ("Pickup at Kilpauk (07:35) must be at least 2 minutes after Anna Nagar (07:40)"). Stops far apart but only minutes apart come back as a warning in `schedule_problems` on the route (`STOP_TIMES_TOO_CLOSE`), which does not block saving.
+
+**No double booking.** A bus cannot run two routes at overlapping times (`409 BUS_TIME_CLASH`), and its driver or attendant cannot work another bus's route at the same time (`409 CREW_TIME_CLASH`). Checked when stops are saved, when a route gets a bus and when a route is switched on. A bus can run two rounds when they do not overlap. `RouteDetailDto.warnings` lists a missing bus, a bus off the road or not road-worthy, and a nearly full bus.
+
+**Putting students on a stop** (`POST …/routes/{id}/stops/{stopId}/students`, `PUT /admin/students/{id}/transport`): only stops of that route; `400 ROUTE_HAS_NO_BUS`, `ROUTE_INACTIVE`, `STOP_TIME_MISSING` (no pickup time for morning riders or no drop time for evening riders); `409 BUS_FULL`. Giving a route another bus checks that bus's seats too.
+
+**Change history and parent notes.** `GET /admin/transport/routes/{id}/history` lists what changed and when (`stop_time`, `stop_moved`, `stop_added`, `stop_removed`, `bus_changed`, `student_moved`, `pass_changed`) with `changed_by` and `parents_told`. Parents get an in-app note (`TRANSPORT_CHANGED`, no push, no SMS) when their child's stop time moves by 5 minutes or more, the stop moves 100 m or more, the child is moved to another stop, the route's bus changes, or the bus pass changes.
+
+**Bus pass.** `PUT /admin/students/{id}/transport/pass` `{ "status": "on_hold" | "active", "note"? }`. The admin list (`GET /admin/transport/students?pass_status=on_hold`) shows `pass_status`, `pass_note`, `pass_changed_at`. The driver sees only `pass_status`, never fees or the note; the app shows "Bus pass on hold – contact office" and the child is never left behind. Parents see `pass_status` and `pass_note`.
+
+**Parent app.** `GET /mobile/parent/children/{id}/transport` also returns `route_stops` (every stop in order with times, `is_my_stop`), `timings`, `pass_status`, `pass_note` and `recent_changes` (last 30 days, newest first, at most 10): route changes such as stop times plus this child's own changes ("Bus given on R1: boards at Kilpauk", "Moved to R2: …", "Pickup stop changed from A to B", "Evening stop changed from A to B").
+
+**Driver app (Module 1).** `GET /mobile/driver/duty` returns `students`, `morning`, `evening`, `passes_on_hold`; each route has `path` ("Anna Nagar → Kilpauk → School"), `from`, `to`, `timings` and `students`; each student has `photo_url`, class and section, `parents` (name, relation, mobile, primary first), `mode`, `journey` ("Boards at Kilpauk 07:25 · Drops at Kilpauk 16:30") and `pass_status`. `GET /mobile/driver/students?search=&ride=morning|evening` is the same list for the whole bus, searchable by name, admission number or parent mobile.
+
+**Driver app (Module 3).** `GET /mobile/driver/roster` returns the admin route roster for every active route on my bus: stops in route order, each with `pickup_students` (get on in the morning) and `drop_students` (get off in the evening), so a child with a different evening stop is listed at both. Each student has `pass_status`, `away_morning` and `away_evening`: null when the child rides that bus today, otherwise the reason to show ("On leave", "Half-day leave: comes in the afternoon", "Half-day leave: goes home at noon", "Sports OD – District athletics", "Marked absent"). Do not wait for an away child, but still let the attendant mark them if they turn up. Empty list when I have no bus. Use the roster before a trip starts (the plan) and `GET /mobile/driver/trips/{id}/checklist` while it runs (the live tick list). `GET /mobile/driver/duty` also has `away_morning` and `away_evening` counts, and every student in duty and `GET /mobile/driver/students` has `away_morning` / `away_evening`.
+
+**Away rule (per bus).** Morning bus: approved full-day leave or morning half-day leave, sports OD for the whole day or the morning session, or marked absent / leave / OD in the morning attendance. Evening bus: the same with the afternoon half (afternoon attendance, or the morning mark when the afternoon is not taken yet). Late does not count. The same rule sets `status: away` and `away_note` in the trip checklist, trip riders and bus-history, and away children are never flagged `not_boarded`.
+
+**Driver rating.** Parents rate their child's bus driver once a month (sending again the same month changes it).
+
+| Call | Use |
+|---|---|
+| `GET /mobile/parent/children/{id}/driver-rating` | Parent app (Module 2): `driver` (name, photo), `vehicle`, `month`, `can_rate` (false when the child does not use the bus or the bus has no driver), `my_rating` (`rating`, `tags`, `comment`, `updated_at`) and `tags` (the chips: code, label, positive) |
+| `PUT /mobile/parent/children/{id}/driver-rating` | `{ "rating": 1-5, "tags"?: ["safe_driving", "on_time"], "comment"? }`. For 1 or 2 stars pick a complaint chip (`rash_driving`, `late`, `rude`, `uses_phone`) or write a comment, else 400 `VALIDATION_FAILED` on `comment`. 400 `NOT_ON_BUS`, `NO_DRIVER`. A new 1 or 2 star rating sends `DRIVER_LOW_RATING` (in-app) to admins and the transport in-charge |
+| `GET /admin/transport/driver-ratings/summary` | Each driver of an active bus (and anyone rated): `average`, `count`, `month_average`, `month_count`, `low_count`, `distribution` (1 to 5 star counts) and `top_tags`. Lowest average first. Permission `fleet.view` |
+| `GET /admin/transport/driver-ratings?driver_user_id&vehicle_id&rating&low=true&from&to&search&sort` | The ratings with driver, bus, student, parent, chips and comment. search: driver, parent or student name, or comment. sort: `updated_at` (default), `created_at`, `rating` |
+| `GET /admin/transport/driver-ratings/insights` | `average`, `count`, `month_count`, `month_low`, `drivers_rated` |
+
+**Bus pass (digital).** Every student with a bus stop gets one pass a year (`pass_no` like `TZMS-BP-2026-0042`, `valid_from` = year start, `valid_until` = the settings date or the year end). State:
+- `awaiting_payment` until the first bus fee invoice of the year is fully paid (free stops are active at once);
+- `active`;
+- `on_hold` when the office restricts it. A hold made while a bus fee is pending (`hold_kind: fee`) lifts by itself once nothing is past the grace days; an office hold (`hold_kind: office`) stays until the office activates it;
+- `expired` after `valid_until`. A new pass with a new number comes with the next academic year.
+
+The bus fee is the transport line on the fee plan installment invoices (the cycle is the installments). A bus fee counts as paid when its invoice is fully paid. `fee.standing`: `clear`, `due` (unpaid, within the grace days) or `past_grace` (the fee pending list). A job every 10 minutes issues passes that became paid (`BUS_PASS_ISSUED`), sends one reminder the day the grace ends (`BUS_FEE_REMINDER`) and reactivates paid fee holds (`BUS_PASS_ACTIVE`).
+
+| Call | Use |
+|---|---|
+| `GET /admin/transport/bus-passes?search&state&fee&route_id` | Passes with `student`, `route`, `pickup`, `drop`, `bus` (of today), `fee { standing, oldest_due, grace_ends, pending_amount }`. `fee=past_grace` is the fee pending list |
+| `GET /admin/transport/bus-passes/insights` | `total`, `active`, `awaiting_payment`, `on_hold`, `fee_due`, `fee_past_grace`, `expired` |
+| `GET` / `PUT /admin/transport/bus-passes/settings` | `{ grace_days (0-90), valid_until? }` (`null` = end of year) |
+| `POST /admin/transport/bus-passes/restrict` `{ student_ids, note? }` / `activate` `{ student_ids }` | One or many. Parents get `BUS_PASS_HELD` ("The bus pass for Kavin is on hold as the bus fee is pending. Please pay in the app or contact the school office.") or `BUS_PASS_ACTIVE` |
+| `GET` / `PATCH /admin/transport/bus-passes/{studentId}` `{ valid_until }` | One pass (print card); change its end date |
+| `POST /admin/transport/bus-passes/check-payments` | Run the 10-minute job now |
+| `GET /mobile/parent/children/{id}/bus-pass` | Parent app (Module 2): the digital pass with `school`, `message` and `qr` (the signed ID card QR, only while active); `null` when the child does not use the bus |
+| `GET /mobile/driver/passes-on-hold` | Driver app (Module 3): children on my bus today whose pass is on hold, with `label` ("Pass on hold – fee pending, contact office"). No amounts. Still take the child |
+
+Crew lists (duty, students, roster, trip checklist) also have `pass_label` (null when active).
+
+**Reason for a change.** `PATCH /admin/transport/routes/{id}` and `PUT /admin/transport/routes/{id}/stops` take an optional `reason` (up to 200 letters, for example "Road work on 2nd Avenue"). Parents read it at the end of their note ("… Reason: Road work on 2nd Avenue") and the route history keeps it in `reason`.
+
+**Bus for a day (breakdown).** `PUT /admin/transport/routes/{id}/swap { vehicle_id, date?, reason? }` runs the route with another bus on one day (today by default, up to 30 days ahead; sending again for the same day replaces it); the next day the usual bus is back without any step. The other bus must be free at the route times (409 `BUS_TIME_CLASH`, `CREW_TIME_CLASH`); in an emergency send `force: true` to change anyway: the answer has `warning`, and the parents of the route that bus also runs get a note that it may be late. 400 `SAME_BUS`, `ROUTE_INACTIVE`. Parents of the route and the driver and attendant of both buses get `BUS_SWAPPED` (push) with the reason, and the route history gets a `bus_swapped` entry. On that day the swap bus's driver sees the route on the home screen, roster and student lists and can start its trips; the parent's transport card and live bus show the swap bus. `DELETE /admin/transport/routes/{id}/swap?date=` undoes it (parents get a note; 404 `SWAP_NOT_FOUND`). `GET /admin/transport/bus-swaps?date=` lists swaps from today on (or for one date). Route list items have `swap_today { vehicle, reason }`.
+
+**Breakdown on the road (hand-over).** `POST /admin/transport/trips/{id}/handover { vehicle_id, reason?, keep_for_today? }` on a running trip: a new trip starts on the other bus for the stops not passed yet (the bus needs a GPS tracker and must not be on another trip; its crew must be cleared), the children already on board are copied to it, and the old trip ends with `end_reason: breakdown` without the left-on-bus and missed-bus alerts. Parents of children on board get `BUS_HANDOVER_ONBOARD` ("Kavin is moving to Bus 2"), parents still waiting, both crews and the office get `BUS_HANDOVER`, and screens following the old trip get `trip.event` with `type: trip.handover` and `new_trip_id`. `keep_for_today` also runs the route with the new bus for the rest of the day (a bus for a day, changed anyway). Trips have `handover_of` (the trip it took over from) and `replaced_by`. Answer: `old_trip`, `new_trip`, `on_board`, `waiting`, `parents_told`, `warning`. 409 `TRIP_ENDED`, `TRIP_ALREADY_ACTIVE`; 400 `SAME_BUS`, `NO_TRACKER`.
+
+**Bus delayed (driver app, Module 2).** `POST /mobile/driver/trips/{id}/delay { minutes: 5-180, reason? }` while the trip runs: parents of that trip and the transport office get `BUS_DELAYED` (push, "Bus 1 is running about 20 minutes late"), live screens get `trip.event` with `type: trip.delayed`, and the trip shows `delay { minutes, reason, at }`. Once every 3 minutes (429 `DELAY_TOO_SOON`); 409 `TRIP_ENDED`, 403 `NOT_YOUR_TRIP`.
+
+**Route list.** `GET /admin/transport/routes` items also have `morning_riders` and `evening_riders` (active students on each trip) next to `students`, so cards can show "Morning 23/40 · Evening 19/40".
 
 ## Live bus
 
@@ -689,7 +768,7 @@ Permission `fleet.view` to read, `fleet.manage` to change. A student has one rou
 | `POST /mobile/driver/trips/{id}/positions` | Phone GPS fallback every 5–10 s: `{ "lat", "lng", "speed", "heading" }`. Used only when the bus tracker is silent for 60 s |
 | `POST /mobile/driver/trips/{id}/end` | End by hand. A pickup also ends by itself inside the school gate; a drop after the last stop. The response also has `not_alighted` (boarded but never marked off) |
 | `POST /mobile/driver/trips/{id}/boardings` | Scan or tap: `{ "action": "boarded", "qr_token": "TZS1.12.1.…" }` after scanning the ID card, or `{ "action": "alighted", "student_id": 12 }` from the `riders` list. Returns the row with `method` (`qr`/`manual`), `stop` (null at the school gate), `occurred_at` and `already_recorded` (a double scan is safe and sends nothing). Parents get **{child} boarded the bus** / **got off the bus**. 409 `NOT_ON_THIS_ROUTE`, `NOT_ON_THIS_TRIP`, `NOT_BOARDED`, `QR_REPLACED` (old card), `TRIP_ENDED`; 400 `QR_INVALID` |
-| `GET /mobile/driver/trips/{id}/checklist` | **Boarding checklist** (Module 3): `trip`, `summary` `{ total, away, waiting, on_bus, off_bus, not_boarded, not_alighted }` and `students` in stop order, each with `stop`, `status` (`waiting`, `on_bus`, `off_bus`, `away` = on leave or absent today), `flag` (after the trip ends: `not_boarded` or `not_alighted`, else null), and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Lighter than the trip screen, so poll it freely. Works for past trips too. In this phase the attendant marks by tapping (`POST …/boardings` with `student_id`) |
+| `GET /mobile/driver/trips/{id}/checklist` | **Boarding checklist** (Module 3): `trip`, `summary` `{ total, away, waiting, on_bus, off_bus, not_boarded, not_alighted }` and `students` in stop order, each with `stop`, `status` (`waiting`, `on_bus`, `off_bus`, `away` = on leave or absent today), `flag` (after the trip ends: `not_boarded` or `not_alighted`, else null), and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Each student also has `photo_url`, `parents` (name, relation, mobile, primary first; call them when the child is still `waiting`) and `pass_status` (`on_hold`: show "Bus pass on hold – contact office", never leave the child behind). Lighter than the trip screen, so poll it freely. Works for past trips too. In this phase the attendant marks by tapping (`POST …/boardings` with `student_id`) |
 | `DELETE /mobile/driver/trips/{id}/boardings/{boardingId}` | Undo a wrong tap while the trip runs (`boardingId` = the mark's `id` from the checklist). Returns the updated checklist; parents are not told. Undo "got off" before "boarded" (409 `UNDO_ALIGHTED_FIRST`); 404 `BOARDING_NOT_FOUND`; 409 `TRIP_ENDED` |
 | `GET /mobile/driver/trips/history?from=&to=&page=&limit=` | Past trips of my bus, newest first, each with the checklist `summary`. `from`/`to` default to the last 30 days. Open one with `…/{id}/checklist` |
 | `POST /mobile/driver/sos` | SOS button: `{ "trip_id"?, "lat"?, "lng"?, "note"? }` (all optional, and no trip needs to be running; the running trip and the bus position are used). School admins, the transport in-charge and every teacher get a push and an SMS with the bus, route, place, time and number to call. A press by me or the other crew member of my bus within 2 minutes returns the same alert with `already_raised: true` |
@@ -720,12 +799,19 @@ At the end of a pickup, class teachers get the list of expected children who wer
 
 When a trip ends (by hand, from the office, or by itself) with children still marked on the bus, school admins and the transport in-charge get **{count} still on {bus} after the trip ended** with the names (push, SMS if the push does not reach the phone). It is sent once per trip.
 
+At the same moment the parents of each child who was expected on that trip (not away) and never marked get **{student} did not come on the morning bus / evening bus** (`CHILD_NOT_ON_BUS`, push and in-app, data `student`, `bus`, `trip`, `trip_id`, `student_id`). It is skipped when the attendant marked nobody on the trip, so a trip run without the app does not alarm every parent.
+
 **Boarding history.**
 
 | Call | Use |
 |---|---|
 | `GET /mobile/parent/children/{id}/bus-history?from=&to=&page=&limit=` | The child's trips, newest first: `trip_id`, `trip_date`, `kind`, `trip_status`, `route`, `status` (`waiting`, `on_bus`, `off_bus`, `away`), `flag` (`not_boarded` / `not_alighted` after the trip ends) and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Last 30 days by default |
 | `GET /mobile/teacher/sections/{id}/bus-boarding?date=` | Class teacher: each bus student of the class with that day's pickup and drop trips (same fields as above). `date` defaults to today. 403 `NOT_CLASS_TEACHER` for other sections |
+| `GET /mobile/parent/children/{id}/transport` | The transport card also has `today`: the trips that have started today, morning first, with the same fields as bus-history ("Boarded at 07:02, Kilpauk"). Empty before the first trip starts |
+| `GET /admin/transport/trips/{id}/checklist` | Office: the same checklist the attendant sees (permission `fleet.view`). 404 `TRIP_NOT_FOUND` |
+| `GET /admin/students/{id}/bus-history?from=&to=&page=&limit=` | Office: the student's trips, same fields as the parent bus-history. 404 `STUDENT_NOT_FOUND` |
+
+Bus-history covers trips on the child's current route plus any trip where the child was marked. After a move to another route, trips on the old route where the child was not marked do not show.
 
 ### Live updates (socket.io)
 Connect to the namespace `/live` on the API host with `{ auth: { token: "<access_token>" } }`, then:
@@ -757,7 +843,7 @@ Read with `fleet.view`, change with `fleet.manage`. `{id}` of a bus is the schoo
 | `POST /admin/fleet/maintenance/{id}/close` | `{ "cost"?, "vendor"?, "odometer_km"?, "notes"? }`. 409 `TICKET_CLOSED` |
 | `GET /admin/fleet/fuel` | Fuel log: `vehicle_id`, `from`, `to`, search (station, bus); sort `filled_on`, `amount`, `litres`, `odometer_km`. Each entry has `price_per_litre`, `km_since_last` and `km_per_litre` (distance since the previous fill of that bus ÷ litres of this fill; null for the first). `GET .../insights?vehicle_id=` returns this month's `entries_this_month`, `litres_this_month`, `amount_this_month` and `avg_km_per_litre` (last 90 days) |
 | `POST` / `PATCH` / `DELETE /admin/fleet/fuel[/{id}]` | `{ "vehicle_id": 1, "filled_on": "2026-11-03", "litres": 60.5, "amount": 5800, "odometer_km": 48213, "station"?, "bill_file_id"? (from `POST /files`), "filled_by"? (user id) }`. `filled_on` cannot be in the future and `odometer_km` must sit between the fills before and after it (field errors) |
-| `GET /admin/transport/trips?date&route_id&vehicle_id&status=ended` | Trip history |
+| `GET /admin/transport/trips?date&route_id&vehicle_id&status=ended&flag=` | Trip history. Ended trips have `flags` `{ not_boarded, not_alighted }` (the same counts as the checklist; null while running). `flag`: `not_alighted` (a child left marked on the bus), `not_boarded` (a child who was not away and never got on) or `any` |
 | `GET /admin/fleet/trips/{id}/playback?max_points=1500` | Replay: `trip`, `school`, `path` (planned route), `points` `[{ at, lat, lng, speed, heading }]` oldest first (thinned evenly to `max_points`, `sampled` says so), `distance_km`, `duration_seconds`, `max_speed`, `avg_speed`, `stop_arrivals` and `safety_events`. 404 `TRACK_NOT_FOUND` |
 
 When the Telematics service reports a new engine fault code it sends `vehicle.fault` `{ id, type, at, device_id, fault: { code, description, severity }, odometer_km? }`. The bus with that tracker gets a maintenance ticket (`source: obd`, one open ticket per code; retries are stored once) and admins and the transport in-charge get `VEHICLE_FAULT` (push and in-app; `bus`, `code`, `fault`, `severity`).

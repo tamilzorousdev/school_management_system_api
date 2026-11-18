@@ -33,11 +33,17 @@ import {
   PhonePositionDto,
   StartTripDto,
   TripDetailDto,
+  BusDelayInputDto,
+  HandoverInputDto,
+  HandoverResultDto,
   TripDto,
+  TripListItemDto,
   TripQueryDto,
 } from './dto/tracking.dto';
+import { TripDelayService } from './trip-delay.service';
+import { TripHandoverService } from './trip-handover.service';
 import { BoardingChecklistService } from './boarding-checklist.service';
-import { BoardingHistoryQueryDto, TripChecklistDto, TripHistoryDto } from './dto/checklist.dto';
+import { BoardingHistoryQueryDto, StudentTripDto, TripChecklistDto, TripHistoryDto } from './dto/checklist.dto';
 import { TripEventsService } from './trip-events.service';
 import { TripsService } from './trips.service';
 
@@ -50,14 +56,32 @@ export class AdminTripsController {
   constructor(
     private readonly trips: TripsService,
     private readonly checklist: BoardingChecklistService,
+    private readonly handovers: TripHandoverService,
   ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
-  @ApiOperation({ summary: 'Bus trips, newest first. Filter by date, status and route.' })
-  @ApiEnvelope(TripDto, { paginated: true })
+  @ApiOperation({
+    summary: 'Bus trips, newest first. Filter by date, status, route, bus and flag.',
+    description:
+      'Ended trips have flags { not_boarded, not_alighted }; running trips have flags null. flag=not_alighted lists trips where a child was left marked on the bus.',
+  })
+  @ApiEnvelope(TripListItemDto, { paginated: true })
   list(@SchoolId() schoolId: number, @Query() query: TripQueryDto) {
     return this.trips.list(schoolId, query);
+  }
+
+  @Get(':id/checklist')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary: 'Boarding checklist of a trip: every student in stop order with status, marks, flag, bus pass and parents',
+    description:
+      'Same as the attendant sees. status: waiting, on_bus, off_bus or away. flag after the trip ends: not_boarded or not_alighted.',
+  })
+  @ApiEnvelope(TripChecklistDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  tripChecklist(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.checklist.officeChecklist(schoolId, id);
   }
 
   @Get(':id')
@@ -87,6 +111,26 @@ export class AdminTripsController {
     return this.trips.start(schoolId, dto, actor);
   }
 
+  @Post(':id/handover')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Handed over to the new bus')
+  @ApiOperation({
+    summary: 'Breakdown on the road: hand the running trip over to another bus',
+    description:
+      'Starts a trip on the new bus for the stops not passed yet (it needs a GPS tracker and must not be on another trip), copies the children already on board, and ends this trip with end_reason breakdown without the end-of-trip alerts. Parents of children on board get BUS_HANDOVER_ONBOARD, parents still waiting, both crews and the office get BUS_HANDOVER. keep_for_today also runs the route with the new bus for the rest of the day. 409 TRIP_ENDED, TRIP_ALREADY_ACTIVE; 400 SAME_BUS, NO_TRACKER.',
+  })
+  @ApiEnvelope(HandoverResultDto, { message: 'Handed over to the new bus' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  handover(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: HandoverInputDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.handovers.handover(schoolId, id, dto, actor);
+  }
+
   @Post(':id/end')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
@@ -101,6 +145,31 @@ export class AdminTripsController {
   }
 }
 
+@ApiTags('Admin · Trips')
+@ApiBearerAuth()
+@ApiSchoolHeader()
+@ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
+@Controller('admin/students/:id/bus-history')
+export class AdminStudentBusController {
+  constructor(private readonly checklist: BoardingChecklistService) {}
+
+  @Get()
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary: 'Bus boarding history of a student: each trip with when and where they got on and off',
+    description: 'Newest first. from and to default to the last 30 days. status and flag as in the trip checklist.',
+  })
+  @ApiEnvelope(StudentTripDto, { paginated: true })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  history(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: BoardingHistoryQueryDto,
+  ) {
+    return this.checklist.studentHistory(schoolId, id, query);
+  }
+}
+
 @ApiBearerAuth()
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
 @RequireRoles(ROLES.DRIVER, ROLES.ATTENDANT)
@@ -109,6 +178,7 @@ export class DriverTripsController {
   constructor(
     private readonly trips: TripsService,
     private readonly checklist: BoardingChecklistService,
+    private readonly delays: TripDelayService,
   ) {}
 
   @Get('today')
@@ -132,6 +202,21 @@ export class DriverTripsController {
   @ApiEnvelope(TripHistoryDto, { paginated: true })
   async history(@CurrentUser() user: AuthUser, @Query() query: BoardingHistoryQueryDto) {
     return this.checklist.vehicleHistory(user.school_id!, await this.vehicleOf(user), query);
+  }
+
+  @Post(':id/delay')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_2)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Parents told the bus is late')
+  @ApiOperation({
+    summary: 'Bus delayed: tell the parents of this trip the bus is about N minutes late',
+    description:
+      'Buttons 10, 20, 30 minutes (any 5 to 180) and an optional reason. Parents of the trip and the transport office get a push; live screens get trip.event type trip.delayed. 409 TRIP_ENDED, 403 NOT_YOUR_TRIP, 429 DELAY_TOO_SOON (once every 3 minutes).',
+  })
+  @ApiEnvelope(TripDto, { message: 'Parents told the bus is late' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT, HttpStatus.TOO_MANY_REQUESTS)
+  async delay(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: BusDelayInputDto) {
+    return this.delays.report(user, id, await this.vehicleOf(user), dto);
   }
 
   @Get(':id/checklist')

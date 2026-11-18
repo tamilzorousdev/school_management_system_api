@@ -4,6 +4,7 @@ import { AuthModule } from '../auth/auth.module';
 import { CrewModule } from '../crew/crew.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { StudentLifecycleModule } from '../student-lifecycle/student-lifecycle.module';
+import { TransportModule } from '../transport/transport.module';
 import { BoardingChecklistService } from './boarding-checklist.service';
 import { BoardingService } from './boarding.service';
 import { DriverSafetyController } from './driver-safety.controller';
@@ -16,7 +17,14 @@ import { FleetAlertsService } from './fleet-alerts.service';
 import { LiveGateway } from './live.gateway';
 import { TripAccessService } from './trip-access.service';
 import { TripEventsService } from './trip-events.service';
-import { AdminTripsController, DriverTripsController, TelematicsWebhookController } from './tracking.controller';
+import {
+  AdminStudentBusController,
+  AdminTripsController,
+  DriverTripsController,
+  TelematicsWebhookController,
+} from './tracking.controller';
+import { TripDelayService } from './trip-delay.service';
+import { TripHandoverService } from './trip-handover.service';
 import { TripsService } from './trips.service';
 
 @Module({
@@ -26,9 +34,11 @@ import { TripsService } from './trips.service';
     StudentLifecycleModule,
     CrewModule,
     RealtimeModule,
+    TransportModule,
   ],
   controllers: [
     AdminTripsController,
+    AdminStudentBusController,
     DriverTripsController,
     TelematicsWebhookController,
     DriverSafetyController,
@@ -42,6 +52,8 @@ import { TripsService } from './trips.service';
     BoardingService,
     BoardingChecklistService,
     FleetAlertsService,
+    TripDelayService,
+    TripHandoverService,
   ],
   exports: [TripsService, TripAccessService, LiveGateway, FleetAlertsService, BoardingChecklistService],
 })

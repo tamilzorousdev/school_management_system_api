@@ -5,10 +5,13 @@ import { RealtimeModule } from '../realtime/realtime.module';
 import { EmergencyController, MeEmergencyController } from './emergency.controller';
 import { EmergencyDeliveryService } from './emergency-delivery.service';
 import { EmergencyService } from './emergency.service';
-import { EmergencyBroadcast, EmergencyRecipient } from './entities/emergency.entity';
+import { EmergencyBroadcast, EmergencyMessageTemplate, EmergencyRecipient } from './entities/emergency.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([EmergencyBroadcast, EmergencyRecipient, Notification]), RealtimeModule],
+  imports: [
+    TypeOrmModule.forFeature([EmergencyBroadcast, EmergencyRecipient, EmergencyMessageTemplate, Notification]),
+    RealtimeModule,
+  ],
   controllers: [EmergencyController, MeEmergencyController],
   providers: [EmergencyService, EmergencyDeliveryService],
 })

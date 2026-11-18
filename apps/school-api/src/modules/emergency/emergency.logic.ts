@@ -1,7 +1,11 @@
 import type {
   BroadcastStatus,
   DeliveryStatus,
+  EmergencyAudience,
   EmergencyCategory,
+  EmergencyChannel,
+  EndReason,
+  ExpiryUnit,
   RecipientKind,
   RecipientStudent,
 } from './entities/emergency.entity';
@@ -177,3 +181,82 @@ export const EMERGENCY_TEMPLATES: EmergencyTemplate[] = [
     message_ta: 'நிலைமை இப்போது சீராக உள்ளது. பள்ளி வழக்கமான அட்டவணையைப் பின்பற்றும். உங்கள் பொறுமைக்கு நன்றி.',
   },
 ];
+
+export const MIN_EXPIRY_SECONDS = 5;
+export const MAX_EXPIRY_YEARS = 5;
+export const MAX_SCHEDULE_DAYS = 60;
+export const WHOLE_SCHOOL_AUDIENCES: EmergencyAudience[] = ['everyone', 'parents', 'staff'];
+
+const UNIT_SECONDS: Partial<Record<ExpiryUnit, number>> = { seconds: 1, minutes: 60, hours: 3600, days: 86400 };
+
+const UNIT_NAMES: Record<ExpiryUnit, [string, string]> = {
+  seconds: ['second', 'seconds'],
+  minutes: ['minute', 'minutes'],
+  hours: ['hour', 'hours'],
+  days: ['day', 'days'],
+  months: ['month', 'months'],
+  years: ['year', 'years'],
+};
+
+export function expiryFrom(start: Date, value: number, unit: ExpiryUnit): Date {
+  const seconds = UNIT_SECONDS[unit];
+  if (seconds) return new Date(start.getTime() + value * seconds * 1000);
+  const end = new Date(start.getTime());
+  const day = end.getUTCDate();
+  end.setUTCDate(1);
+  end.setUTCMonth(end.getUTCMonth() + (unit === 'years' ? value * 12 : value));
+  const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+  end.setUTCDate(Math.min(day, lastDay));
+  return end;
+}
+
+export function expiryProblem(value: number, unit: ExpiryUnit, start = new Date()): string | null {
+  const end = expiryFrom(start, value, unit);
+  if (end.getTime() - start.getTime() < MIN_EXPIRY_SECONDS * 1000) {
+    return `Keep it for at least ${MIN_EXPIRY_SECONDS} seconds`;
+  }
+  if (end > expiryFrom(start, MAX_EXPIRY_YEARS, 'years')) return `Keep it for at most ${MAX_EXPIRY_YEARS} years`;
+  return null;
+}
+
+export function expiryLabel(value: number, unit: ExpiryUnit): string {
+  return `${value} ${UNIT_NAMES[unit][value === 1 ? 0 : 1]}`;
+}
+
+export function needsApproval(
+  input: { audience: EmergencyAudience; channels: EmergencyChannel[] },
+  canApprove: boolean,
+): boolean {
+  if (canApprove) return false;
+  return WHOLE_SCHOOL_AUDIENCES.includes(input.audience) || input.channels.includes('sms');
+}
+
+export const BROADCAST_STATES = [
+  'pending_approval',
+  'scheduled',
+  'active',
+  'expired',
+  'ended',
+  'rejected',
+  'cancelled',
+] as const;
+export type BroadcastState = (typeof BROADCAST_STATES)[number];
+
+export function broadcastState(
+  row: { status: BroadcastStatus; expires_at: Date | null; ended_at: Date | null; end_reason: EndReason | null },
+  now = new Date(),
+): BroadcastState {
+  if (row.status === 'pending_approval' || row.status === 'scheduled' || row.status === 'rejected') return row.status;
+  if (row.status === 'cancelled') return 'cancelled';
+  if (row.ended_at) return row.end_reason === 'expired' ? 'expired' : 'ended';
+  if (row.expires_at && row.expires_at <= now) return 'expired';
+  return 'active';
+}
+
+export function scheduleProblem(sendAt: Date, now = new Date()): string | null {
+  if (sendAt.getTime() <= now.getTime() + 30_000) return 'Pick a time at least 1 minute from now';
+  if (sendAt.getTime() > now.getTime() + MAX_SCHEDULE_DAYS * 86400_000) {
+    return `Pick a time within the next ${MAX_SCHEDULE_DAYS} days`;
+  }
+  return null;
+}

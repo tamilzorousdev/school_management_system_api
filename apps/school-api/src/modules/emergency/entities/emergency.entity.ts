@@ -21,8 +21,23 @@ export type EmergencyAudience = (typeof EMERGENCY_AUDIENCES)[number];
 export const EMERGENCY_CHANNELS = ['push', 'sms'] as const;
 export type EmergencyChannel = (typeof EMERGENCY_CHANNELS)[number];
 
-export const BROADCAST_STATUSES = ['sending', 'sent', 'partly_failed'] as const;
+export const BROADCAST_STATUSES = [
+  'pending_approval',
+  'scheduled',
+  'sending',
+  'sent',
+  'partly_failed',
+  'rejected',
+  'cancelled',
+] as const;
 export type BroadcastStatus = (typeof BROADCAST_STATUSES)[number];
+export const DISPATCHED_STATUSES: BroadcastStatus[] = ['sending', 'sent', 'partly_failed'];
+
+export const EXPIRY_UNITS = ['seconds', 'minutes', 'hours', 'days', 'months', 'years'] as const;
+export type ExpiryUnit = (typeof EXPIRY_UNITS)[number];
+
+export const END_REASONS = ['expired', 'ended', 'all_clear'] as const;
+export type EndReason = (typeof END_REASONS)[number];
 
 export const DELIVERY_STATUSES = ['pending', 'sending', 'sent', 'failed', 'skipped', 'none'] as const;
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
@@ -98,6 +113,64 @@ export class EmergencyBroadcast extends SchoolScopedEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   completed_at: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  send_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  expiry_value: number | null;
+
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  expiry_unit: ExpiryUnit | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  expires_at: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  ended_at: Date | null;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  end_reason: EndReason | null;
+
+  @Column({ type: 'int', nullable: true })
+  ended_by: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  reviewed_by: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  reviewed_at: Date | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  review_note: string | null;
+}
+
+@Entity('emergency_templates')
+@Index('IDX_emergency_templates_school', ['school_id', 'sort_order'])
+export class EmergencyMessageTemplate extends SchoolScopedEntity {
+  @Column({ type: 'varchar', length: 20 })
+  category: EmergencyCategory;
+
+  @Column({ type: 'varchar', length: 10 })
+  severity: EmergencySeverity;
+
+  @Column({ type: 'varchar', length: 120 })
+  title: string;
+
+  @Column({ type: 'text' })
+  message: string;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  title_ta: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  message_ta: string | null;
+
+  @Column({ type: 'boolean', default: true })
+  is_active: boolean;
+
+  @Column({ type: 'int', default: 0 })
+  sort_order: number;
 }
 
 @Entity('emergency_recipients')

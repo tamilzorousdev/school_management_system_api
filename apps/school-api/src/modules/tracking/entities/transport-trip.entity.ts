@@ -59,6 +59,21 @@ export class TransportTrip {
   @Column({ type: 'date' })
   trip_date: string;
 
+  @Column({ type: 'int', nullable: true })
+  delay_minutes: number | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  delay_reason: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  delayed_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  handover_of: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  replaced_by: number | null;
+
   @Column({ type: 'varchar', length: 10, default: 'active' })
   status: TripStatus;
 
