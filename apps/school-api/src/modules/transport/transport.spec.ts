@@ -6,9 +6,11 @@ import {
   expiryState,
   occupancy,
   pathKm,
+  riderFee,
   roadBlockers,
   seatCheck,
   sendsSms,
+  stopFee,
   stopForTrip,
   stopsOf,
   tripRiders,
@@ -149,5 +151,21 @@ describe('seatCheck', () => {
 
   it('allows a full bus exactly at capacity', () => {
     expect(seatCheck(3, tripRiders(['both', 'both', 'both']))).toBeNull();
+  });
+});
+
+describe('stopFee and riderFee', () => {
+  it('uses the route fee unless the stop has its own', () => {
+    expect(stopFee(null, 1200)).toBe(1200);
+    expect(stopFee(undefined, 1200)).toBe(1200);
+    expect(stopFee(1500, 1200)).toBe(1500);
+    expect(stopFee(0, 1200)).toBe(0);
+  });
+
+  it('charges the dearer of the pickup and drop stops', () => {
+    expect(riderFee(1200, null)).toBe(1200);
+    expect(riderFee(1200, 900)).toBe(900);
+    expect(riderFee(1200, 900, null)).toBe(1200);
+    expect(riderFee(1200, 1500, null)).toBe(1500);
   });
 });

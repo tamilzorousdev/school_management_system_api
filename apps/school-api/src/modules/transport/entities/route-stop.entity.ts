@@ -3,6 +3,10 @@ import { BaseEntity } from '@app/common';
 import { TransportRoute } from './transport-route.entity';
 
 const coordinate = { to: (value: number) => value, from: (value: string) => Number(value) };
+const optionalNumber = {
+  to: (value: number | null) => value,
+  from: (value: string | null) => (value === null ? null : Number(value)),
+};
 
 @Entity('route_stops')
 @Index('IDX_route_stops_route_sequence', ['route_id', 'sequence'])
@@ -42,6 +46,6 @@ export class RouteStop extends BaseEntity {
   @Column({ type: 'smallint', default: 100 })
   geofence_radius_m: number;
 
-  @Column({ type: 'numeric', precision: 10, scale: 2, default: 0, transformer: coordinate })
-  monthly_fee: number;
+  @Column({ type: 'numeric', precision: 10, scale: 2, nullable: true, transformer: optionalNumber })
+  monthly_fee: number | null;
 }

@@ -34,6 +34,7 @@ export const TEMPLATES = {
   PAYSLIP_READY: 'PAYSLIP_READY',
   FEE_DUE: 'FEE_DUE',
   FEE_OVERDUE: 'FEE_OVERDUE',
+  TRANSPORT_FEE_UPDATED: 'TRANSPORT_FEE_UPDATED',
   FLEET_DOCUMENT_EXPIRY: 'FLEET_DOCUMENT_EXPIRY',
   TRANSPORT_ASSIGNED: 'TRANSPORT_ASSIGNED',
   TRANSPORT_REMOVED: 'TRANSPORT_REMOVED',
@@ -499,6 +500,25 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
         body: '{{reporter}} {{time}} மணிக்கு {{location}} அருகே {{bus}}-இல் அவசர அழைப்பு விடுத்துள்ளார். {{phone}} எண்ணை அழைக்கவும்.',
         sms_body:
           'அவசரம்: {{reporter}} {{time}} மணிக்கு {{location}} அருகே {{bus}}-இல் அவசர அழைப்பு. {{phone}} எண்ணை அழைக்கவும். -TAMILZOROUS',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.TRANSPORT_FEE_UPDATED,
+    category: 'fees',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus fee updated for {{student}}',
+        body: 'The bus fee for {{student}} is now {{amount}}. The unpaid invoice has been updated.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்துக் கட்டணம் மாற்றம்',
+        body: '{{student}} பேருந்துக் கட்டணம் இப்போது {{amount}}. செலுத்தப்படாத கட்டணச் சீட்டு மாற்றப்பட்டது.',
+        sms_body: null,
       },
     },
   },

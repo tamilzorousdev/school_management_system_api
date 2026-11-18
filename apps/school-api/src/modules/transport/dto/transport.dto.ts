@@ -19,6 +19,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ListQueryDto } from '@app/common';
+import { ParentTransportFeeDto } from '../../fees/dto/transport-fees.dto';
 import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
 import { EXPIRY_KINDS, ExpiryKind } from '../entities/expiry-alert.entity';
@@ -368,6 +369,17 @@ export class RouteInputDto {
   @IsOptional()
   @IsBoolean()
   is_active?: boolean;
+
+  @ApiPropertyOptional({
+    example: 1200,
+    default: 0,
+    description: 'Transport fee a month for this route. A stop can override it.',
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100000)
+  monthly_fee?: number;
 }
 
 export class UpdateRouteDto extends PartialType(RouteInputDto) {}
@@ -423,12 +435,18 @@ export class StopInputDto {
   @Max(1000)
   geofence_radius_m?: number;
 
-  @ApiPropertyOptional({ example: 1200, default: 0, description: 'Transport fee a month for students at this stop' })
+  @ApiPropertyOptional({
+    example: 1400,
+    nullable: true,
+    type: Number,
+    description: 'Fee a month for this stop only. null or empty uses the route fee.',
+  })
   @IsOptional()
+  @ValidateIf(notNull)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(100000)
-  monthly_fee?: number;
+  monthly_fee?: number | null;
 }
 
 export class StopsInputDto {
@@ -747,8 +765,16 @@ export class StopDto {
   @ApiProperty({ example: 100 })
   geofence_radius_m: number;
 
-  @ApiProperty({ example: 1200 })
+  @ApiProperty({ example: 1200, description: 'Fee a month at this stop: its own fee, or the route fee' })
   monthly_fee: number;
+
+  @ApiProperty({
+    example: null,
+    nullable: true,
+    type: Number,
+    description: 'Own fee of this stop; null uses the route fee',
+  })
+  fee_override: number | null;
 
   @ApiProperty({ example: 6 })
   students: number;
@@ -792,6 +818,9 @@ export class RouteDto {
 
   @ApiProperty({ nullable: true, type: String, example: '07:05', description: 'First pickup time' })
   first_pickup: string | null;
+
+  @ApiProperty({ example: 1200, description: 'Route fee a month; stops without their own fee use it' })
+  monthly_fee: number;
 }
 
 export class LatLngDto {
@@ -943,6 +972,12 @@ export class ParentTransportDto {
 
   @ApiProperty({ example: 1200 })
   monthly_fee: number;
+
+  @ApiProperty({
+    type: ParentTransportFeeDto,
+    description: 'Bus fee this year: billed, paid, pending, next due, status',
+  })
+  fee: ParentTransportFeeDto;
 }
 
 export class DriverStopStudentDto extends TransportStudentRefDto {

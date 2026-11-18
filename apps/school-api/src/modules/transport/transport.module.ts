@@ -3,6 +3,7 @@ import { VehicleDocumentsService } from './vehicle-documents.service';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CrewModule } from '../crew/crew.module';
+import { FeesModule } from '../fees/fees.module';
 import { ExpiryAlert } from './entities/expiry-alert.entity';
 import { RouteStop } from './entities/route-stop.entity';
 import { StudentTransportChange } from './entities/student-transport-change.entity';
@@ -27,6 +28,7 @@ import { MobileDriverProfileController } from './mobile-driver-profile.controlle
       VehicleDocument,
     ]),
     CrewModule,
+    FeesModule,
   ],
   controllers: [TransportController, StudentTransportController, MobileDriverController, MobileDriverProfileController],
   providers: [VehicleDocumentsService, VehiclesService, RoutesService, DriverProfileService],

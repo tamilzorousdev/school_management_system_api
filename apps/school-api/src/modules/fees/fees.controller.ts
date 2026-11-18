@@ -44,6 +44,13 @@ import {
   YearQueryDto,
 } from './dto/fees.dto';
 import { FeesService } from './fees.service';
+import { TransportFeesReportService } from './transport-fees-report.service';
+import {
+  TransportFeeQueryDto,
+  TransportFeeRowDto,
+  TransportFeeSummaryDto,
+  TransportFeeSummaryQueryDto,
+} from './dto/transport-fees.dto';
 
 @ApiTags('Admin · Fees')
 @ApiBearerAuth()
@@ -51,7 +58,34 @@ import { FeesService } from './fees.service';
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
 @Controller('admin/fees')
 export class FeesController {
-  constructor(private readonly fees: FeesService) {}
+  constructor(
+    private readonly fees: FeesService,
+    private readonly transportFees: TransportFeesReportService,
+  ) {}
+
+  @Get('transport/summary')
+  @RequirePermissions(PERMISSIONS.FEES_VIEW)
+  @ApiOperation({
+    summary: 'Bus fee billed, collected, pending and overdue this year, route-wise with each stop',
+    description:
+      'Collected is the bus line’s share of what was paid on each invoice (amount × paid ÷ gross). Bus-change adjustments count to the student’s current stop.',
+  })
+  @ApiEnvelope(TransportFeeSummaryDto)
+  transportSummary(@SchoolId() schoolId: number, @Query() query: TransportFeeSummaryQueryDto) {
+    return this.transportFees.summary(schoolId, query);
+  }
+
+  @Get('transport')
+  @RequirePermissions(PERMISSIONS.FEES_VIEW)
+  @ApiOperation({
+    summary: 'Students on the bus with their bus fee: billed, paid, pending, next due and status',
+    description:
+      'stop_id matches the pickup or drop stop. status: paid, pending, overdue, not_billed. sort: name, pending, billed.',
+  })
+  @ApiEnvelope(TransportFeeRowDto, { paginated: true })
+  transportStudents(@SchoolId() schoolId: number, @Query() query: TransportFeeQueryDto) {
+    return this.transportFees.students(schoolId, query);
+  }
 
   @Get('insights')
   @RequirePermissions(PERMISSIONS.FEES_VIEW)

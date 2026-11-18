@@ -137,3 +137,28 @@ export function shortDate(value: string): string {
     new Date(`${value}T00:00:00Z`),
   );
 }
+
+export function invoiceAmounts(lineAmounts: number[], discount: number, paid: number) {
+  const gross = sumAmounts(lineAmounts);
+  const total = round2(Math.max(gross - Number(discount), 0));
+  const balance = round2(Math.max(total - Number(paid), 0));
+  return { gross, total, balance, status: invoiceStatus(total, Number(paid)) };
+}
+
+export function transportAdjustment(newAmount: number, billed: number, adjustedSoFar: number): number {
+  return round2(Number(newAmount) - Number(billed) - Number(adjustedSoFar));
+}
+
+export function paidShare(lineAmount: number, invoicePaid: number, invoiceGross: number): number {
+  return Number(invoiceGross) > 0 ? round2((Number(lineAmount) * Number(invoicePaid)) / Number(invoiceGross)) : 0;
+}
+
+export function transportFeeStatus(
+  billed: number,
+  pending: number,
+  overdue: number,
+): 'paid' | 'pending' | 'overdue' | 'not_billed' {
+  if (Number(billed) <= 0) return 'not_billed';
+  if (Number(overdue) > 0) return 'overdue';
+  return Number(pending) > 0 ? 'pending' : 'paid';
+}
