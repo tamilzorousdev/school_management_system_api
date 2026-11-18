@@ -13,6 +13,9 @@ export const TEMPLATES = {
   STUDENT_BOARDED: 'STUDENT_BOARDED',
   STUDENT_ALIGHTED: 'STUDENT_ALIGHTED',
   SOS_ALERT: 'SOS_ALERT',
+  SOS_ACKNOWLEDGED: 'SOS_ACKNOWLEDGED',
+  SOS_RESOLVED: 'SOS_RESOLVED',
+  SOS_CANCELLED: 'SOS_CANCELLED',
   SAFETY_ALERT: 'SAFETY_ALERT',
   SAFETY_ALERT_HIGH: 'SAFETY_ALERT_HIGH',
   DIARY_POSTED: 'DIARY_POSTED',
@@ -496,6 +499,63 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
         body: '{{reporter}} {{time}} மணிக்கு {{location}} அருகே {{bus}}-இல் அவசர அழைப்பு விடுத்துள்ளார். {{phone}} எண்ணை அழைக்கவும்.',
         sms_body:
           'அவசரம்: {{reporter}} {{time}} மணிக்கு {{location}} அருகே {{bus}}-இல் அவசர அழைப்பு. {{phone}} எண்ணை அழைக்கவும். -TAMILZOROUS',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SOS_ACKNOWLEDGED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: 'Help is on the way',
+        body: '{{by}} from the school office has seen your SOS ({{time}}) and is acting on it. Stay safe and keep your phone on.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உதவி வருகிறது',
+        body: 'பள்ளி அலுவலகத்தின் {{by}} உங்கள் அவசர அழைப்பைப் பார்த்துவிட்டார் ({{time}}). பாதுகாப்பாக இருங்கள், தொலைபேசியை இயக்கத்தில் வைத்திருங்கள்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SOS_RESOLVED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'SOS closed: {{bus}}',
+        body: '{{by}} closed the SOS on {{bus}}: {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'அவசர அழைப்பு முடிந்தது: {{bus}}',
+        body: '{{bus}} அவசர அழைப்பை {{by}} முடித்தார்: {{note}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SOS_CANCELLED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'SOS cancelled: {{bus}}',
+        body: '{{reporter}} cancelled the SOS on {{bus}}. {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'அவசர அழைப்பு ரத்து: {{bus}}',
+        body: '{{reporter}} {{bus}} அவசர அழைப்பை ரத்து செய்தார். {{note}}',
+        sms_body: null,
       },
     },
   },
