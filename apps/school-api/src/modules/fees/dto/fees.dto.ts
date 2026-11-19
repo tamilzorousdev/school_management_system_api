@@ -712,6 +712,11 @@ export class PaymentQueryDto extends ListQueryDto {
   @IsOptional()
   @IsIn(PAYMENT_STATUSES)
   status?: PaymentStatus;
+  @ApiPropertyOptional({ example: 7, description: 'Staff user who received the money' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  received_by?: number;
 }
 
 export class ReversePaymentDto {
@@ -740,6 +745,11 @@ export class PaymentSummaryQueryDto {
   @IsInt()
   @Min(1)
   class_id?: number;
+  @ApiPropertyOptional({ example: 7, description: 'Staff user who received the money' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  received_by?: number;
 }
 
 export class FeeStudentRefDto {
@@ -981,6 +991,28 @@ export class FeeTotalsDto extends FeeStatusDto {
   last_payment: LastPaymentDto | null;
 }
 
+export class UpcomingLineDto {
+  @ApiProperty({ example: 'Tuition fee' })
+  head_name: string;
+
+  @ApiProperty({ example: 12000 })
+  amount: number;
+}
+
+export class UpcomingInstallmentDto {
+  @ApiProperty({ example: 'Term 3' })
+  installment: string;
+
+  @ApiProperty({ example: '2027-01-19' })
+  due_date: string;
+
+  @ApiProperty({ example: 18200, description: 'Estimate from the fee plan and bus fee, before concessions' })
+  amount: number;
+
+  @ApiProperty({ type: [UpcomingLineDto] })
+  lines: UpcomingLineDto[];
+}
+
 export class PreviousDuesDto {
   @ApiProperty({ example: 4500, description: 'Unpaid balance of invoices from earlier academic years' })
   amount: number;
@@ -1036,6 +1068,12 @@ export class StudentFeesDto extends FeeTotalsDto {
 
   @ApiProperty({ type: [AdvanceReceiptDto], description: 'Payments with a part kept as advance, newest first' })
   advances: AdvanceReceiptDto[];
+
+  @ApiProperty({
+    type: [UpcomingInstallmentDto],
+    description: 'Installments in this year’s fee plan not billed yet, soonest first',
+  })
+  upcoming: UpcomingInstallmentDto[];
 }
 
 export class SectionFeeRowDto extends FeeTotalsDto {
@@ -1147,6 +1185,9 @@ export class FeeInsightsDto {
 export class ReminderRunDto {
   @ApiProperty({ example: 4, description: 'Overdue invoices whose parents were reminded now' })
   sent: number;
+
+  @ApiProperty({ example: 6, description: 'Invoices due within the reminder days whose parents were reminded now' })
+  due_soon: number;
 }
 
 export class FeeAuditQueryDto extends ListQueryDto {
@@ -1588,6 +1629,34 @@ export class FeeReportQueryDto {
 
   @IsDateOnly('2026-11-30', true)
   to?: string;
+
+  @ApiPropertyOptional({
+    example: 7,
+    description: 'collections and collectors reports: staff user who received the money',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  received_by?: number;
+}
+
+export class DaySheetQueryDto {
+  @IsDateOnly('2026-11-19', true)
+  date?: string;
+
+  @ApiPropertyOptional({ example: 7, description: 'Staff user who received the money' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  received_by?: number;
+}
+
+export class CollectorOptionDto {
+  @ApiProperty({ example: 7 })
+  id: number;
+
+  @ApiProperty({ example: 'Kumar S' })
+  name: string;
 }
 
 export class ReportColumnDto {
@@ -1876,9 +1945,22 @@ export class FeeSettingsInputDto {
   @Min(0)
   @Max(100000)
   late_fee_value: number;
+
+  @ApiPropertyOptional({
+    example: 3,
+    description: 'Days before the due date to remind parents (FEE_DUE_SOON); 0 = no reminder. Left out = unchanged.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(30)
+  reminder_days?: number;
 }
 
 export class FeeSettingsDto extends FeeSettingsInputDto {
+  @ApiProperty({ example: 3 })
+  declare reminder_days: number;
+
   @ApiProperty({ type: PlanUserDto, nullable: true })
   updated_by: PlanUserDto | null;
 

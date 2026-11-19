@@ -35,10 +35,12 @@ export const TEMPLATES = {
   PAYSLIP_READY: 'PAYSLIP_READY',
   FEE_DUE: 'FEE_DUE',
   FEE_OVERDUE: 'FEE_OVERDUE',
+  FEE_DUE_SOON: 'FEE_DUE_SOON',
   FEE_APPROVAL_NEEDED: 'FEE_APPROVAL_NEEDED',
   FEE_REQUEST_APPROVED: 'FEE_REQUEST_APPROVED',
   FEE_REQUEST_REJECTED: 'FEE_REQUEST_REJECTED',
   FEE_REFUND_PAID: 'FEE_REFUND_PAID',
+  FEE_PAYMENT_RECEIVED: 'FEE_PAYMENT_RECEIVED',
   FEE_PAYMENT_REVERSED: 'FEE_PAYMENT_REVERSED',
   FEE_LATE_FEE: 'FEE_LATE_FEE',
   FEE_DUE_DATE_CHANGED: 'FEE_DUE_DATE_CHANGED',
@@ -1106,6 +1108,25 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
     },
   },
   {
+    code: TEMPLATES.FEE_DUE_SOON,
+    category: 'fees',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}}: fee due on {{due_date}}',
+        body: '{{installment}} fee of {{amount}} for {{student}} is due on {{due_date}} ({{when}}). Pay online in the app or at the school office.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}}: {{due_date}} அன்று கட்டணம் செலுத்த வேண்டும்',
+        body: '{{student}}-க்கான {{installment}} கட்டணம் {{amount}}, {{due_date}} அன்று செலுத்த வேண்டும் ({{when_ta}}). ஆப்பில் ஆன்லைனில் அல்லது பள்ளி அலுவலகத்தில் செலுத்தவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
     code: TEMPLATES.FEE_OVERDUE,
     category: 'fees',
     push: true,
@@ -1197,6 +1218,25 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{student}}-க்கு {{amount}} திருப்பி அளிக்கப்பட்டது',
         body: '{{student}}-க்கான {{amount}} {{date}} அன்று {{mode}} மூலம் திருப்பி அளிக்கப்பட்டது (எண் {{refund_no}}).',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_PAYMENT_RECEIVED,
+    category: 'fees',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Fee received for {{student}}',
+        body: '{{amount}} received for {{student}} on {{date}} by {{mode}} (receipt {{receipt_no}}). Balance due: {{balance}}. The receipt is in the app.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} கட்டணம் பெறப்பட்டது',
+        body: '{{student}}-க்கான {{amount}} {{date}} அன்று {{mode}} மூலம் பெறப்பட்டது (ரசீது {{receipt_no}}). மீதம் செலுத்த வேண்டியது: {{balance}}. ரசீது செயலியில் உள்ளது.',
         sms_body: null,
       },
     },

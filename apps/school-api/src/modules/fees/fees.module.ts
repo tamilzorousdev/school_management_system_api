@@ -85,6 +85,6 @@ import { TransportFeesReportService } from './transport-fees-report.service';
     TransportFeeSyncService,
     TransportFeesReportService,
   ],
-  exports: [FeesService, FeeFinesService, TransportFeeSyncService, TransportFeesReportService],
+  exports: [FeesService, FeeFinesService, FeeReportsService, TransportFeeSyncService, TransportFeesReportService],
 })
 export class FeesModule {}

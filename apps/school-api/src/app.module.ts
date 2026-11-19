@@ -40,6 +40,7 @@ import { SubstitutesModule } from './modules/substitutes/substitutes.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { FeesModule } from './modules/fees/fees.module';
 import { LibraryModule } from './modules/library/library.module';
+import { AccountsModule } from './modules/accounts/accounts.module';
 import { ExamsModule } from './modules/exams/exams.module';
 import { TransportModule } from './modules/transport/transport.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
@@ -73,6 +74,7 @@ import { UsersModule } from './modules/users/users.module';
     PayrollModule,
     FeesModule,
     LibraryModule,
+    AccountsModule,
     ExamsModule,
     TransportModule,
     TrackingModule,

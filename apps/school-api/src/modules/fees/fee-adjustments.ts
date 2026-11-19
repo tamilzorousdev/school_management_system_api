@@ -74,6 +74,7 @@ export async function rescheduleInvoice(
     due_date: dueDate,
     original_due_date: invoice.original_due_date ?? invoice.due_date,
     overdue_alerted_at: null,
+    due_reminded_at: null,
   };
   await manager.update(FeeInvoice, invoice.id, change);
   await recordFeeAudit(manager, {

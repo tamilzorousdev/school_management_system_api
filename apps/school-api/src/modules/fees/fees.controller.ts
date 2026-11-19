@@ -554,6 +554,28 @@ export class FeesController {
     return pdfFile(await this.fees.receipt(schoolId, id));
   }
 
+  @Get('invoices/:id/pdf')
+  @RequirePermissions(PERMISSIONS.FEES_VIEW)
+  @ApiOperation({
+    summary: 'Invoice PDF: lines, concessions, payments made and the balance due; stamped PAID, PART PAID or CANCELLED',
+  })
+  @ApiPdf('Fee invoice PDF')
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  async invoicePdf(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return pdfFile(await this.fees.invoiceFile(schoolId, id));
+  }
+
+  @Get('refunds/:id/receipt')
+  @RequirePermissions(PERMISSIONS.FEES_VIEW)
+  @ApiOperation({
+    summary: 'Refund receipt PDF: the invoice, what was paid, earlier refunds and this refund with its reason',
+  })
+  @ApiPdf('Fee refund receipt PDF')
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  async refundReceipt(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return pdfFile(await this.fees.refundFile(schoolId, id));
+  }
+
   @Get('collections/:id/advance-receipt')
   @RequirePermissions(PERMISSIONS.FEES_VIEW)
   @ApiOperation({
@@ -614,12 +636,16 @@ export class FeesController {
   @RequirePermissions(PERMISSIONS.FEES_COLLECT)
   @ResponseMessage('Reminders sent')
   @ApiOperation({
-    summary: 'Send FEE_OVERDUE to parents now',
-    description: 'The same check runs every day at 08:00. Each overdue invoice is reminded at most once in 7 days.',
+    summary: 'Send FEE_OVERDUE and FEE_DUE_SOON to parents now',
+    description:
+      'The same check runs every day at 08:00. Each overdue invoice is reminded at most once in 7 days; an invoice due within the reminder days (fee settings) gets one FEE_DUE_SOON, again after its due date changes.',
   })
   @ApiEnvelope(ReminderRunDto, { message: 'Reminders sent' })
   async overdueReminders(@SchoolId() schoolId: number) {
-    return { sent: await this.fees.sendOverdueReminders(schoolId) };
+    return {
+      sent: await this.fees.sendOverdueReminders(schoolId),
+      due_soon: await this.fees.sendDueSoonReminders(schoolId),
+    };
   }
 }
 

@@ -88,6 +88,9 @@ export class FeeInvoice extends SchoolScopedEntity {
   @Column({ type: 'timestamptz', nullable: true })
   overdue_alerted_at: Date | null;
 
+  @Column({ type: 'timestamptz', nullable: true })
+  due_reminded_at: Date | null;
+
   @Column(money())
   late_fee: number;
 
