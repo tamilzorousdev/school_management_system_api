@@ -7,4 +7,5 @@ export const PARENT_MODULE_TAGS = {
   MODULE_6: 'Mobile · Parent · Module 6: Video Meetings & Recap',
   MODULE_7: 'Mobile · Parent · Module 7: Student Fees & Receipts',
   MODULE_8: 'Mobile · Parent · Module 8: Academic Calendar & Holidays',
+  MODULE_9: 'Mobile · Parent · Module 9: Library & Books',
 } as const;

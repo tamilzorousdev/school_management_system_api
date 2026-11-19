@@ -127,6 +127,11 @@ export const securityConfig = registerAs('security', () => ({
   dataEncryptionKey: process.env.DATA_ENCRYPTION_KEY ?? '',
 }));
 
+export const libraryConfig = registerAs('library', () => ({
+  bookLookupUrl: (process.env.BOOK_LOOKUP_URL ?? '').replace(/\/+$/, ''),
+  bookLookupTimeoutMs: 4000,
+}));
+
 export const queueConfig = registerAs('queue', () => ({
   driver: (process.env.QUEUE_DRIVER ?? 'memory') as 'memory',
   maxRetries: Number(process.env.QUEUE_MAX_RETRIES ?? 3),
@@ -145,6 +150,7 @@ export type SecurityConfig = ConfigType<typeof securityConfig>;
 export type TelematicsConfig = ConfigType<typeof telematicsConfig>;
 export type TransportConfig = ConfigType<typeof transportConfig>;
 export type VideoConfig = ConfigType<typeof videoConfig>;
+export type LibraryConfig = ConfigType<typeof libraryConfig>;
 
 export const ALL_CONFIGS = [
   appConfig,
@@ -160,5 +166,6 @@ export const ALL_CONFIGS = [
   telematicsConfig,
   transportConfig,
   videoConfig,
+  libraryConfig,
   queueConfig,
 ];

@@ -40,6 +40,11 @@ export const PERMISSIONS = {
   CHAT_AUDIT: 'chat.audit',
   FLEET_VIEW: 'fleet.view',
   FLEET_MANAGE: 'fleet.manage',
+  LIBRARY_VIEW: 'library.view',
+  LIBRARY_MANAGE: 'library.manage',
+  LIBRARY_FINES: 'library.fines',
+  LIBRARY_WAIVE: 'library.waive',
+  LIBRARY_ATTENDANCE: 'library.attendance',
 } as const;
 
 export interface PermissionDefinition {
@@ -128,6 +133,19 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   },
   { code: PERMISSIONS.FLEET_VIEW, name: 'See buses on the map and their live status', group: 'Fleet' },
   { code: PERMISSIONS.FLEET_MANAGE, name: 'Manage buses, routes and stops', group: 'Fleet' },
+  {
+    code: PERMISSIONS.LIBRARY_VIEW,
+    name: 'See the library catalogue, loans, members, fines, attendance and reports',
+    group: 'Library',
+  },
+  {
+    code: PERMISSIONS.LIBRARY_MANAGE,
+    name: 'Add and import books, enrol members, issue and return books, stock checks and settings',
+    group: 'Library',
+  },
+  { code: PERMISSIONS.LIBRARY_FINES, name: 'Collect library fines and give receipts', group: 'Library' },
+  { code: PERMISSIONS.LIBRARY_WAIVE, name: 'Waive library fines', group: 'Library' },
+  { code: PERMISSIONS.LIBRARY_ATTENDANCE, name: 'Scan library visitors and mark library periods', group: 'Library' },
 ];
 
 export const ROLES = {
@@ -141,6 +159,7 @@ export const ROLES = {
   PARENT: 'PARENT',
   DRIVER: 'DRIVER',
   ATTENDANT: 'ATTENDANT',
+  LIBRARIAN: 'LIBRARIAN',
 } as const;
 
 export type RoleCode = (typeof ROLES)[keyof typeof ROLES];
@@ -204,6 +223,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.EMERGENCY_VIEW,
       PERMISSIONS.EMERGENCY_SEND,
       PERMISSIONS.EMERGENCY_APPROVE,
+      PERMISSIONS.LIBRARY_VIEW,
     ],
   },
   {
@@ -237,6 +257,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.FLEET_VIEW,
       PERMISSIONS.EMERGENCY_VIEW,
       PERMISSIONS.EMERGENCY_SEND,
+      PERMISSIONS.LIBRARY_VIEW,
+      PERMISSIONS.LIBRARY_FINES,
     ],
   },
   {
@@ -248,6 +270,24 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.FLEET_VIEW,
       PERMISSIONS.FLEET_MANAGE,
       PERMISSIONS.STUDENTS_VIEW,
+      PERMISSIONS.NOTIFICATIONS_VIEW,
+    ],
+  },
+  {
+    code: ROLES.LIBRARIAN,
+    name: 'Librarian',
+    description:
+      'Runs the school library in the admin web: catalogue and barcodes, issue and return, overdue follow-ups, fines and library attendance.',
+    app: 'admin',
+    permissions: [
+      PERMISSIONS.LIBRARY_VIEW,
+      PERMISSIONS.LIBRARY_MANAGE,
+      PERMISSIONS.LIBRARY_FINES,
+      PERMISSIONS.LIBRARY_WAIVE,
+      PERMISSIONS.LIBRARY_ATTENDANCE,
+      PERMISSIONS.SCHOOLS_VIEW,
+      PERMISSIONS.STUDENTS_VIEW,
+      PERMISSIONS.STAFF_VIEW,
       PERMISSIONS.NOTIFICATIONS_VIEW,
     ],
   },

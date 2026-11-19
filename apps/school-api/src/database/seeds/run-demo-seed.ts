@@ -9,6 +9,7 @@ import { seedDemoDay5 } from './demo-day5';
 import { seedDemoExams } from './demo-exams';
 import { seedDemoFeedback } from './demo-feedback';
 import { seedDemoFees } from './demo-fees';
+import { seedDemoLibrary } from './demo-library';
 import { seedDemoFinal } from './demo-final';
 import { seedDriverParents } from './demo-driver-parents';
 import { seedDemoFleet, seedDriverProfiles } from './demo-fleet';
@@ -59,4 +60,5 @@ runSeed('Demo seed', async (manager) => {
   await seedDriverParents(manager, school);
   await seedDemoDriverRatings(manager, school);
   await seedDemoBusPasses(manager, school);
+  await seedDemoLibrary(manager, school);
 });

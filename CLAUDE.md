@@ -20,7 +20,7 @@ npm run seed:demo            # local only: demo school + users (seeds/demo.data.
 npm run seed:super-admin -- --mobile 9xxxxxxxxx --name "Full Name"
 ```
 
-Dev sign-in (after `seed:demo`): super admin `9999999999`, school admin `9876543210`, demo users `9000000001`–`9000000008` (one per role), OTP `123456` (`OTP_MODE=test`).
+Dev sign-in (after `seed:demo`): super admin `9999999999`, school admin `9876543210`, demo users `9000000001`–`9000000009` (one per role; `9000000009` is the librarian), OTP `123456` (`OTP_MODE=test`).
 
 Schools and school users are data, created through the API by a super admin. Never put school names, codes or admin numbers in `.env`.
 

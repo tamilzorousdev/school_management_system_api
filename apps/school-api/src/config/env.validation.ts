@@ -112,6 +112,14 @@ export class EnvironmentVariables {
   TELEMATICS_TIMEOUT_MS: number = 5000;
 
   @IsOptional()
+  @ValidateIf((env: EnvironmentVariables) => Boolean(env.BOOK_LOOKUP_URL))
+  @IsUrl(
+    { require_tld: false, require_protocol: true },
+    { message: 'BOOK_LOOKUP_URL must be like https://openlibrary.org, or left empty to switch the ISBN lookup off' },
+  )
+  BOOK_LOOKUP_URL?: string;
+
+  @IsOptional()
   @ValidateIf((env: EnvironmentVariables) => Boolean(env.AGORA_APP_ID))
   @Matches(/^[0-9a-f]{32}$/i, {
     message:
