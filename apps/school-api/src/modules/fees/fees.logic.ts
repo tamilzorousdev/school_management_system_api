@@ -23,6 +23,23 @@ export interface FeeTotals {
   next_due_date: string | null;
 }
 
+export const DEFAULT_REMINDER_DAYS = 3;
+
+export function dueIn(days: number): { when: string; when_ta: string } {
+  if (days <= 0) return { when: 'today', when_ta: 'இன்று' };
+  if (days === 1) return { when: 'tomorrow', when_ta: 'நாளை' };
+  return { when: `in ${days} days`, when_ta: `${days} நாட்களில்` };
+}
+
+export const PAYMENT_MODE_NAMES: Record<string, string> = {
+  cash: 'cash',
+  upi: 'UPI',
+  card: 'card',
+  bank_transfer: 'bank transfer',
+  cheque: 'cheque',
+  online: 'online payment',
+};
+
 export const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 export const sumAmounts = (values: number[]): number => round2(values.reduce((sum, value) => sum + Number(value), 0));

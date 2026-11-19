@@ -103,6 +103,28 @@ export class MobileParentFeesController {
     return this.online.verify(user.id, id, dto);
   }
 
+  @Get('invoices/:invoiceId/pdf')
+  @ApiOperation({ summary: 'Download the invoice PDF of my child’s fee or fine' })
+  @ApiPdf('Fee invoice PDF')
+  async invoicePdf(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('invoiceId', ParseIntPipe) invoiceId: number,
+  ) {
+    return pdfFile(await this.fees.invoiceFile(await this.fees.childSchool(user.id, id), invoiceId, id), true);
+  }
+
+  @Get('refunds/:refundId/receipt')
+  @ApiOperation({ summary: 'Download the refund receipt PDF (id from refunds[] on the invoice)' })
+  @ApiPdf('Fee refund receipt PDF')
+  async refundReceipt(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('refundId', ParseIntPipe) refundId: number,
+  ) {
+    return pdfFile(await this.fees.refundFile(await this.fees.childSchool(user.id, id), refundId, id), true);
+  }
+
   @Get('advance-receipts/:collectionId')
   @ApiOperation({ summary: 'Download the advance receipt PDF (collection_id from advances[] in the fee summary)' })
   @ApiPdf('Advance receipt PDF')

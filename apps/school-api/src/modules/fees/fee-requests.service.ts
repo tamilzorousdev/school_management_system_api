@@ -33,7 +33,7 @@ import {
   recordRefund,
 } from './fee-adjustments';
 import { reversePayment } from './fee-ledger';
-import { applyDiscount, shortDate } from './fees.logic';
+import { applyDiscount, PAYMENT_MODE_NAMES, shortDate } from './fees.logic';
 import { NotificationsService } from '../notifications/notifications.service';
 import { rupees } from '../payroll/payroll.calc';
 import { FeesService } from './fees.service';
@@ -355,7 +355,7 @@ export class FeeRequestsService {
           data: {
             amount: rupees(Number(request.amount)),
             date: shortDate(refund?.paid_on ?? this.today()),
-            mode: MODE_NAMES[request.details.mode as string] ?? String(request.details.mode ?? ''),
+            mode: PAYMENT_MODE_NAMES[request.details.mode as string] ?? String(request.details.mode ?? ''),
             refund_no: refund?.refund_no ?? '',
           },
         },
@@ -513,14 +513,6 @@ export class FeeRequestsService {
     });
   }
 }
-
-const MODE_NAMES: Record<string, string> = {
-  cash: 'cash',
-  upi: 'UPI',
-  card: 'card',
-  bank_transfer: 'bank transfer',
-  cheque: 'cheque',
-};
 
 function describe(request: Pick<FeeRequestDto, 'kind' | 'amount' | 'payment' | 'details'>): string {
   if (request.kind === 'discount') {

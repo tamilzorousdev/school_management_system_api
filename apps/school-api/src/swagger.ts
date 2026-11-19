@@ -136,6 +136,7 @@ const TAGS: [string, string][] = [
   ['Admin · Substitutes', 'Teachers away today, free teachers per period, assign and notify substitutes'],
   ['Admin · Payroll', 'Salary structures, monthly payroll runs, payslip PDFs'],
   ['Admin · Fees', 'Fee heads, class fee plans, invoices with transport, payments, receipts and dues'],
+  ['Admin · Accounts', 'School expenses and other income with approval, vouchers, and income vs expense reports'],
   [
     'Admin · Library',
     'Catalogue with ISBN and barcode scanning, Excel import, copies and labels, members, issue and return, overdue follow-ups and alerts, fines, library attendance, stock checks and reports',

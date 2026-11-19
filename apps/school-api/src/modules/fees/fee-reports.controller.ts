@@ -2,11 +2,11 @@ import { Controller, Get, HttpStatus, Param, ParseEnumPipe, Query } from '@nestj
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { DataSource } from 'typeorm';
 import { ApiEnvelope, ApiErrors, RequirePermissions } from '@app/common';
-import { ApiFile } from '../../shared/pdf-response';
+import { ApiFile, ApiPdf, pdfFile } from '../../shared/pdf-response';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS } from '../access/access.catalog';
 import { XLSX } from '../attendance/attendance-export';
-import { FeeReportDto, FeeReportQueryDto } from './dto/fees.dto';
+import { CollectorOptionDto, DaySheetQueryDto, FeeReportDto, FeeReportQueryDto } from './dto/fees.dto';
 import { feeReportFile } from './fee-reports.export';
 import { FEE_REPORT_TYPES, FeeReportsService, FeeReportType } from './fee-reports.service';
 
@@ -18,7 +18,8 @@ const DESCRIPTION = [
   'installments: the same per installment, with invoices fully paid.',
   'benefits: each concession and scholarship with students and the amount taken off; kind filters.',
   'defaulters: students with a balance, most overdue first; overdue_only=true keeps only overdue ones.',
-  'collections: payments per day by mode between from and to (default: this month); reversed payments left out.',
+  'collections: money received per day by mode between from and to (default: this month): fees, advance, library fines, refunds paid out, net and cash in hand; reversed payments left out.',
+  'collectors: the same totals per staff member who received the money (online payments as one row); received_by filters both.',
   'Every report takes academic_year_id, class_id, section_id and installment. Cancelled invoices are left out.',
 ].join(' ');
 
@@ -32,6 +33,29 @@ export class FeeReportsController {
     private readonly reports: FeeReportsService,
     private readonly dataSource: DataSource,
   ) {}
+
+  @Get('collector-options')
+  @RequirePermissions(PERMISSIONS.FEES_VIEW)
+  @ApiOperation({
+    summary: 'Staff who have received fees, advances, library fines or paid out refunds (for the collector filter)',
+  })
+  @ApiEnvelope(CollectorOptionDto, { isArray: true })
+  collectorOptions(@SchoolId() schoolId: number) {
+    return this.reports.collectorOptions(schoolId);
+  }
+
+  @Get('day-sheet')
+  @RequirePermissions(PERMISSIONS.FEES_VIEW)
+  @ApiOperation({
+    summary: 'Day-end collection sheet PDF',
+    description:
+      'Every fee receipt, advance receipt, library fine receipt and refund paid out on date (default today), a summary by payment mode, cash in hand and signature lines. received_by limits it to one staff member.',
+  })
+  @ApiPdf('Day-end collection sheet')
+  @ApiErrors(HttpStatus.BAD_REQUEST)
+  async daySheet(@SchoolId() schoolId: number, @Query() query: DaySheetQueryDto) {
+    return pdfFile(await this.reports.daySheet(schoolId, query));
+  }
 
   @Get(':type')
   @RequirePermissions(PERMISSIONS.FEES_VIEW)

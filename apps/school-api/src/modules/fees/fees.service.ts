@@ -49,6 +49,7 @@ import {
   AdvanceReceiptDto,
   SubmitPlanDto,
   UpdateFeeHeadDto,
+  UpcomingInstallmentDto,
 } from './dto/fees.dto';
 import { FeeAuditLog } from './entities/fee-audit-log.entity';
 import { FeeHead } from './entities/fee-head.entity';
@@ -63,10 +64,16 @@ import { FeeRequest } from './entities/fee-request.entity';
 import { applyCredit, collectForStudent, creditBalance } from './fee-credits';
 import { pick, recordFeeAudit } from './fee-audit';
 import { FeeYear, generateInvoices, recordPayment } from './fee-ledger';
+import { ridersWithFee } from './transport-fee-sync.service';
 import {
   daysBetween,
+  DEFAULT_REMINDER_DAYS,
+  dueIn,
+  monthsBetween,
+  previousDueDate,
   feeTotals,
   isOverdue,
+  PAYMENT_MODE_NAMES,
   round2,
   shiftDate,
   shortDate,
@@ -74,7 +81,7 @@ import {
   StudentFeeStatus,
   sumAmounts,
 } from './fees.logic';
-import { advanceReceiptPdf, receiptPdf } from './receipt.pdf';
+import { advanceReceiptPdf, invoicePdf, receiptPdf, refundPdf } from './receipt.pdf';
 import { feesForTeacher } from './fee-views';
 import { FeeCollection } from './entities/fee-collection.entity';
 import { yearClause } from '../../shared/year-context';
@@ -623,6 +630,17 @@ export class FeesService {
         idempotency_key: paymentKey(idempotencyKey),
       }),
     );
+    if (!outcome.replayed) {
+      await this.notifyPaymentReceived(studentId, {
+        amount: outcome.collection.amount,
+        mode: dto.mode,
+        paid_on: outcome.collection.paid_on,
+        receipt_nos: [
+          ...outcome.payments.map((payment) => payment.receipt_no),
+          ...(outcome.collection.advance_receipt_no ? [outcome.collection.advance_receipt_no] : []),
+        ],
+      });
+    }
     return this.collectionResult(studentId, outcome.payments, {
       collection_id: outcome.collection.id,
       amount: outcome.collection.amount,
@@ -752,7 +770,7 @@ export class FeesService {
       throw AppException.validation([{ field: 'paid_on', message: 'Payment date cannot be in the future' }]);
     }
     const key = paymentKey(idempotencyKey);
-    const { payment } = await this.dataSource.transaction((manager) =>
+    const { payment, replayed } = await this.dataSource.transaction((manager) =>
       recordPayment(manager, schoolId, invoiceId, {
         amount: dto.amount,
         mode: dto.mode,
@@ -763,6 +781,14 @@ export class FeesService {
         idempotency_key: key,
       }),
     );
+    if (!replayed) {
+      await this.notifyPaymentReceived(payment.student_id, {
+        amount: payment.amount,
+        mode: payment.mode,
+        paid_on: paidOn,
+        receipt_nos: [payment.receipt_no],
+      });
+    }
     return (await this.presentPayments(schoolId, [payment]))[0]!;
   }
 
@@ -809,13 +835,10 @@ export class FeesService {
       throw AppException.notFound('Receipt not found', 'RECEIPT_NOT_FOUND');
     }
     const invoice = await this.invoices.findOneByOrFail({ id: payment.invoice_id });
-    const [lines, refs, [school], users] = await Promise.all([
+    const [lines, refs, school, users] = await Promise.all([
       this.lines.find({ where: { invoice_id: invoice.id }, order: { sort_order: 'ASC', id: 'ASC' } }),
       this.studentRefs(schoolId, [payment.student_id]),
-      this.dataSource.query(
-        `SELECT name, address, city, state, pincode, logo_file_id, signature_file_id, seal_file_id FROM schools WHERE id = $1`,
-        [schoolId],
-      ),
+      this.pdfSchool(schoolId),
       this.userNames(payment.received_by ? [payment.received_by] : []),
     ]);
     const paidToDate = sumAmounts(
@@ -825,12 +848,7 @@ export class FeesService {
     );
     const student = refs.get(payment.student_id)!;
     const pdf = await receiptPdf({
-      school_name: school?.name ?? '',
-      school_address:
-        [school?.address, school?.city, school?.state, school?.pincode].filter(Boolean).join(', ') || null,
-      school_logo: await this.files.readImage(school?.logo_file_id ?? null),
-      school_signature: await this.files.readImage(school?.signature_file_id ?? null),
-      school_seal: await this.files.readImage(school?.seal_file_id ?? null),
+      ...school,
       receipt_no: payment.receipt_no,
       paid_on: payment.paid_on,
       student_name: student.full_name,
@@ -861,6 +879,113 @@ export class FeesService {
           : null,
     });
     return { name: `Receipt-${payment.receipt_no}`, pdf };
+  }
+
+  async invoiceFile(schoolId: number, invoiceId: number, studentId?: number): Promise<{ name: string; pdf: Buffer }> {
+    const invoice = await this.invoices.findOneBy({ id: invoiceId, school_id: schoolId });
+    if (!invoice || (studentId && invoice.student_id !== studentId)) {
+      throw AppException.notFound('Invoice not found', 'INVOICE_NOT_FOUND');
+    }
+    const [lines, payments, refs, [year], school] = await Promise.all([
+      this.lines.find({ where: { invoice_id: invoice.id }, order: { sort_order: 'ASC', id: 'ASC' } }),
+      this.payments.find({
+        where: { invoice_id: invoice.id, status: 'success' },
+        order: { paid_on: 'ASC', id: 'ASC' },
+      }),
+      this.studentRefs(schoolId, [invoice.student_id]),
+      this.dataSource.query(`SELECT name FROM academic_years WHERE id = $1`, [invoice.academic_year_id]),
+      this.pdfSchool(schoolId),
+    ]);
+    const student = refs.get(invoice.student_id)!;
+    const pdf = await invoicePdf({
+      ...school,
+      invoice_no: invoice.invoice_no,
+      kind: invoice.kind,
+      issued_on: todayIn(this.app.timeZone, invoice.created_at),
+      student_name: student.full_name,
+      admission_no: student.admission_no,
+      class_section: student.class_section,
+      academic_year: (year?.name as string | undefined) ?? null,
+      installment: invoice.installment,
+      due_date: invoice.due_date,
+      status: invoice.status,
+      lines: lines.map((line): [string, number] => [
+        line.description ? `${line.head_name} (${line.description})` : line.head_name,
+        line.amount,
+      ]),
+      benefit: invoice.benefit,
+      discount: invoice.discount,
+      total: invoice.total,
+      payments: payments.map((payment) => ({
+        receipt_no: payment.receipt_no,
+        paid_on: payment.paid_on,
+        mode: payment.mode,
+        amount: payment.amount,
+      })),
+      refunded: invoice.refunded,
+      balance: invoice.balance,
+      cancel_reason: invoice.cancel_reason,
+    });
+    return { name: `Invoice-${invoice.invoice_no}`, pdf };
+  }
+
+  async refundFile(schoolId: number, refundId: number, studentId?: number): Promise<{ name: string; pdf: Buffer }> {
+    const refunds = this.dataSource.getRepository(FeeRefund);
+    const refund = await refunds.findOneBy({ id: refundId, school_id: schoolId });
+    if (!refund || (studentId && refund.student_id !== studentId)) {
+      throw AppException.notFound('Refund not found', 'REFUND_NOT_FOUND');
+    }
+    const invoice = await this.invoices.findOneByOrFail({ id: refund.invoice_id });
+    const [refs, school, users, earlier] = await Promise.all([
+      this.studentRefs(schoolId, [refund.student_id]),
+      this.pdfSchool(schoolId),
+      this.userNames(refund.approved_by ? [refund.approved_by] : []),
+      refunds.find({ where: { invoice_id: invoice.id }, order: { id: 'ASC' } }),
+    ]);
+    const student = refs.get(refund.student_id)!;
+    const pdf = await refundPdf({
+      ...school,
+      refund_no: refund.refund_no,
+      paid_on: refund.paid_on,
+      student_name: student.full_name,
+      admission_no: student.admission_no,
+      class_section: student.class_section,
+      invoice_no: invoice.invoice_no,
+      installment: invoice.installment,
+      mode: refund.mode,
+      reference: refund.reference,
+      reason: refund.reason,
+      approved_by: refund.approved_by ? (users.get(refund.approved_by) ?? null) : null,
+      invoice_total: invoice.total,
+      paid: invoice.paid,
+      refunded_before: sumAmounts(earlier.filter((row) => row.id < refund.id).map((row) => row.amount)),
+      amount: refund.amount,
+    });
+    return { name: `Refund-${refund.refund_no}`, pdf };
+  }
+
+  async pdfSchool(schoolId: number) {
+    const [school]: {
+      name: string;
+      address: string | null;
+      city: string | null;
+      state: string | null;
+      pincode: string | null;
+      logo_file_id: number | null;
+      signature_file_id: number | null;
+      seal_file_id: number | null;
+    }[] = await this.dataSource.query(
+      `SELECT name, address, city, state, pincode, logo_file_id, signature_file_id, seal_file_id FROM schools WHERE id = $1`,
+      [schoolId],
+    );
+    return {
+      school_name: school?.name ?? '',
+      school_address:
+        [school?.address, school?.city, school?.state, school?.pincode].filter(Boolean).join(', ') || null,
+      school_logo: await this.files.readImage(school?.logo_file_id ?? null),
+      school_signature: await this.files.readImage(school?.signature_file_id ?? null),
+      school_seal: await this.files.readImage(school?.seal_file_id ?? null),
+    };
   }
 
   async insights(schoolId: number): Promise<FeeInsightsDto> {
@@ -939,7 +1064,72 @@ export class FeesService {
       invoices: details,
       payments,
       advances: await this.advances(schoolId, studentId),
+      upcoming: await this.upcoming(schoolId, studentId, ordered),
     };
+  }
+
+  private async upcoming(
+    schoolId: number,
+    studentId: number,
+    invoices: FeeInvoice[],
+  ): Promise<UpcomingInstallmentDto[]> {
+    const [year]: FeeYear[] = await this.dataSource.query(
+      `SELECT id, name, to_char(start_date, 'YYYY-MM-DD') AS start_date, to_char(end_date, 'YYYY-MM-DD') AS end_date
+       FROM academic_years WHERE school_id = $1 AND deleted_at IS NULL AND ${yearClause('academic_years')}`,
+      [schoolId],
+    );
+    if (!year) return [];
+    const yearId = Number(year.id);
+    const [enrollment]: { class_id: number }[] = await this.dataSource.query(
+      `SELECT class_id FROM student_enrollments
+       WHERE school_id = $1 AND academic_year_id = $2 AND student_id = $3 AND status = 'studying' LIMIT 1`,
+      [schoolId, yearId, studentId],
+    );
+    if (!enrollment) return [];
+    const plans = await this.plans.find({
+      where: { school_id: schoolId, academic_year_id: yearId, class_id: Number(enrollment.class_id) },
+      order: { due_date: 'ASC', id: 'ASC' },
+    });
+    const billed = new Set(
+      invoices.filter((invoice) => invoice.academic_year_id === yearId).map((invoice) => invoice.installment),
+    );
+    const today = this.today();
+    const dueOf = (installment: string) =>
+      plans
+        .filter((plan) => plan.installment === installment)
+        .map((plan) => plan.due_date)
+        .sort()
+        .pop()!;
+    const open = [...new Set(plans.map((plan) => plan.installment))].filter(
+      (name) => !billed.has(name) && dueOf(name) >= today,
+    );
+    if (!open.length) return [];
+    const heads = new Map((await this.heads.findBy({ school_id: schoolId })).map((head) => [head.id, head]));
+    const transportHead = [...heads.values()].find((head) => head.is_transport && head.is_active) ?? null;
+    const rider = transportHead
+      ? ((await ridersWithFee(this.dataSource.manager, schoolId, [studentId])).get(studentId) ?? null)
+      : null;
+    const planDates = [...new Set(plans.map((plan) => plan.due_date))];
+    return open
+      .map((installment) => {
+        const own = plans.filter((plan) => plan.installment === installment);
+        const dueDate = dueOf(installment);
+        const lines = own.map((plan) => ({
+          head_name: heads.get(plan.fee_head_id)?.name ?? 'Fee',
+          amount: Number(plan.amount),
+        }));
+        if (transportHead && rider && rider.monthly_fee > 0) {
+          const months = monthsBetween(previousDueDate(planDates, dueDate, year.start_date), dueDate);
+          lines.push({ head_name: transportHead.name, amount: round2(rider.monthly_fee * months) });
+        }
+        return {
+          installment,
+          due_date: dueDate,
+          amount: sumAmounts(lines.map((line) => line.amount)),
+          lines,
+        };
+      })
+      .sort((a, b) => a.due_date.localeCompare(b.due_date));
   }
 
   private async advances(schoolId: number, studentId: number): Promise<AdvanceReceiptDto[]> {
@@ -981,22 +1171,14 @@ export class FeesService {
     });
     const invoices = await this.invoices.findBy({ id: In(payments.map((row) => row.invoice_id)) });
     const invoiceById = new Map(invoices.map((row) => [row.id, row]));
-    const [refs, [school], users] = await Promise.all([
+    const [refs, school, users] = await Promise.all([
       this.studentRefs(schoolId, [collection.student_id]),
-      this.dataSource.query(
-        `SELECT name, address, city, state, pincode, logo_file_id, signature_file_id, seal_file_id FROM schools WHERE id = $1`,
-        [schoolId],
-      ),
+      this.pdfSchool(schoolId),
       this.userNames(collection.created_by ? [collection.created_by] : []),
     ]);
     const student = refs.get(collection.student_id)!;
     const pdf = await advanceReceiptPdf({
-      school_name: school?.name ?? '',
-      school_address:
-        [school?.address, school?.city, school?.state, school?.pincode].filter(Boolean).join(', ') || null,
-      school_logo: await this.files.readImage(school?.logo_file_id ?? null),
-      school_signature: await this.files.readImage(school?.signature_file_id ?? null),
-      school_seal: await this.files.readImage(school?.seal_file_id ?? null),
+      ...school,
       receipt_no: collection.advance_receipt_no,
       paid_on: collection.paid_on,
       student_name: student.full_name,
@@ -1262,6 +1444,44 @@ export class FeesService {
   async dailyOverdueReminders(): Promise<void> {
     const sent = await this.sendOverdueReminders(null);
     if (sent) this.logger.log(`Sent ${sent} fee overdue reminders`);
+    const soon = await this.sendDueSoonReminders(null);
+    if (soon) this.logger.log(`Sent ${soon} fee due-soon reminders`);
+  }
+
+  async sendDueSoonReminders(schoolId: number | null): Promise<number> {
+    const today = this.today();
+    const reminderDays = `coalesce((SELECT fs.reminder_days FROM fee_settings fs
+                             WHERE fs.school_id = fee_invoices.school_id AND fs.deleted_at IS NULL), ${DEFAULT_REMINDER_DAYS})`;
+    const rows: { student_id: number; balance: string; due_date: string; installment: string }[] =
+      await this.dataSource.query(
+        `WITH reminded AS (
+           UPDATE fee_invoices SET due_reminded_at = now()
+           WHERE deleted_at IS NULL AND status IN ('unpaid', 'partly_paid') AND balance > 0
+             AND due_reminded_at IS NULL AND created_at < now() - interval '1 day'
+             AND ${reminderDays} > 0
+             AND due_date >= $1::date AND due_date <= $1::date + ${reminderDays}
+             ${schoolId ? 'AND school_id = $2' : ''}
+           RETURNING student_id, balance, due_date, installment
+         ) SELECT student_id, balance, to_char(due_date, 'YYYY-MM-DD') AS due_date, installment FROM reminded`,
+        schoolId ? [today, schoolId] : [today],
+      );
+    await this.notifyGuardians(
+      'FEE_DUE_SOON',
+      rows.map((row) => {
+        const days = daysBetween(today, row.due_date);
+        return {
+          student_id: Number(row.student_id),
+          data: {
+            amount: rupees(Number(row.balance)),
+            due_date: shortDate(row.due_date),
+            installment: row.installment,
+            days: String(days),
+            ...dueIn(days),
+          },
+        };
+      }),
+    );
+    return rows.length;
   }
 
   async sendOverdueReminders(schoolId: number | null): Promise<number> {
@@ -1299,6 +1519,34 @@ export class FeesService {
         installment: invoice.installment,
       })),
     );
+  }
+
+  async notifyPaymentReceived(
+    studentId: number,
+    paid: { amount: number; mode: string; paid_on: string; receipt_nos: string[] },
+  ): Promise<void> {
+    if (!paid.receipt_nos.length || Number(paid.amount) <= 0) return;
+    try {
+      const [due]: { balance: string }[] = await this.dataSource.query(
+        `SELECT coalesce(sum(balance), 0) AS balance FROM fee_invoices
+         WHERE student_id = $1 AND deleted_at IS NULL AND status <> 'cancelled' AND balance > 0`,
+        [studentId],
+      );
+      await this.notifyGuardians('FEE_PAYMENT_RECEIVED', [
+        {
+          student_id: studentId,
+          data: {
+            amount: rupees(Number(paid.amount)),
+            date: shortDate(paid.paid_on),
+            mode: PAYMENT_MODE_NAMES[paid.mode] ?? paid.mode,
+            receipt_no: paid.receipt_nos.join(', '),
+            balance: rupees(Number(due?.balance ?? 0)),
+          },
+        },
+      ]);
+    } catch (error) {
+      this.logger.warn(`Payment notice for student ${studentId} not sent: ${(error as Error).message}`);
+    }
   }
 
   async notifyGuardians(
@@ -1378,6 +1626,7 @@ export class FeesService {
     if (query.to) qb.andWhere('p.paid_on <= :to', { to: query.to });
     if (query.mode) qb.andWhere('p.mode = :mode', { mode: query.mode });
     if (query.class_id) qb.andWhere('i.class_id = :classId', { classId: query.class_id });
+    if (query.received_by) qb.andWhere('p.received_by = :receivedBy', { receivedBy: query.received_by });
   }
 
   private async detailInvoices(schoolId: number, invoices: FeeInvoice[]): Promise<FeeInvoiceDetailDto[]> {

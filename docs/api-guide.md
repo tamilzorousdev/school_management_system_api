@@ -1110,16 +1110,18 @@ Every fee summary also has `total`, `paid`, `balance`, `overdue_amount`, `next_d
 
 ### Parent app
 
-| Call                                                         | Screen                                                                                                                                                         |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /mobile/parent/children/{id}/fees`                      | Fee card and history: status, totals, `invoices` (each with `lines` such as tuition, books and transport, and its `payments`) and every `payment` newest first |
-| `GET /mobile/parent/children/{id}/fees/receipts/{paymentId}` | Receipt PDF (`Content-Disposition: attachment`)                                                                                                                |
+| Call | Screen |
+|---|---|
+| `GET /mobile/parent/children/{id}/fees` | Fee card and history: status, totals, `invoices` (each with `lines` such as tuition, books and transport, and its `payments`), every `payment` newest first, and `upcoming[]` (`{ installment, due_date, amount, lines[{ head_name, amount }] }`: installments in this year's fee plan that are not billed yet (a cancelled invoice counts as billed) and not past their due date, soonest first; the amount is an estimate from the plan and the bus fee, before concessions) |
+| `GET /mobile/parent/children/{id}/fees/receipts/{paymentId}` | Receipt PDF (`Content-Disposition: attachment`) |
+| `GET /mobile/parent/children/{id}/fees/refunds/{refundId}/receipt` | Refund receipt PDF (`id` from `refunds[]` on the invoice); 404 `REFUND_NOT_FOUND` for another child's refund |
+| `GET /mobile/parent/children/{id}/fees/invoices/{invoiceId}/pdf` | Invoice PDF of a fee or fine (`Content-Disposition: attachment`); 404 `INVOICE_NOT_FOUND` for another child's invoice |
 
-Invoice lines have `kind`: `plan`, `transport` (the bus fee) or `transport_adjustment` (a credit or extra charge after a bus change on an already paid invoice). Parents get `TRANSPORT_FEE_UPDATED` when an unpaid invoice changes because the child's bus stop changed. Parents get `FEE_DUE` (category `fees`) when the school raises an invoice, and `FEE_OVERDUE` at 08:00 for each overdue invoice, at most once every 7 days. SMS is sent only if the push does not reach the phone.
+Invoice lines have `kind`: `plan`, `transport` (the bus fee) or `transport_adjustment` (a credit or extra charge after a bus change on an already paid invoice). Parents get `TRANSPORT_FEE_UPDATED` when an unpaid invoice changes because the child's bus stop changed. Parents get `FEE_DUE` (category `fees`) when the school raises an invoice, `FEE_DUE_SOON` at 08:00 once per invoice when it falls due within `reminder_days` (fee settings, default 3, 0 = off; again after an approved due-date change; `when` = today / tomorrow / in N days), `FEE_OVERDUE` at 08:00 for each overdue invoice, at most once every 7 days, and `FEE_PAYMENT_RECEIVED` when a payment is recorded at the counter or paid online (`amount`, `date`, `mode`, `receipt_no`, `balance` = everything the child still owes; push only). SMS is sent only if the push does not reach the phone.
 
 ### Admin web
 
-`/admin/fees/heads` (CRUD; one transport head; see **Fee head details** below), `/admin/fees/plans` and `/admin/fees/plans/{classId}` (`GET`, `PUT` saves a draft of the lines: head, installment, amount, due date; see **Fee plan approval** below), `/admin/fees/installments`, `POST /admin/fees/invoices/generate` `{ class_id?, installment, due_date? }` (safe to run again), `/admin/fees/invoices` (search, `status`, `kind`, `class_id`, `section_id`, `installment`, `overdue`), `/admin/fees/invoices/{id}`, `PATCH .../discount`, `POST .../cancel`, `POST .../payments`, `/admin/fees/payments` (+ `/summary`, `from`, `to`, `mode`), `/admin/fees/payments/{id}/receipt`, `/admin/fees/insights` and `/admin/students/{id}/fees`. **Bus fee.** Each route has a `monthly_fee`; a stop can have its own (`fee_override`, `null` = route fee). A student pays the higher of their pickup and drop stop. Transport line on an invoice = that fee × months since the previous installment's due date in the class plan (the year start for the first one), at least 1; the line keeps `route_id`, `stop_id`, `drop_stop_id`, `monthly_rate` and `months`. When a student is assigned, moved or taken off the bus, unpaid invoices due today or later are re-priced at once (a line is added, changed or removed; an invoice left with nothing is cancelled). A paid or part-paid one gets a `transport_fee_adjustments` row for the difference, added to the next invoice raised. `GET /admin/fees/transport/summary?route_id=` returns billed, collected, pending and overdue per route and stop (collected = the bus line's share of each payment). `GET /admin/fees/transport` lists students on the bus with their bus fee: `route_id`, `stop_id` (pickup or drop), `student_id`, `status` (`paid`, `pending`, `overdue`, `not_billed`), search, sort `name`, `pending`, `billed`.
+`/admin/fees/heads` (CRUD; one transport head; see **Fee head details** below), `/admin/fees/plans` and `/admin/fees/plans/{classId}` (`GET`, `PUT` saves a draft of the lines: head, installment, amount, due date; see **Fee plan approval** below), `/admin/fees/installments`, `POST /admin/fees/invoices/generate` `{ class_id?, installment, due_date? }` (safe to run again), `/admin/fees/invoices` (search, `status`, `kind`, `class_id`, `section_id`, `installment`, `overdue`), `/admin/fees/invoices/{id}`, `PATCH .../discount`, `POST .../cancel`, `POST .../payments`, `/admin/fees/payments` (+ `/summary`, `from`, `to`, `mode`), `/admin/fees/payments/{id}/receipt`, `/admin/fees/refunds/{id}/receipt` (refund receipt PDF: invoice total, paid, earlier refunds, this refund and its reason, approved by), `/admin/fees/invoices/{id}/pdf` (invoice PDF: lines, concessions, discount, payments made and the balance due, stamped PAID, PART PAID or CANCELLED; a fine is titled "Fine invoice"), `/admin/fees/insights` and `/admin/students/{id}/fees`. **Bus fee.** Each route has a `monthly_fee`; a stop can have its own (`fee_override`, `null` = route fee). A student pays the higher of their pickup and drop stop. Transport line on an invoice = that fee × months since the previous installment's due date in the class plan (the year start for the first one), at least 1; the line keeps `route_id`, `stop_id`, `drop_stop_id`, `monthly_rate` and `months`. When a student is assigned, moved or taken off the bus, unpaid invoices due today or later are re-priced at once (a line is added, changed or removed; an invoice left with nothing is cancelled). A paid or part-paid one gets a `transport_fee_adjustments` row for the difference, added to the next invoice raised. `GET /admin/fees/transport/summary?route_id=` returns billed, collected, pending and overdue per route and stop (collected = the bus line's share of each payment). `GET /admin/fees/transport` lists students on the bus with their bus fee: `route_id`, `stop_id` (pickup or drop), `student_id`, `status` (`paid`, `pending`, `overdue`, `not_billed`), search, sort `name`, `pending`, `billed`.
 
 **Permissions.** Each fee action has its own permission, so a school can keep setup, collection and corrections apart:
 
@@ -1164,14 +1166,15 @@ The invoice changes only when someone with `fees.approve` approves:
 
 Notifications are sent in-app and by push only, never SMS:
 
-| Template                                       | When                       | To                                                                      |
-| ---------------------------------------------- | -------------------------- | ----------------------------------------------------------------------- |
-| `FEE_APPROVAL_NEEDED`                          | A request is made          | Everyone in the school with `fees.approve`, except the person who asked |
-| `FEE_REQUEST_APPROVED`, `FEE_REQUEST_REJECTED` | A request is decided       | The person who asked                                                    |
-| `FEE_REFUND_PAID`                              | A refund is approved       | The student's guardians who receive alerts                              |
-| `FEE_PAYMENT_REVERSED`                         | A reversal is approved     | Same                                                                    |
-| `FEE_DUE_DATE_CHANGED`                         | A new due date is approved | Same                                                                    |
-| `FEE_LATE_FEE`                                 | A late fee is added        | Same                                                                    |
+| Template | When | To |
+|---|---|---|
+| `FEE_APPROVAL_NEEDED` | A request is made | Everyone in the school with `fees.approve`, except the person who asked |
+| `FEE_REQUEST_APPROVED`, `FEE_REQUEST_REJECTED` | A request is decided | The person who asked |
+| `FEE_PAYMENT_RECEIVED` | A payment is recorded or paid online | The student's guardians who receive alerts |
+| `FEE_REFUND_PAID` | A refund is approved | Same |
+| `FEE_PAYMENT_REVERSED` | A reversal is approved | Same |
+| `FEE_DUE_DATE_CHANGED` | A new due date is approved | Same |
+| `FEE_LATE_FEE` | A late fee is added | Same |
 
 `GET /admin/fees/insights` adds `concessions`, `discounts`, `late_fees`, `refunded` (this year) and `pending_requests` (waiting now).
 
@@ -1184,7 +1187,7 @@ Notifications are sent in-app and by push only, never SMS:
 
 **Late fee and grace days.**
 
-- `GET /admin/fees/settings` returns the school's settings. `PUT /admin/fees/settings` `{ grace_days (0–90), late_fee_type (none, flat, percent), late_fee_value }` changes them and needs `fees.configure`. Defaults: no late fee, 0 grace days.
+- `GET /admin/fees/settings` returns the school's settings. `PUT /admin/fees/settings` `{ grace_days (0–90), late_fee_type (none, flat, percent), late_fee_value, reminder_days? (0–30, left out = unchanged) }` changes them and needs `fees.configure`. Defaults: no late fee, 0 grace days, `reminder_days` 3 (days before the due date that `FEE_DUE_SOON` goes out; 0 = off). `POST /admin/fees/overdue-reminders` runs both reminders now and returns `{ sent, due_soon }`.
 - Every day at 06:30, an unpaid or partly paid invoice whose due date plus the grace days has passed gets the late fee **once**. It is added as a "Late fee" line (no fee head) that raises `gross`, `total` and `balance`. The invoice's `late_fee` holds the amount.
   - `flat` is `late_fee_value` rupees.
   - `percent` is `late_fee_value` % of the balance at that time, rounded to the paisa.
@@ -1273,16 +1276,23 @@ Every payment in every response (admin and parent) now carries `status` (`succes
 
 **Reports.** `GET /admin/fees/reports/{type}` (`fees.view`) returns `{ title, academic_year, note, from, to, columns: [{ key, label, kind }], rows, totals }`. `kind` is `text`, `money`, `number`, `percent` or `date`, and each row is an object keyed by the column keys. `GET /admin/fees/reports/{type}/xlsx` downloads the same report as Excel.
 
-Every report takes `academic_year_id`, `class_id`, `section_id` and `installment`, and leaves out cancelled invoices.
+Every report takes `academic_year_id`, `class_id`, `section_id` and `installment`, and leaves out cancelled invoices. `collections` and `collectors` also take `received_by` (a staff user id): fees and library fines by who received them, advances and refunds by who recorded them.
 
-| `type`         | Rows                                                                                                                                  |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `classes`      | Per class: students, invoices, billed, concessions and scholarships, discounts, net due, collected, outstanding, overdue, collected % |
-| `heads`        | The same per fee head (`fee_head_id` filters). An invoice's discount and payments are shared across its heads by amount               |
-| `installments` | The same per installment, with the due date and how many invoices are fully paid                                                      |
-| `benefits`     | Each concession and scholarship: students who have it, students billed with it, invoices, amount taken off (`kind` filters)           |
-| `defaulters`   | Students with a balance: net due, paid, balance, overdue, oldest due date, days overdue, most overdue first (`overdue_only=true`)     |
-| `collections`  | Payments per day by mode between `from` and `to` (default: this month); reversed payments are left out                                |
+| `type` | Rows |
+|---|---|
+| `classes` | Per class: students, invoices, billed, concessions and scholarships, discounts, net due, collected, outstanding, overdue, collected % |
+| `heads` | The same per fee head (`fee_head_id` filters). An invoice's discount and payments are shared across its heads by amount |
+| `installments` | The same per installment, with the due date and how many invoices are fully paid |
+| `benefits` | Each concession and scholarship: students who have it, students billed with it, invoices, amount taken off (`kind` filters) |
+| `defaulters` | Students with a balance: net due, paid, balance, overdue, oldest due date, days overdue, most overdue first (`overdue_only=true`) |
+| `collections` | Money received per day between `from` and `to` (default: this month): receipts, one column per mode (`cash`, `upi`, `card`, `bank_transfer`, `cheque`, `online`), `fees`, `advance`, `library_fines`, `refunds` (paid out), `net` and `cash_in_hand` (cash received less cash refunded). Reversed payments are left out. Library fines are left out when `class_id`, `section_id` or `installment` is sent |
+| `collectors` | The same totals per staff member who received the money (`collector`); online payments are one row, `Online (parent app)` |
+
+**Daily collection.**
+
+- `GET /admin/fees/reports/collector-options` (`fees.view`) lists `{ id, name }` of everyone who has received fees, advances or library fines, or paid out a refund, for a "received by" filter.
+- `GET /admin/fees/payments` and `GET /admin/fees/payments/summary` also take `received_by`.
+- `GET /admin/fees/reports/day-sheet?date=&received_by=` (`fees.view`) is the day-end collection sheet PDF: every fee receipt, advance receipt, library fine receipt and refund paid out on `date` (default today), a table of received, refunded and net by payment mode, cash in hand to deposit, and signature lines. `received_by` limits it to one person's counter.
 
 **Concessions and scholarships.** Both use the same routes. `kind` is `concession` or `scholarship`, and they belong to an academic year.
 
@@ -1328,6 +1338,45 @@ Giving, withdrawing or changing one affects only invoices raised afterwards.
 **Balance check.** `GET /admin/fees/reconciliation` returns `invoices_checked` and `mismatches`: invoices whose `paid` differs from the sum of their non-reversed payments, or whose `total` or `balance` does not add up. It only reads; nothing is fixed automatically. The same check runs every night at 02:30 and logs a warning for each school with mismatches.
 
 The database also refuses negative amounts, payments of 0, and invoices whose totals do not add up (`CHECK` constraints, enforced on new and changed rows).
+
+## Accounts: expenses and other income (admin web)
+
+School expenses (electricity, stationery, repairs, rent…) and money received other than fees (donations, uniform and book sales, hall rent…). Bus fuel and bus expenses stay in Maintenance and salaries in Payroll; the reports below bring them in.
+
+Permissions:
+
+- `accounts.view`: school admin, Principal, AO, Accountant.
+- `accounts.manage` (add and edit entries): school admin, AO, Accountant.
+- `accounts.approve` (approve, reject, void; manage categories): school admin, Principal, AO.
+
+**Categories.** `GET /admin/accounts/categories?kind=expense|income&include_inactive=true` returns `{ id, kind, name, is_active, entries }`. A school gets a standard list the first time it is read. `POST /admin/accounts/categories` `{ kind, name }` (409 `CATEGORY_EXISTS`, names are compared without case), `PATCH /admin/accounts/categories/{id}` `{ name?, is_active? }`, `DELETE /admin/accounts/categories/{id}`: only an unused one, otherwise 409 `CATEGORY_IN_USE` (switch it off instead).
+
+**Entries.** `/admin/accounts/entries`:
+
+- `GET` lists them, newest first. Filters: `kind`, `status`, `category_id`, `payment_mode`, `from`, `to`. `search` matches the entry no., party, reference, note and category. Sort: `entry_date`, `amount`, `created_at`, `entry_no`.
+- `GET /insights`: `income_this_month`, `expense_this_month` (approved only), `pending`, `pending_amount`, `pending_expense`, `pending_income`, `expense_by_category`, `income_by_category`.
+- `POST` `{ kind, category_id, entry_date, amount, payment_mode?, party?, reference?, file_id?, note? }`:
+  - `payment_mode` is `cash` (default), `upi`, `card`, `bank_transfer` or `cheque`.
+  - `party` is who was paid (expense) or who paid (income); `reference` is the bill, cheque or UTR number; `file_id` is an uploaded bill (purpose `account_bill`).
+  - `entry_date` cannot be in the future. The category must be of the same kind and switched on.
+  - The server gives `entry_no` (`TZMS-EXP-2026-0001`, `TZMS-INC-2026-0001`).
+  - With `accounts.approve` the entry is `approved` at once; otherwise it is `pending` and not counted anywhere until approved.
+- Each entry has `status` (`pending`, `approved`, `rejected`, `void`), `created_by`, `decided_by`, `decided_at`, `decision_note` (the reject note or void reason) and `can_edit` (the caller may edit or delete it now).
+- `PATCH /{id}`: only while `pending`, by who added it or an approver. 409 `ENTRY_LOCKED` once decided, 403 `NOT_ENTRY_OWNER`.
+- `DELETE /{id}`: a `pending` or `rejected` entry, by who added it or an approver. An approved one returns 409 `ENTRY_LOCKED`.
+- `POST /{id}/approve` and `POST /{id}/reject` `{ note? }`: a pending entry only, otherwise 409 `ENTRY_ALREADY_DECIDED`.
+- `POST /{id}/void` `{ reason }`: an approved entry only (409 `ENTRY_NOT_APPROVED`). It stays on record as `void` and leaves the reports. To correct an amount, void it and add a new entry.
+- `GET /{id}/voucher`: payment voucher (expense) or income receipt PDF, with the amount in words and the approval status.
+
+**Reports.** `GET /admin/accounts/reports/{type}` (`accounts.view`) returns the same shape as the fee reports; `/xlsx` downloads it. `from` and `to` default to the academic year start and today.
+
+| `type` | Rows |
+|---|---|
+| `monthly` | Per month: `fees` (received with advances, less refunds), `library_fines`, `other_income`, `total_income`, `school_expenses`, `bus_costs` (approved fuel and bus expenses), `salaries` (net pay of finalised payroll runs, by payroll month), `total_expense`, `net` |
+| `categories` | `section` (Income or Expense), `category`, `amount`, `share` (% of income or of expense). `totals` is the surplus |
+| `register` | Every approved entry: date, entry no., type, category, party, mode, reference, added by, income, expense (`kind` filters) |
+
+Only approved entries are counted. The `salaries` column and row appear only for callers with `payroll.view`.
 
 ## Library
 
@@ -1674,20 +1723,20 @@ Register the phone with `POST /me/devices` `{ "push_token": "<OneSignal subscrip
 
 Every push (OneSignal `additionalData`) has `category`, `template` and `notification_id`, plus the ids below. Ids are strings.
 
-| category                                        | templates                                                                                                                                                           | ids sent                                                                                                                                                                        | open                                                                            |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `chat`                                          | CHAT_MESSAGE                                                                                                                                                        | `thread_id`                                                                                                                                                                     | the chat thread                                                                 |
-| `meeting`                                       | MEETING_SCHEDULED, MEETING_REMINDER, MEETING_ENDING, MEETING_CANCELLED, MEETING_NOTES_SHARED                                                                        | `meeting_id`, `student_id`                                                                                                                                                      | the meeting                                                                     |
-| `approval`                                      | LEAVE_APPROVAL_NEEDED (staff leave waiting for me), STUDENT_LEAVE_REQUEST (parent leave for my class), SUBSTITUTE_ASSIGNED, CLASS_COMBINED                          | `leave_id` and `student_id` for leaves; `on_date` (YYYY-MM-DD), `section_id` for proxies                                                                                        | the teacher Inbox                                                               |
-| `attendance`                                    | STUDENT_ABSENT (`session`), LEAVE_STATUS (`leave_id`), STAFF_LEAVE_STATUS (`leave_id`)                                                                              | `student_id` for parent pushes                                                                                                                                                  | attendance                                                                      |
-| `diary`                                         | DIARY_POSTED, DIARY_REJECTED                                                                                                                                        | `entry_id` where present                                                                                                                                                        | diary                                                                           |
-| `fees`                                          | FEE_DUE, FEE_OVERDUE                                                                                                                                                | `student_id`                                                                                                                                                                    | fees                                                                            |
-| `library`                                       | LIBRARY_BOOK_ISSUED, LIBRARY_DUE_SOON, LIBRARY_DUE_TODAY, LIBRARY_OVERDUE, LIBRARY_OVERDUE_ESCALATED, LIBRARY_BOOK_RETURNED, LIBRARY_FINE_RAISED, LIBRARY_FINE_PAID | `role` (`parent` for a student's parents, `staff` for a teacher's own books and the class teacher), `student_id` (student loans), `issue_id`, `fine_id` / `payment_id` on fines | parent: the child's Library; teacher: My class (with `student_id`) or My books  |
-| `system`                                        | RESULT_PUBLISHED (`exam_id`), ACHIEVEMENT_ADDED (`achievement_id`)                                                                                                  | `student_id`                                                                                                                                                                    | results / achievements                                                          |
-| `alert`                                         | EMERGENCY_BROADCAST (`broadcast_id`, `severity`) to parents and staff                                                                                               | —                                                                                                                                                                               | full-screen emergency alert, then `GET /me/emergency-broadcasts/{broadcast_id}` |
-| `system`                                        | STUDENT_FEEDBACK (`feedback_id`) to the parents                                                                                                                     | `student_id`                                                                                                                                                                    | the child's feedback                                                            |
-| `system`                                        | TEACHER_RATED (`rating_id`, `teacher_user_id`) to the school admin                                                                                                  | `student_id`                                                                                                                                                                    | admin web, Teacher feedback                                                     |
-| `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips                                                                                                                                | `trip_id`, `alert_id`, `announcement_id` where present                                                                                                                          | the matching screen                                                             |
+| category | templates | ids sent | open |
+|---|---|---|---|
+| `chat` | CHAT_MESSAGE | `thread_id` | the chat thread |
+| `meeting` | MEETING_SCHEDULED, MEETING_REMINDER, MEETING_ENDING, MEETING_CANCELLED, MEETING_NOTES_SHARED | `meeting_id`, `student_id` | the meeting |
+| `approval` | LEAVE_APPROVAL_NEEDED (staff leave waiting for me), STUDENT_LEAVE_REQUEST (parent leave for my class), SUBSTITUTE_ASSIGNED, CLASS_COMBINED | `leave_id` and `student_id` for leaves; `on_date` (YYYY-MM-DD), `section_id` for proxies | the teacher Inbox |
+| `attendance` | STUDENT_ABSENT (`session`), LEAVE_STATUS (`leave_id`), STAFF_LEAVE_STATUS (`leave_id`) | `student_id` for parent pushes | attendance |
+| `diary` | DIARY_POSTED, DIARY_REJECTED | `entry_id` where present | diary |
+| `fees` | FEE_DUE, FEE_DUE_SOON, FEE_OVERDUE, FEE_PAYMENT_RECEIVED, FEE_LATE_FEE, FEE_FINE_CHARGED, FEE_REFUND_PAID, FEE_PAYMENT_REVERSED, FEE_DUE_DATE_CHANGED | `student_id` | fees |
+| `library` | LIBRARY_BOOK_ISSUED, LIBRARY_DUE_SOON, LIBRARY_DUE_TODAY, LIBRARY_OVERDUE, LIBRARY_OVERDUE_ESCALATED, LIBRARY_BOOK_RETURNED, LIBRARY_FINE_RAISED, LIBRARY_FINE_PAID | `role` (`parent` for a student's parents, `staff` for a teacher's own books and the class teacher), `student_id` (student loans), `issue_id`, `fine_id` / `payment_id` on fines | parent: the child's Library; teacher: My class (with `student_id`) or My books |
+| `system` | RESULT_PUBLISHED (`exam_id`), ACHIEVEMENT_ADDED (`achievement_id`) | `student_id` | results / achievements |
+| `alert` | EMERGENCY_BROADCAST (`broadcast_id`, `severity`) to parents and staff | — | full-screen emergency alert, then `GET /me/emergency-broadcasts/{broadcast_id}` |
+| `system` | STUDENT_FEEDBACK (`feedback_id`) to the parents | `student_id` | the child's feedback |
+| `system` | TEACHER_RATED (`rating_id`, `teacher_user_id`) to the school admin | `student_id` | admin web, Teacher feedback |
+| `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips | `trip_id`, `alert_id`, `announcement_id` where present | the matching screen |
 
 ## Inventory and assets (admin web)
 

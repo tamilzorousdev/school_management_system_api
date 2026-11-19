@@ -220,6 +220,17 @@ export class OnlinePaymentsService {
       .getRepository(FeeInvoice)
       .findBy({ id: In(outcome.payments.map((payment) => payment.invoice_id)) });
     const byId = new Map(invoices.map((row) => [row.id, row]));
+    if (!outcome.replayed) {
+      await this.fees.notifyPaymentReceived(outcome.order.student_id, {
+        amount: Number(outcome.order.amount),
+        mode: 'online',
+        paid_on: todayIn(this.app.timeZone),
+        receipt_nos: [
+          ...outcome.payments.map((payment) => payment.receipt_no),
+          ...(head?.advance_receipt_no ? [head.advance_receipt_no as string] : []),
+        ],
+      });
+    }
     return {
       collection_id: outcome.order.collection_id,
       amount: Number(head?.amount ?? outcome.order.amount),

@@ -9,7 +9,7 @@ import { FeeSettingsDto, FeeSettingsInputDto, LateFeeRunDto } from './dto/fees.d
 import { FeeSettings } from './entities/fee-settings.entity';
 import { recordFeeAudit } from './fee-audit';
 import { applyLateFees } from './fee-adjustments';
-import { round2, shortDate } from './fees.logic';
+import { DEFAULT_REMINDER_DAYS, round2, shortDate } from './fees.logic';
 import { rupees } from '../payroll/payroll.calc';
 import { FeesService } from './fees.service';
 
@@ -26,22 +26,34 @@ export class FeeSettingsService {
 
   async get(schoolId: number): Promise<FeeSettingsDto> {
     const row = await this.settings.findOneBy({ school_id: schoolId });
-    if (!row) return { grace_days: 0, late_fee_type: 'none', late_fee_value: 0, updated_by: null, updated_at: null };
+    if (!row) {
+      return {
+        grace_days: 0,
+        late_fee_type: 'none',
+        late_fee_value: 0,
+        reminder_days: DEFAULT_REMINDER_DAYS,
+        updated_by: null,
+        updated_at: null,
+      };
+    }
     const users = row.updated_by ? await this.fees.userNames([row.updated_by]) : new Map<number, string>();
     return {
       grace_days: row.grace_days,
       late_fee_type: row.late_fee_type,
       late_fee_value: row.late_fee_value,
+      reminder_days: row.reminder_days,
       updated_by: row.updated_by ? { id: row.updated_by, name: users.get(row.updated_by) ?? '' } : null,
       updated_at: row.updated_at,
     };
   }
 
   async update(schoolId: number, dto: FeeSettingsInputDto, actor: AuthUser): Promise<FeeSettingsDto> {
+    const current = await this.settings.findOneBy({ school_id: schoolId });
     const values = {
       grace_days: dto.grace_days,
       late_fee_type: dto.late_fee_type,
       late_fee_value: dto.late_fee_type === 'none' ? 0 : dto.late_fee_value,
+      reminder_days: dto.reminder_days ?? current?.reminder_days ?? DEFAULT_REMINDER_DAYS,
     };
     if (values.late_fee_type === 'percent' && values.late_fee_value > 100) {
       throw AppException.validation([{ field: 'late_fee_value', message: 'A percentage can be at most 100' }]);
@@ -71,6 +83,7 @@ export class FeeSettingsService {
               grace_days: before.grace_days,
               late_fee_type: before.late_fee_type,
               late_fee_value: before.late_fee_value,
+              reminder_days: before.reminder_days,
             }
           : null,
         after: values,

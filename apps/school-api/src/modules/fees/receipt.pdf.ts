@@ -32,6 +32,45 @@ export interface ReceiptPdfData extends ReceiptSchool {
   reversed?: { on: string | null; reason: string | null } | null;
 }
 
+export interface InvoicePdfData extends ReceiptSchool {
+  invoice_no: string;
+  kind: 'fee' | 'fine';
+  issued_on: string;
+  student_name: string;
+  admission_no: string;
+  class_section: string | null;
+  academic_year: string | null;
+  installment: string;
+  due_date: string;
+  status: 'unpaid' | 'partly_paid' | 'paid' | 'cancelled';
+  lines: [string, number][];
+  benefit: number;
+  discount: number;
+  total: number;
+  payments: { receipt_no: string; paid_on: string; mode: string; amount: number }[];
+  refunded: number;
+  balance: number;
+  cancel_reason: string | null;
+}
+
+export interface RefundPdfData extends ReceiptSchool {
+  refund_no: string;
+  paid_on: string;
+  student_name: string;
+  admission_no: string;
+  class_section: string | null;
+  invoice_no: string;
+  installment: string;
+  mode: string;
+  reference: string | null;
+  reason: string;
+  approved_by: string | null;
+  invoice_total: number;
+  paid: number;
+  refunded_before: number;
+  amount: number;
+}
+
 export interface AdvanceReceiptPdfData extends ReceiptSchool {
   receipt_no: string;
   paid_on: string;
@@ -47,6 +86,11 @@ export interface AdvanceReceiptPdfData extends ReceiptSchool {
 }
 
 const REVERSED_RED = '#b42318';
+
+interface Stamp {
+  text: string;
+  color: string;
+}
 const LEFT = 50;
 const WIDTH = 495.28;
 
@@ -60,7 +104,7 @@ const MODE_TEXT: Record<string, string> = {
   credit: 'Advance credit',
 };
 
-function drawHeader(doc: Pdf, school: ReceiptSchool, title: string, receiptNo: string, reversed: boolean): number {
+function drawHeader(doc: Pdf, school: ReceiptSchool, title: string, receiptNo: string, stamp: Stamp | null): number {
   doc.rect(0, 0, 595.28, 8).fill(BRAND.green);
   if (school.school_logo) doc.image(school.school_logo, LEFT, 34, { fit: [50, 50] });
   const headerX = school.school_logo ? LEFT + 62 : LEFT;
@@ -85,10 +129,10 @@ function drawHeader(doc: Pdf, school: ReceiptSchool, title: string, receiptNo: s
     .fontSize(12)
     .text(title, LEFT + 12, titleY + 9, { width: WIDTH / 2 });
   doc.text(receiptNo, LEFT + WIDTH / 2, titleY + 9, { width: WIDTH / 2 - 12, align: 'right' });
-  if (reversed) {
+  if (stamp) {
     doc
-      .fillColor(REVERSED_RED)
-      .text('REVERSED', LEFT + 110, titleY + 9, { width: WIDTH / 2 - 110 })
+      .fillColor(stamp.color)
+      .text(stamp.text, LEFT + 110, titleY + 9, { width: WIDTH / 2 - 110 })
       .fillColor(BRAND.deep);
   }
   return titleY + 44;
@@ -202,7 +246,13 @@ const receivedBy = (name: string | null) => (name ? `Received by ${name}. ` : ''
 
 export async function receiptPdf(data: ReceiptPdfData): Promise<Buffer> {
   const doc = createPdf({ size: 'A4', margin: 50, info: { Title: `Fee receipt ${data.receipt_no}` } });
-  const factsTop = drawHeader(doc, data, 'Fee receipt', data.receipt_no, Boolean(data.reversed));
+  const factsTop = drawHeader(
+    doc,
+    data,
+    'Fee receipt',
+    data.receipt_no,
+    data.reversed ? { text: 'REVERSED', color: REVERSED_RED } : null,
+  );
   const tableTop = drawFacts(
     doc,
     [
@@ -248,7 +298,7 @@ export async function receiptPdf(data: ReceiptPdfData): Promise<Buffer> {
 
 export async function advanceReceiptPdf(data: AdvanceReceiptPdfData): Promise<Buffer> {
   const doc = createPdf({ size: 'A4', margin: 50, info: { Title: `Advance receipt ${data.receipt_no}` } });
-  const factsTop = drawHeader(doc, data, 'Advance fee receipt', data.receipt_no, false);
+  const factsTop = drawHeader(doc, data, 'Advance fee receipt', data.receipt_no, null);
   const tableTop = drawFacts(
     doc,
     [
@@ -276,6 +326,104 @@ export async function advanceReceiptPdf(data: AdvanceReceiptPdfData): Promise<Bu
     'Advance received',
     data.advance,
     `${receivedBy(data.received_by)}The advance is used on the next fee invoices. This is an official computer-generated receipt.`,
+  );
+  return renderPdf(doc);
+}
+
+const INVOICE_STAMPS: Record<InvoicePdfData['status'], Stamp | null> = {
+  unpaid: null,
+  partly_paid: { text: 'PART PAID', color: '#b54708' },
+  paid: { text: 'PAID', color: BRAND.green },
+  cancelled: { text: 'CANCELLED', color: REVERSED_RED },
+};
+
+export async function invoicePdf(data: InvoicePdfData): Promise<Buffer> {
+  const title = data.kind === 'fine' ? 'Fine invoice' : 'Fee invoice';
+  const doc = createPdf({ size: 'A4', margin: 50, info: { Title: `${title} ${data.invoice_no}` } });
+  const factsTop = drawHeader(doc, data, title, data.invoice_no, INVOICE_STAMPS[data.status]);
+  const tableTop = drawFacts(
+    doc,
+    [
+      ['Student', data.student_name],
+      ['Issued on', displayDate(data.issued_on)],
+      ['Admission no.', data.admission_no],
+      ['Class', data.class_section ?? '—'],
+      ['Installment', data.installment],
+      ['Due date', displayDate(data.due_date)],
+      ['Academic year', data.academic_year ?? '—'],
+    ],
+    factsTop,
+  );
+
+  const table = startTable(doc, tableTop, data.kind === 'fine' ? 'Fine' : 'Fee');
+  data.lines.forEach(([label, amount], index) => table.row(label, rupees(amount), index % 2 === 1));
+  let shade = data.lines.length % 2 === 1;
+  const next = () => {
+    const current = shade;
+    shade = !shade;
+    return current;
+  };
+  if (data.benefit > 0) table.row('Concessions and scholarships', `- ${rupees(data.benefit)}`, next());
+  if (data.discount > 0) table.row('Discount', `- ${rupees(data.discount)}`, next());
+  table.total('Invoice total', rupees(data.total));
+  data.payments.forEach((payment) =>
+    table.row(
+      `Paid on ${displayDate(payment.paid_on)} by ${MODE_TEXT[payment.mode] ?? payment.mode} (receipt ${payment.receipt_no})`,
+      `- ${rupees(payment.amount)}`,
+      next(),
+    ),
+  );
+  if (data.refunded > 0) table.row('Refunded', rupees(data.refunded), next());
+  if (data.status === 'cancelled') {
+    table.row(`Cancelled${data.cancel_reason ? `: ${data.cancel_reason}` : ''}`, '', next(), true);
+  }
+
+  const due = data.status === 'cancelled' ? 0 : data.balance;
+  drawAmountAndSignature(
+    doc,
+    data,
+    table.close(),
+    due > 0 ? `Balance due by ${displayDate(data.due_date)}` : 'Balance due',
+    due,
+    due > 0
+      ? 'Please pay at the school office or online in the school app. This is a computer-generated invoice.'
+      : 'Nothing is due on this invoice. This is a computer-generated invoice.',
+  );
+  return renderPdf(doc);
+}
+
+export async function refundPdf(data: RefundPdfData): Promise<Buffer> {
+  const doc = createPdf({ size: 'A4', margin: 50, info: { Title: `Fee refund ${data.refund_no}` } });
+  const factsTop = drawHeader(doc, data, 'Fee refund', data.refund_no, null);
+  const tableTop = drawFacts(
+    doc,
+    [
+      ['Student', data.student_name],
+      ['Refund date', displayDate(data.paid_on)],
+      ['Admission no.', data.admission_no],
+      ['Class', data.class_section ?? '—'],
+      ['Invoice no.', data.invoice_no],
+      ['Installment', data.installment],
+      ['Refunded by', MODE_TEXT[data.mode] ?? data.mode],
+      ['Reference', data.reference ?? '—'],
+    ],
+    factsTop,
+  );
+
+  const table = startTable(doc, tableTop, 'Invoice');
+  table.row('Invoice total', rupees(data.invoice_total), false);
+  table.row('Paid on this invoice', rupees(data.paid), true);
+  if (data.refunded_before > 0) table.row('Refunded earlier', `- ${rupees(data.refunded_before)}`, false);
+  table.total('Refunded now', rupees(data.amount));
+  table.row(`Reason: ${data.reason}`, '', false);
+
+  drawAmountAndSignature(
+    doc,
+    data,
+    table.close(),
+    'Amount refunded',
+    data.amount,
+    `${data.approved_by ? `Approved by ${data.approved_by}. ` : ''}This is an official computer-generated refund receipt.`,
   );
   return renderPdf(doc);
 }
