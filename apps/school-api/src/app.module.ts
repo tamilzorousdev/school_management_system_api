@@ -45,6 +45,7 @@ import { LibraryModule } from './modules/library/library.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { ExamsModule } from './modules/exams/exams.module';
+import { QuizzesModule } from './modules/quizzes/quizzes.module';
 import { TransportModule } from './modules/transport/transport.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
 import { AchievementsModule } from './modules/achievements/achievements.module';
@@ -80,6 +81,7 @@ import { UsersModule } from './modules/users/users.module';
     AccountsModule,
     InventoryModule,
     ExamsModule,
+    QuizzesModule,
     TransportModule,
     TrackingModule,
     DashboardModule,

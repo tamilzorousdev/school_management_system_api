@@ -93,6 +93,8 @@ export const TEMPLATES = {
   CHILD_NOT_ON_BUS: 'CHILD_NOT_ON_BUS',
   DRIVER_LOW_RATING: 'DRIVER_LOW_RATING',
   RESULT_PUBLISHED: 'RESULT_PUBLISHED',
+  QUIZ_SCHEDULED: 'QUIZ_SCHEDULED',
+  QUIZ_RESULT_AVAILABLE: 'QUIZ_RESULT_AVAILABLE',
   ACHIEVEMENT_ADDED: 'ACHIEVEMENT_ADDED',
   CLASS_COMBINED: 'CLASS_COMBINED',
   STUDENT_LEAVE_REQUEST: 'STUDENT_LEAVE_REQUEST',
@@ -1788,6 +1790,46 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{exam}} முடிவுகள்: {{student}}',
         body: '{{exam}} தேர்வில் {{student}} {{percent}}% மதிப்பெண் (தரம் {{grade}}) பெற்றுள்ளார். வகுப்பு தரவரிசை {{rank}}. பாட வாரியான மதிப்பெண்களுக்கு செயலியைத் திறக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.QUIZ_SCHEDULED,
+    category: 'system',
+    push: true,
+    sms: 'fallback',
+    critical: false,
+    text: {
+      en: {
+        title: 'Online test: {{subject}}',
+        body: '{{subject}} quiz "{{title}}" is scheduled on {{date}} ({{time}}). Duration: {{duration}} mins.',
+        sms_body:
+          'Online test scheduled: {{subject}} - {{title}} on {{date}} {{time}}. Duration: {{duration}} mins. -TAMILZOROUS',
+      },
+      ta: {
+        title: 'ஆன்லைன் தேர்வு: {{subject}}',
+        body: '{{subject}} பாட வினாடி வினா "{{title}}" {{date}} ({{time}}) அன்று திட்டமிடப்பட்டுள்ளது. கால அளவு: {{duration}} நிமிடங்கள்.',
+        sms_body:
+          'ஆன்லைன் தேர்வு: {{subject}} - {{title}}, {{date}} {{time}}. கால அளவு: {{duration}} நிமிடங்கள். -TAMILZOROUS',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.QUIZ_RESULT_AVAILABLE,
+    category: 'system',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Quiz result: {{student}}',
+        body: '{{student}} scored {{score}}/{{total}} ({{percent}}%) in {{subject}} quiz "{{title}}".',
+        sms_body: null,
+      },
+      ta: {
+        title: 'வினாடி வினா முடிவு: {{student}}',
+        body: '{{student}} {{subject}} "{{title}}" தேர்வில் {{score}}/{{total}} ({{percent}}%) பெற்றுள்ளார்.',
         sms_body: null,
       },
     },

@@ -1038,6 +1038,29 @@ Query (all optional): `academic_year_id` (default: the current year, else the la
 
 Errors: `404 STUDENT_NOT_FOUND`, `ENROLLMENT_NOT_FOUND`, `TERM_NOT_FOUND`, `EXAM_NOT_FOUND`, `SECTION_NOT_FOUND`, `CHILD_NOT_FOUND`; the PDFs give `404 NO_PUBLISHED_RESULTS` when there is nothing to print.
 
+## Online tests and quizzes (3.7)
+
+LMS computer-based MCQ quizzes created by subject teachers, approved by principal/admin, scheduled with live countdown timers, auto-submitted on timeout, and instantly graded.
+
+| Call | Role | Use |
+| --- | --- | --- |
+| `GET /admin/quizzes` | Admin (`exams.view`) | List all quizzes with status, class, section, teacher filters |
+| `GET /admin/quizzes/{id}` | Admin (`exams.view`) | Full quiz detail with MCQ questions, options, answer keys and explanations |
+| `PUT /admin/quizzes/{id}` | Admin (`exams.manage`) | Edit quiz settings, duration, schedule, and question bank |
+| `POST /admin/quizzes/{id}/approve` | Admin (`exams.manage`) | Approve quiz draft and dispatch `QUIZ_SCHEDULED` push & SMS alerts to parents |
+| `POST /admin/quizzes/{id}/reject` | Admin (`exams.manage`) | Reject quiz with feedback comments returned to the creator |
+| `GET /admin/quizzes/{id}/analytics` | Admin (`exams.view`) | Summary metrics (average score, pass rate, completion rate) and per-question accuracy |
+| `GET /mobile/teacher/quizzes` | Teacher | List quizzes authored by the authenticated teacher |
+| `GET /mobile/teacher/quizzes/{id}` | Teacher | Get quiz details and questions for the author |
+| `POST /mobile/teacher/quizzes` | Teacher | Create MCQ quiz draft with questions, options, correct answers and marks |
+| `PUT /mobile/teacher/quizzes/{id}` | Teacher | Update draft or rejected quiz |
+| `POST /mobile/teacher/quizzes/{id}/submit-for-approval` | Teacher | Submit draft quiz to principal/admin for review (`pending_approval`) |
+| `DELETE /mobile/teacher/quizzes/{id}` | Teacher | Delete draft or rejected quiz |
+| `GET /mobile/parent/children/{id}/quizzes` | Parent | List available, live, and completed quizzes for student's class and section |
+| `POST /mobile/parent/children/{id}/quizzes/{quizId}/start` | Parent | Start quiz session; calculates remaining seconds and delivers questions without answer keys |
+| `POST /mobile/parent/children/{id}/quizzes/{quizId}/submit` | Parent | Submit answers; automatically scores test, sets pass/fail, and notifies parents |
+| `GET /mobile/parent/children/{id}/quizzes/{quizId}/result` | Parent | Instant score report, pass/fail badge, and question-by-question review with solutions and teacher explanations |
+
 ## App banners (image banners on the home screen)
 
 The school office posts image banners (events, holidays, notices) in the admin web under Communication → App banners: image, title, short message, which app (`all`, `staff`, `parents`), first and last day, optional link and order. Only live banners (active and today between the dates) reach the apps, at most 5.
