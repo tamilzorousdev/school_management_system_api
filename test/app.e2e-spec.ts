@@ -22,7 +22,11 @@ describe('App (e2e)', () => {
 
   it('GET /api/v1/health returns the success shape', async () => {
     const res = await request(app.getHttpServer()).get('/api/v1/health').expect(200);
-    expect(res.body).toEqual({ status: 200, message: 'OK', data: { db: 'up', mqtt: 'disabled' } });
+    expect(res.body).toEqual({
+      status: 200,
+      message: 'OK',
+      data: { db: 'up', telematics: expect.stringMatching(/^(up|down)$/) },
+    });
     expect(res.headers['x-request-id']).toBeDefined();
   });
 

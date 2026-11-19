@@ -2,6 +2,7 @@ import { Language } from '../users/entities/user.entity';
 import { NotificationCategory } from './entities/notification.entity';
 import { SmsMode } from './entities/notification-template.entity';
 import { LIBRARY_TEMPLATE_CATALOG, LIBRARY_TEMPLATES } from './library-templates.catalog';
+import { INVENTORY_TEMPLATE_CATALOG, INVENTORY_TEMPLATES } from './inventory-templates.catalog';
 
 export const TEMPLATES = {
   SYSTEM_TEST: 'SYSTEM_TEST',
@@ -118,6 +119,7 @@ export const TEMPLATES = {
   PARENT_SIGNATURE_CHANGED: 'PARENT_SIGNATURE_CHANGED',
   SIGNATURE_SET_BY_SCHOOL: 'SIGNATURE_SET_BY_SCHOOL',
   ...LIBRARY_TEMPLATES,
+  ...INVENTORY_TEMPLATES,
 } as const;
 
 interface TemplateText {
@@ -2248,4 +2250,5 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
     },
   },
   ...LIBRARY_TEMPLATE_CATALOG,
+  ...INVENTORY_TEMPLATE_CATALOG,
 ];

@@ -1689,6 +1689,28 @@ Every push (OneSignal `additionalData`) has `category`, `template` and `notifica
 | `system`                                        | TEACHER_RATED (`rating_id`, `teacher_user_id`) to the school admin                                                                                                  | `student_id`                                                                                                                                                                    | admin web, Teacher feedback                                                     |
 | `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips                                                                                                                                | `trip_id`, `alert_id`, `announcement_id` where present                                                                                                                          | the matching screen                                                             |
 
+## Inventory and assets (admin web)
+
+Everything is under `/admin/inventory/*` (Swagger tag `Admin · Inventory`). Permissions: `inventory.view`, `inventory.manage` (assets, allocations, masters), `inventory.stock` (receipts, issues, adjustments, stock items), `inventory.approve` (transfers, disposals, requisitions) and `inventory.audit`. The new **Store Keeper** role (demo `9000000012`) has view, manage, stock and audit; Principal and AO approve.
+
+**Assets.** `POST assets` registers one or more identical assets (`quantity`, `serial_nos`), each with its own tag `TZMS-AST-000001`. `status` is `in_store`, `allocated`, `in_maintenance`, `lost` or `disposed`; `GET assets?status=in_store,in_maintenance` takes several values separated by commas. Each asset carries `book_value` (straight-line or written-down depreciation, set in `settings`), `warranty_state` and `current_allocation`. `PATCH assets/{id}` can clear `purchase_date`, `warranty_until` and `amc_until` with `null`. `GET assets/{id}/history` is the full event trail. `GET assets/lookup?code=` finds an asset by tag or serial number (for scanners), `GET assets/labels` returns a PDF of Code 128 tag labels, and `POST assets/import` (multipart `file`, `mode=validate|import`) reads the Excel template from `GET assets/import/template`; each report row has `asset_tags` and `asset_ids`. Dates must be real calendar dates (`YYYY-MM-DD` or `DD-MM-YYYY`); anything else is reported on that row.
+
+**Allocation.** `POST allocations` assigns assets to a staff member (`user_id`), a department or a location, with an optional `expected_return_on`. `POST allocations/return` takes them back, optionally straight to maintenance. Staff see what they hold at `GET /me/assets` and confirm receipt with `POST /me/assets/{allocationId}/acknowledge`. A staff member who still holds assets cannot be marked resigned or deleted (409 `ASSETS_PENDING`).
+
+**Transfers and disposals.** `POST transfers` and `POST disposals` create requests; when approvals are on in `settings`, someone with `inventory.approve` calls `.../approve` or `.../reject`. An allocated asset must be returned before it is disposed of (`ASSET_ALLOCATED`). While a transfer is open, the asset cannot be allocated, marked lost or sent for disposal (`ASSET_IN_TRANSFER`); approve, reject or cancel the transfer first.
+
+**Maintenance.** Tickets (`maintenance`) move `open` → `in_progress` → `resolved`/`cancelled`; the asset is `in_maintenance` while one is open. `schedules` hold preventive work with `next_due_on`.
+
+**Stock.** Consumables are valued at weighted average cost. `stock/receipts` (goods received; sort `received_on`, `receipt_no`, `total`, `vendor`), `stock/issues`, `stock/adjustments` and `stock/movements` (the ledger). `requisitions` go `pending` → `approved` → `issued`/`partly_issued`. Issuing more than the store holds is refused with `NOT_ENOUGH_STOCK`.
+
+**Audits.** Asset verification by scanning tags (`audits/{id}/scan`: `found`, `misplaced`, `not_available`, `unknown`) or a stock count (`audits/{id}/count`); closing can mark missing assets lost or post count differences as adjustments.
+
+**Reports.** `reports/assets?group_by=category|location|department|custodian|status`, `reports/depreciation`, `reports/maintenance`, `reports/consumption`, `reports/stock-valuation`. `reports/register/export` (CSV) takes the same filters as `GET assets`; `reports/movements/export` exports the stock ledger.
+
+**Masters.** `categories` (asset or stock, depreciation rate or useful life, maintenance interval), `locations` (`locations/sync-rooms` creates them from timetable rooms), `departments` (`departments/sync` creates them from staff departments), `vendors`, `stores`. Deleting something in use returns `*_IN_USE`; a duplicate code returns `*_EXISTS`.
+
+**Alerts.** A daily job at 08:15 sends overdue-return reminders to staff and maintenance-due, warranty/AMC-ending and (on Mondays) low-stock summaries to the store office. `POST alerts/run` runs it now.
+
 ## Payslips (every staff app)
 
 `GET /me/payslips` lists the signed-in staff member's payslips for months the office has finalised (paginated, newest first): `month`, `month_label`, `gross`, `total_deductions`, `net`, `paid_days`, `lop_days` and each earning and deduction. `GET /me/payslips/{id}/pdf` downloads the PDF (`Content-Disposition: attachment`). A `PAYSLIP_READY` push arrives when a month is finalised.

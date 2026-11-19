@@ -140,6 +140,10 @@ const TAGS: [string, string][] = [
     'Admin · Library',
     'Catalogue with ISBN and barcode scanning, Excel import, copies and labels, members, issue and return, overdue follow-ups and alerts, fines, library attendance, stock checks and reports',
   ],
+  [
+    'Admin · Inventory',
+    'Asset register with tags, allocation and return, transfers, maintenance, stock and requisitions, verification, disposals, depreciation and reports',
+  ],
   ['Admin · Exams', 'Exams, papers, marks entry, ranked results, rank holders and publishing'],
   ['Admin · Transport', 'Buses, trackers, drivers, document expiry, routes and stops, students by stop'],
   [

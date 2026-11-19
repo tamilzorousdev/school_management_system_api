@@ -36,4 +36,5 @@ export const DEMO_SCHOOL_USERS: SeedUser[] = [
   { name: 'Kalaivani Sekar', mobile: '9000000009', roles: [ROLES.LIBRARIAN] },
   { name: 'Divya Shankar', mobile: '9000000010', roles: [ROLES.ACCOUNTANT] },
   { name: 'Muniyandi Raja', mobile: '9000000011', roles: [ROLES.GATE_INCHARGE], language: 'ta' },
+  { name: 'Muthu Kumar', mobile: '9000000012', roles: [ROLES.STORE_KEEPER] },
 ];

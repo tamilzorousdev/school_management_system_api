@@ -14,6 +14,7 @@ import { seedDemoLibrary } from './demo-library';
 import { seedDemoFinal } from './demo-final';
 import { seedDriverParents } from './demo-driver-parents';
 import { seedDemoFleet, seedDriverProfiles } from './demo-fleet';
+import { seedDemoInventory } from './demo-inventory';
 import { seedDemoDriverRatings } from './demo-driver-ratings';
 import { seedDemoGate } from './demo-gate';
 import { seedDemoMaintenance } from './demo-maintenance';
@@ -67,4 +68,5 @@ runSeed('Demo seed', async (manager) => {
   await seedDemoMaintenance(manager, school);
   await seedDemoDiary(manager, school);
   await seedDemoGate(manager, school);
+  await seedDemoInventory(manager, school);
 });

@@ -58,6 +58,11 @@ export const PERMISSIONS = {
   GATE_OPERATE: 'gate.operate',
   GATE_APPROVE: 'gate.approve',
   GATE_MANAGE: 'gate.manage',
+  INVENTORY_VIEW: 'inventory.view',
+  INVENTORY_MANAGE: 'inventory.manage',
+  INVENTORY_STOCK: 'inventory.stock',
+  INVENTORY_APPROVE: 'inventory.approve',
+  INVENTORY_AUDIT: 'inventory.audit',
 } as const;
 
 export interface PermissionDefinition {
@@ -184,6 +189,27 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   },
   { code: PERMISSIONS.GATE_APPROVE, name: 'Approve gate passes and emergency releases', group: 'Gate' },
   { code: PERMISSIONS.GATE_MANAGE, name: 'Gate settings, blocked list, pre-invite visitors', group: 'Gate' },
+  {
+    code: PERMISSIONS.INVENTORY_VIEW,
+    name: 'See assets, allocations, maintenance, stock, requisitions and inventory reports',
+    group: 'Inventory',
+  },
+  {
+    code: PERMISSIONS.INVENTORY_MANAGE,
+    name: 'Register assets, allocate and return, transfers, maintenance, disposal requests and masters',
+    group: 'Inventory',
+  },
+  {
+    code: PERMISSIONS.INVENTORY_STOCK,
+    name: 'Receive, issue and adjust stock; raise and issue requisitions',
+    group: 'Inventory',
+  },
+  {
+    code: PERMISSIONS.INVENTORY_APPROVE,
+    name: 'Approve or reject transfers, requisitions and disposals',
+    group: 'Inventory',
+  },
+  { code: PERMISSIONS.INVENTORY_AUDIT, name: 'Run asset verifications and stock counts', group: 'Inventory' },
 ];
 
 export const ROLES = {
@@ -200,6 +226,7 @@ export const ROLES = {
   ATTENDANT: 'ATTENDANT',
   LIBRARIAN: 'LIBRARIAN',
   GATE_INCHARGE: 'GATE_INCHARGE',
+  STORE_KEEPER: 'STORE_KEEPER',
 } as const;
 
 export type RoleCode = (typeof ROLES)[keyof typeof ROLES];
@@ -272,6 +299,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GATE_VIEW,
       PERMISSIONS.GATE_APPROVE,
       PERMISSIONS.GATE_MANAGE,
+      PERMISSIONS.INVENTORY_VIEW,
+      PERMISSIONS.INVENTORY_APPROVE,
     ],
   },
   {
@@ -318,6 +347,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GATE_VIEW,
       PERMISSIONS.GATE_APPROVE,
       PERMISSIONS.GATE_MANAGE,
+      PERMISSIONS.INVENTORY_VIEW,
+      PERMISSIONS.INVENTORY_APPROVE,
     ],
   },
   {
@@ -363,6 +394,22 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.LIBRARY_ATTENDANCE,
       PERMISSIONS.SCHOOLS_VIEW,
       PERMISSIONS.STUDENTS_VIEW,
+      PERMISSIONS.STAFF_VIEW,
+      PERMISSIONS.NOTIFICATIONS_VIEW,
+    ],
+  },
+  {
+    code: ROLES.STORE_KEEPER,
+    name: 'Store keeper',
+    description:
+      'Runs school inventory in the admin web: asset register and tags, allocation and returns, transfers, maintenance, stock, requisitions and verification.',
+    app: 'admin',
+    permissions: [
+      PERMISSIONS.INVENTORY_VIEW,
+      PERMISSIONS.INVENTORY_MANAGE,
+      PERMISSIONS.INVENTORY_STOCK,
+      PERMISSIONS.INVENTORY_AUDIT,
+      PERMISSIONS.SCHOOLS_VIEW,
       PERMISSIONS.STAFF_VIEW,
       PERMISSIONS.NOTIFICATIONS_VIEW,
     ],
