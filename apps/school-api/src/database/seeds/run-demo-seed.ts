@@ -3,6 +3,7 @@ import { School } from '../../modules/schools/entities/school.entity';
 import { DEMO_PLATFORM_USERS, DEMO_SCHOOL, DEMO_SCHOOL_USERS } from './demo.data';
 import { seedDemoAcademics } from './demo-academics';
 import { seedDemoAchievements } from './demo-achievements';
+import { seedDemoBusPasses, seedDemoRouteFees } from './demo-bus-passes';
 import { seedDemoDay4 } from './demo-day4';
 import { seedDemoDay5 } from './demo-day5';
 import { seedDemoExams } from './demo-exams';
@@ -46,6 +47,7 @@ runSeed('Demo seed', async (manager) => {
   await seedDemoDay5(manager, school);
   await seedDemoFinal(manager, school);
   await seedDemoExams(manager, school);
+  await seedDemoRouteFees(manager, school);
   await seedDemoFees(manager, school);
   await seedDemoAchievements(manager, school);
   await seedDemoSportsOnDuty(manager, school);
@@ -56,4 +58,5 @@ runSeed('Demo seed', async (manager) => {
   await seedDriverProfiles(manager, school);
   await seedDriverParents(manager, school);
   await seedDemoDriverRatings(manager, school);
+  await seedDemoBusPasses(manager, school);
 });
