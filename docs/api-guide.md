@@ -85,6 +85,8 @@ In development the OTP is always `123456` and no SMS is sent. Demo users (all sc
 | 9000000006 | Teacher and Parent (role picker) |
 | 9000000007 | Driver (Tamil) |
 | 9000000008 | Bus attendant (Tamil) |
+| 9000000009 | Librarian |
+| 9000000010 | Accountant |
 | 9000000401 to 9000000406 | Teachers: Tamil, English, Social Science, PE, Computer Science, Hindi |
 
 ## Response format
@@ -1035,7 +1037,7 @@ Invoice lines have `kind`: `plan`, `transport` (the bus fee) or `transport_adjus
 | `fees.approve` | `POST /admin/fees/plans/{classId}/approve` and `/reject`, `POST /admin/fees/requests/{id}/approve` and `/reject`, `POST /admin/fees/fines/{id}/approve` and `/reject` | Admin, Principal, AO |
 | `fees.fine` | `POST /admin/fees/fines`, `POST /admin/fees/fines/{id}/withdraw` | Admin, Principal, AO, Accountant |
 
-The **Accountant** role (`ACCOUNTANT`, admin web) has `fees.view`, `fees.collect`, `fees.adjust` and `fees.fine`, plus `students.view`. An accountant can see fees, record payments, raise fines and ask for discounts, refunds, cancellations, reversals, write-offs and due date changes, but cannot approve them or change fee plans and settings. Demo user: `9000000009`.
+The **Accountant** role (`ACCOUNTANT`, admin web) has `fees.view`, `fees.collect`, `fees.adjust` and `fees.fine`, plus `students.view`. An accountant can see fees, record payments, raise fines and ask for discounts, refunds, cancellations, reversals, write-offs and due date changes, but cannot approve them or change fee plans and settings. Demo user: `9000000010`.
 
 Concessions and scholarships: creating, changing and deleting them needs `fees.configure`; giving and withdrawing them needs `fees.adjust`.
 
@@ -1229,6 +1231,46 @@ Giving, withdrawing or changing one affects only invoices raised afterwards.
 **Balance check.** `GET /admin/fees/reconciliation` returns `invoices_checked` and `mismatches`: invoices whose `paid` differs from the sum of their non-reversed payments, or whose `total` or `balance` does not add up. It only reads; nothing is fixed automatically. The same check runs every night at 02:30 and logs a warning for each school with mismatches.
 
 The database also refuses negative amounts, payments of 0, and invoices whose totals do not add up (`CHECK` constraints, enforced on new and changed rows).
+
+## Library
+
+The librarian (role `LIBRARIAN`, admin web) runs the catalogue, the issue desk, overdue follow-ups, fines, library attendance and stock checks. Permissions: `library.view` (Librarian, Principal, AO, school admin), `library.manage` (catalogue, members, issue and return, stock checks, settings), `library.fines` (collect; Librarian, AO), `library.waive` and `library.attendance` (door scan, library periods). Every route below is under `/admin/library` unless shown otherwise.
+
+**Barcodes.** A book (title) has an `isbn`; each physical copy has its own `accession_no` (`TZMS-000123`, from the school sequence or the school's own register) and `barcode` (a barcode already on the book, else the accession number). Scanners type the code and Enter, so every scan field is a plain text input. `GET books/isbn/{isbn}` takes the EAN-13 on the back cover (or ISBN-10) and returns `book` (already here: add copies) or `suggestion` (details from the online lookup when `BOOK_LOOKUP_URL` is set and the library setting `isbn_lookup` is on). `GET copies/lookup?code=` finds a copy by barcode or accession number; `GET copies/labels?copy_ids=|book_id=|added_from=` prints A4 sheets of Code 128 stickers (3 × 8).
+
+**Catalogue.** `categories` (CRUD; `is_reference` books are never issued), `books` (search title, author, ISBN, publisher, keywords, accession, barcode; `category_id`, `language`, `availability`, `is_active`; sort `title`, `authors`, `created_at`, `available`), `books/insights`, `POST books` with optional `copies` `{ count, barcodes[], accession_nos[], condition, source, vendor, bill_no, acquired_on, price }`, `books/{id}/copies` (`GET`, `POST`), `copies` (inventory list), `PATCH copies/{id}` (barcode, condition, shelf status `available`, `damaged`, `in_repair`, `withdrawn`), `copies/{id}/history` (every event: added, issued, returned, renewed, marked lost, found, damaged, repaired, withdrawn, audited). Import: `GET books/import/template` (xlsx) then `POST books/import` multipart `file` + `mode=validate|import`; a known ISBN adds copies, barcodes and accession numbers are separated by `|`, unknown categories are created.
+
+**Members.** Students and staff are mapped to a library card (`TZMS-LS-00007` student, `TZMS-LT-00003` staff). `GET members/lookup?code=` accepts the card number, the ID card QR (`TZS1…`, an old replaced card gets `409 QR_REPLACED`), admission number, employee number or staff mobile, and enrols a non-member on the spot (`enrolled_now`). It returns the member, books held, unpaid fines, `books_left`, `can_borrow` and `refusal`. Also `members` (list), `members/insights`, `members/people?search=` (desk search), `POST members`, `POST members/bulk` `{ section_id | class_id | all_students | all_staff }`, `PATCH members/{id}` (suspend, own `max_books`, `loan_days`). `phone` on a member is the first parent's mobile for a student, the staff member's own mobile for staff.
+
+**Issue and return.** `POST issues` `{ member_id, codes[], due_date?, purpose: personal | class_set, section_id?, remarks? }` is all or nothing; refusals: `COPY_NOT_FOUND`, `COPY_NOT_AVAILABLE`, `REFERENCE_ONLY`, `SAME_TITLE_HELD`, `BOOK_LIMIT_REACHED`, `FINE_PENDING`, `MEMBER_NOT_ACTIVE`, `MEMBER_LEFT`. A class set goes to a teacher for a section and ignores the book limit. The due date is the loan days (14 students, 30 staff by default) moved off Sundays and holidays. `POST returns` `{ items: [{ code, condition?, damage_fine?, remarks? }] }` (`NOT_ON_LOAN`). `POST issues/{id}/renew` (`RENEW_LIMIT_REACHED`, `LOAN_OVERDUE`; adds the loan days to the later of today and the current due date), `POST issues/{id}/lost`, `POST issues/{id}/found`. `GET issues` is the transaction history: `status`, `state` (`on_loan`, `due_soon`, `due_today`, `overdue`), `member_id`, `book_id`, `copy_id`, `member_type`, `class_id`, `section_id`, `purpose`, `from`/`to` (issue date), `on` (issued or returned that day), sort `issued_at`, `due_date`, `returned_at`; `GET issues/export` is the same list as CSV. Each loan has `state`, `days_overdue` and `running_fine` (the late fine if returned today).
+
+**Fines.** Late fine = late days after `grace_days` (Sundays and holidays skipped when `skip_holidays`) × `fine_per_day`, capped at `max_fine_per_book`; raised on return or when marked lost. Staff are fined only with `charge_staff_fines`. Lost = copy price + `lost_processing_fee`; found again waives what is unpaid. Damage = the amount entered at return. `fines` (`status`, `kind`, `member_type`, `class_id`, `outstanding`), `fines/insights`, `POST fines/{id}/payments` `{ amount, mode, reference?, paid_on?, notes? }` (receipt `TZMS-LIB-2026-0001`), `POST fines/{id}/waive` `{ amount?, reason }`, `fine-payments`, `fine-payments/{id}/receipt` (PDF). New loans are refused while unpaid fines exceed `block_issue_above_fine`. A student cannot get a TC while books or fines are pending (`409 LIBRARY_CLEARANCE_PENDING`).
+
+**Follow-ups and alerts.** `GET follow-ups?show=due|all` lists overdue loans with no follow-up yet or whose next check date has come; `POST issues/{id}/follow-ups` `{ action, note?, promised_on?, next_follow_up_on? }` (actions `called_parent`, `reminded_student`, `reminded_staff`, `told_class_teacher`, `promised_date`, `other`). At 08:00 each loan walks the ladder once per step: `LIBRARY_DUE_SOON` (`due_soon_days` before), `LIBRARY_DUE_TODAY`, `LIBRARY_OVERDUE` (day 1), `LIBRARY_OVERDUE_ESCALATED` (after `escalate_after_days`, to the class teacher too, then weekly; SMS only if the push fails), `LIBRARY_OVERDUE_LONG` (after `long_overdue_days`, to the librarian and admin). Parents (with `receives_alerts`) get the student's notices; staff get their own. Also `LIBRARY_BOOK_ISSUED`, `LIBRARY_BOOK_RETURNED`, `LIBRARY_FINE_RAISED`, `LIBRARY_FINE_PAID` (category `library`). `POST reminders/run` sends the due steps now.
+
+**Library attendance.** `POST visits/scan` `{ code, purpose? }` with the ID card QR or a card, admission or employee number: the first scan checks in, the next the same day checks out (`action`). Visits left open close at `closing_time`. `visits` (`date`, `from`, `to`, `kind`, `member_type`, `class_id`, `section_id`, `student_id`, `inside`, `present`), `visits/insights?date=`, `POST visits/{id}/check-out`. Library periods come from the timetable (subject named Library or code `LIB`): `GET periods?date=`, `GET periods/{slotId}?date=` (roster) and `PUT periods/{slotId}/attendance` `{ date?, absent_student_ids[] }`.
+
+**Stock check.** `POST audits` `{ name, category_id?, rack? }` (one open at a time), `POST audits/{id}/scan` `{ code }` (finding `found`, `misplaced`, `was_issued`, `was_lost`, `unknown`; `repeated` when scanned before), `GET audits/{id}/items?finding=` (`missing` = expected but not scanned), `POST audits/{id}/close` `{ withdraw_missing? }`.
+
+**Reports and home.** `dashboard` (counts, due today, follow-ups, latest transactions, today's periods), `reports/most-borrowed`, `reports/categories`, `reports/top-readers`, `reports/classes`, `reports/stock` (`from`, `to`, `limit`, `member_type`). Profile tabs: `GET /admin/students/{id}/library` and `GET /admin/staff/{id}/library`. Settings: `GET`/`PUT settings`.
+
+### Parent app (Module 9: Library & Books)
+
+| Call | Screen |
+|---|---|
+| `GET /mobile/parent/children/{id}/library` | Books the child holds (`state`, `due_date`, `days_overdue`, `running_fine`), unpaid fines, last 20 returned, `visits_this_month`, `books_left`. `member` is null when the child is not a member yet |
+| `GET /mobile/parent/children/{id}/library/books` | Catalogue search with `available_copies` (`search`, `category_id`, `available_only`) |
+
+### Staff app (Module 11: Library)
+
+| Call | Screen |
+|---|---|
+| `GET /mobile/teacher/library` | My books (including class sets), fines and history |
+| `GET /mobile/teacher/sections/{id}/library` | **My class**: every student of my section with `books_held`, `overdue_books`, `max_days_overdue`, `running_fine`, `unpaid_fines` (dues), `parent_phone`, `status` (`overdue`, `dues`, `holding`, `clear`) and their `loans`, sorted overdue first; plus `counts` `{ students, members, holding, overdue, with_dues }`, `unpaid_fines`, `running_fines`. Only the class teacher; others get `403 NOT_CLASS_TEACHER` |
+| `GET /mobile/teacher/students/{id}/library` | One student of my class: books held, dues, history, visits (same shape as the parent call) |
+| `GET /mobile/teacher/library/class-overdue` | Overdue books of the students in my sections (class teacher); the section roster above shows more |
+| `GET /mobile/teacher/library/books` | Catalogue search |
+
 
 ## Academic year
 
@@ -1527,6 +1569,7 @@ Every push (OneSignal `additionalData`) has `category`, `template` and `notifica
 | `attendance` | STUDENT_ABSENT (`session`), LEAVE_STATUS (`leave_id`), STAFF_LEAVE_STATUS (`leave_id`) | `student_id` for parent pushes | attendance |
 | `diary` | DIARY_POSTED, DIARY_REJECTED | `entry_id` where present | diary |
 | `fees` | FEE_DUE, FEE_OVERDUE | `student_id` | fees |
+| `library` | LIBRARY_BOOK_ISSUED, LIBRARY_DUE_SOON, LIBRARY_DUE_TODAY, LIBRARY_OVERDUE, LIBRARY_OVERDUE_ESCALATED, LIBRARY_BOOK_RETURNED, LIBRARY_FINE_RAISED, LIBRARY_FINE_PAID | `role` (`parent` for a student's parents, `staff` for a teacher's own books and the class teacher), `student_id` (student loans), `issue_id`, `fine_id` / `payment_id` on fines | parent: the child's Library; teacher: My class (with `student_id`) or My books |
 | `system` | RESULT_PUBLISHED (`exam_id`), ACHIEVEMENT_ADDED (`achievement_id`) | `student_id` | results / achievements |
 | `alert` | EMERGENCY_BROADCAST (`broadcast_id`, `severity`) to parents and staff | — | full-screen emergency alert, then `GET /me/emergency-broadcasts/{broadcast_id}` |
 | `system` | STUDENT_FEEDBACK (`feedback_id`) to the parents | `student_id` | the child's feedback |

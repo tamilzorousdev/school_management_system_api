@@ -28,6 +28,7 @@ export const CATEGORIES = [
   'fees',
   'announcement',
   'approval',
+  'library',
 ] as const;
 export type NotificationCategory = (typeof CATEGORIES)[number];
 

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import QRCode from 'qrcode';
-import { DataSource, In, MoreThan, Not, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, MoreThan, Not, Repository } from 'typeorm';
 import { AppException } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
@@ -167,6 +167,7 @@ export class StudentLifecycleService {
       if (student.status !== 'active') {
         throw AppException.conflict(`This student is already ${student.status}`, 'STUDENT_NOT_ACTIVE');
       }
+      await this.libraryClearance(manager, studentId);
       const [{ balance }] = await manager.query(
         `SELECT coalesce(sum(balance), 0) AS balance FROM fee_invoices
          WHERE school_id = $1 AND student_id = $2 AND status <> 'cancelled' AND deleted_at IS NULL`,
@@ -474,6 +475,25 @@ export class StudentLifecycleService {
       throw AppException.badRequest('Add next academic year in School setup before promoting', 'NO_NEXT_YEAR');
     }
     return { current, next };
+  }
+
+  private async libraryClearance(manager: EntityManager, studentId: number): Promise<void> {
+    const [pending]: { books: number; fines: string }[] = await manager.query(
+      `SELECT
+         (SELECT COUNT(*) FROM library_issues i JOIN library_members m ON m.id = i.member_id
+            WHERE m.student_id = $1 AND i.status = 'issued' AND i.deleted_at IS NULL)::int AS books,
+         (SELECT COALESCE(SUM(f.balance), 0) FROM library_fines f JOIN library_members m ON m.id = f.member_id
+            WHERE m.student_id = $1 AND f.deleted_at IS NULL) AS fines`,
+      [studentId],
+    );
+    const books = Number(pending?.books ?? 0);
+    const fines = Number(pending?.fines ?? 0);
+    if (!books && !fines) return;
+    const parts = [
+      books ? `${books} library ${books === 1 ? 'book' : 'books'} not returned` : null,
+      fines ? `Rs. ${fines.toFixed(2)} library fine unpaid` : null,
+    ].filter(Boolean);
+    throw AppException.conflict(`Clear the library first: ${parts.join(' and ')}`, 'LIBRARY_CLEARANCE_PENDING');
   }
 
   private async findCertificate(schoolId: number, studentId: number): Promise<TransferCertificate> {

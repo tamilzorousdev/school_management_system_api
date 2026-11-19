@@ -22,7 +22,7 @@ const SCRATCH_DB = /test|e2e/i.test(process.env.DB_NAME ?? '');
 const ADMIN = '9876543210';
 const AO = '9000000002';
 const PARENT = '9000000005';
-const ACCOUNTANT = '9000000009';
+const ACCOUNTANT = '9000000010';
 
 const describeOnScratchDb = SCRATCH_DB ? describe : describe.skip;
 

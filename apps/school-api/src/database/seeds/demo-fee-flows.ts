@@ -27,7 +27,7 @@ const USERS = {
   teacher: '9000000004',
   parent: '9000000005',
   teacherParent: '9000000006',
-  accountant: '9000000009',
+  accountant: '9000000010',
 };
 
 interface InvoiceRow {
