@@ -55,6 +55,7 @@ import {
   EmergencyMessageTemplate,
   EmergencyRecipient,
   EndReason,
+  StaffGroup,
 } from './entities/emergency.entity';
 
 const DEFAULT_CHANNELS: EmergencyChannel[] = ['push', 'sms'];
@@ -192,6 +193,7 @@ export class EmergencyService {
         section_ids: dto.audience === 'sections' ? (dto.section_ids ?? []) : null,
         student_ids: dto.audience === 'students' ? (dto.student_ids ?? []) : null,
         include_teachers: Boolean(dto.include_teachers),
+        staff_groups: dto.audience === 'staff' && dto.staff_groups?.length ? dto.staff_groups : null,
         channels,
         status: approval ? 'pending_approval' : sendAt ? 'scheduled' : 'sending',
         total: people.length,
@@ -700,6 +702,7 @@ export class EmergencyService {
       section_ids: broadcast.section_ids ?? undefined,
       student_ids: broadcast.student_ids ?? undefined,
       include_teachers: broadcast.include_teachers,
+      staff_groups: broadcast.staff_groups ?? undefined,
     };
   }
 
@@ -749,7 +752,9 @@ export class EmergencyService {
     const rows: CandidateRow[] = [];
     if (dto.audience !== 'staff') rows.push(...(await this.parentRows(schoolId, year.id, dto)));
     if (dto.audience === 'everyone' || dto.audience === 'staff') {
-      rows.push(...(await this.staffRows(schoolId, null)));
+      rows.push(
+        ...(await this.staffRows(schoolId, null, dto.audience === 'staff' ? (dto.staff_groups ?? null) : null)),
+      );
     } else if (dto.include_teachers && dto.audience !== 'parents') {
       rows.push(...(await this.staffRows(schoolId, await this.teacherIds(year.id, dto))));
     }
@@ -780,13 +785,25 @@ export class EmergencyService {
     );
   }
 
-  private staffRows(schoolId: number, userIds: number[] | null): Promise<CandidateRow[]> {
+  private staffRows(
+    schoolId: number,
+    userIds: number[] | null,
+    groups: StaffGroup[] | null = null,
+  ): Promise<CandidateRow[]> {
     if (userIds && !userIds.length) return Promise.resolve([]);
+    const crew = `EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+                    WHERE ur.user_id = u.id AND r.code IN ('DRIVER', 'ATTENDANT'))`;
+    const groupSql: Record<StaffGroup, string> = {
+      teachers: `st.staff_type = 'teaching'`,
+      drivers: crew,
+      office: `(st.staff_type <> 'teaching' AND NOT ${crew})`,
+    };
+    const groupFilter = groups?.length ? `AND (${groups.map((group) => groupSql[group]).join(' OR ')})` : '';
     return this.dataSource.query(
       `SELECT 'staff' AS kind, u.id AS user_id, NULL::int AS guardian_id, u.name, u.mobile, u.language
        FROM staff st JOIN users u ON u.id = st.user_id AND u.deleted_at IS NULL AND u.status = 'active'
        WHERE st.school_id = $1 AND st.deleted_at IS NULL AND st.status <> 'resigned'
-         ${userIds ? 'AND st.user_id = ANY($2)' : ''}`,
+         ${userIds ? 'AND st.user_id = ANY($2)' : ''} ${groupFilter}`,
       userIds ? [schoolId, userIds] : [schoolId],
     );
   }
@@ -1002,6 +1019,7 @@ export class EmergencyService {
         section_ids: row.section_ids ?? [],
         student_ids: row.student_ids ?? [],
         include_teachers: row.include_teachers,
+        staff_groups: row.staff_groups ?? [],
         channels: row.channels,
         status: row.status,
         state: broadcastState(row, now),
@@ -1053,7 +1071,7 @@ export class EmergencyService {
             : row.audience === 'parents'
               ? 'All parents'
               : row.audience === 'staff'
-                ? 'All staff'
+                ? staffLabel(row.staff_groups)
                 : row.audience === 'classes'
                   ? `Parents of ${names(row.class_ids, classes, 'Class ')}${teachers(row)}`
                   : row.audience === 'sections'
@@ -1063,4 +1081,15 @@ export class EmergencyService {
       }),
     );
   }
+}
+
+const STAFF_GROUP_NAMES: Record<StaffGroup, string> = {
+  teachers: 'teachers',
+  drivers: 'drivers & attendants',
+  office: 'office',
+};
+
+function staffLabel(groups: StaffGroup[] | null): string {
+  if (!groups?.length || groups.length === 3) return 'All staff';
+  return `Staff: ${groups.map((group) => STAFF_GROUP_NAMES[group]).join(', ')}`;
 }

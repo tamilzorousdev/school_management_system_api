@@ -349,6 +349,26 @@ export class AssignmentsQueryDto {
   @Type(() => Number)
   @IsInt()
   class_id?: number;
+
+  @IsDateOnly('2026-11-10', true)
+  week?: string;
+}
+
+export class AssignmentChangesQueryDto {
+  @ApiPropertyOptional({ example: 2, description: 'Defaults to the current year' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  academic_year_id?: number;
+
+  @IsDateOnly('2026-11-17', true)
+  week?: string;
+
+  @ApiPropertyOptional({ example: 12 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  section_id?: number;
 }
 
 export class AssignmentItemDto {

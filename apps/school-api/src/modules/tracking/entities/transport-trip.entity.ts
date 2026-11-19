@@ -108,6 +108,12 @@ export class TransportTrip {
   @Column({ type: 'timestamptz', nullable: true })
   flags_sent_at: Date | null;
 
+  @Column({ type: 'numeric', precision: 8, scale: 1, nullable: true })
+  gps_km: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  gps_checked_at: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;
 

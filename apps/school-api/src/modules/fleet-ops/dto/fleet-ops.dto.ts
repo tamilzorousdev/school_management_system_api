@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
@@ -13,14 +14,18 @@ import {
   Min,
   ValidateIf,
 } from 'class-validator';
-import { ListQueryDto } from '@app/common';
+import { ListQueryDto, toBoolean } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { FileDto } from '../../files/dto/file.dto';
 import { TripDto } from '../../tracking/dto/tracking.dto';
+import { PAYMENT_MODES, PaymentMode, SERVICE_CATEGORIES, ServiceCategory } from '../entities/fleet-maintenance.entity';
+import { FUEL_STATUSES, FuelStatus } from '../entities/fuel-log.entity';
 import {
+  TICKET_KINDS,
   TICKET_SEVERITIES,
   TICKET_SOURCES,
   TICKET_STATUSES,
+  TicketKind,
   TicketSeverity,
   TicketSource,
   TicketStatus,
@@ -53,6 +58,44 @@ export class PersonRefDto {
 
   @ApiProperty({ example: 'Ganesan Pillai' })
   name: string;
+}
+
+export class VendorRefDto {
+  @ApiProperty({ example: 3 })
+  id: number;
+
+  @ApiProperty({ example: 'Sri Murugan Motors' })
+  name: string;
+
+  @ApiProperty({ example: '9876500011', nullable: true, type: String })
+  phone: string | null;
+}
+
+export class WarrantyClaimDto {
+  @ApiProperty({ example: 7, description: 'The earlier ticket whose part is still under warranty' })
+  ticket_id: number;
+
+  @ApiProperty({ example: '2027-06-10', nullable: true, type: String })
+  until: string | null;
+
+  @ApiProperty({ example: null, nullable: true, type: Number })
+  until_km: number | null;
+}
+
+export class GpsCheckDto {
+  @ApiProperty({
+    example: 420,
+    nullable: true,
+    type: Number,
+    description: 'km on the odometer since the last full fill',
+  })
+  odometer_km: number | null;
+
+  @ApiProperty({ example: 395, nullable: true, type: Number, description: 'km the GPS tracker recorded on trips' })
+  gps_km: number | null;
+
+  @ApiProperty({ enum: ['ok', 'mismatch', 'unknown'], example: 'ok' })
+  status: 'ok' | 'mismatch' | 'unknown';
 }
 
 export class TicketFieldsDto {
@@ -101,6 +144,78 @@ export class TicketFieldsDto {
   @IsString()
   @MaxLength(1000)
   notes?: string | null;
+
+  @ApiPropertyOptional({ enum: TICKET_KINDS, description: 'service = planned work, repair = breakdown or fault' })
+  @IsOptional()
+  @IsIn(TICKET_KINDS)
+  kind?: TicketKind;
+
+  @ApiPropertyOptional({ enum: SERVICE_CATEGORIES, nullable: true })
+  @IsOptional()
+  @IsIn(SERVICE_CATEGORIES)
+  category?: ServiceCategory | null;
+
+  @ApiPropertyOptional({ example: 4, nullable: true, type: Number, description: 'The service rule this work is for' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  schedule_id?: number | null;
+
+  @ApiPropertyOptional({ example: 3000, nullable: true, type: Number, description: 'Parts, rupees' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'parts_cost must be a number with at most 2 decimals' })
+  @Min(0)
+  @Max(MAX_COST)
+  parts_cost?: number | null;
+
+  @ApiPropertyOptional({ example: 1500, nullable: true, type: Number, description: 'Labour, rupees' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'labour_cost must be a number with at most 2 decimals' })
+  @Min(0)
+  @Max(MAX_COST)
+  labour_cost?: number | null;
+
+  @ApiPropertyOptional({ example: 3, nullable: true, type: Number, description: 'Saved garage' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  vendor_id?: number | null;
+
+  @ApiPropertyOptional({ example: 21, nullable: true, type: Number, description: 'Bill from POST /files' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  bill_file_id?: number | null;
+
+  @ApiPropertyOptional({ example: 30, nullable: true, type: Number, description: 'Photo from POST /files' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  photo_file_id?: number | null;
+
+  @ApiPropertyOptional({ example: false, description: 'The bus cannot run until this ticket is closed' })
+  @IsOptional()
+  @IsBoolean()
+  off_road?: boolean;
+
+  @ApiPropertyOptional({
+    example: 12,
+    nullable: true,
+    type: Number,
+    description: 'Warranty of the part fitted, months',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  warranty_months?: number | null;
+
+  @ApiPropertyOptional({ example: null, nullable: true, type: Number, description: 'Warranty of the part fitted, km' })
+  @IsOptional()
+  @IsInt()
+  @Min(100)
+  @Max(500000)
+  warranty_km?: number | null;
 }
 
 export class CreateTicketDto extends TicketFieldsDto {
@@ -158,6 +273,46 @@ export class CloseTicketDto {
   @IsString()
   @MaxLength(1000)
   notes?: string | null;
+
+  @ApiPropertyOptional({ example: 3000, nullable: true, type: Number })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'parts_cost must be a number with at most 2 decimals' })
+  @Min(0)
+  @Max(MAX_COST)
+  parts_cost?: number | null;
+
+  @ApiPropertyOptional({ example: 1500, nullable: true, type: Number })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'labour_cost must be a number with at most 2 decimals' })
+  @Min(0)
+  @Max(MAX_COST)
+  labour_cost?: number | null;
+
+  @ApiPropertyOptional({ example: 3, nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  vendor_id?: number | null;
+
+  @ApiPropertyOptional({ example: 21, nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  bill_file_id?: number | null;
+
+  @ApiPropertyOptional({ example: 12, nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  warranty_months?: number | null;
+
+  @ApiPropertyOptional({ example: null, nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  @Min(100)
+  @Max(500000)
+  warranty_km?: number | null;
 }
 
 export class TicketQueryDto extends ListQueryDto {
@@ -170,6 +325,22 @@ export class TicketQueryDto extends ListQueryDto {
   @IsOptional()
   @IsIn(TICKET_SOURCES)
   source?: TicketSource;
+
+  @ApiPropertyOptional({ enum: TICKET_KINDS })
+  @IsOptional()
+  @IsIn(TICKET_KINDS)
+  kind?: TicketKind;
+
+  @ApiPropertyOptional({ enum: SERVICE_CATEGORIES })
+  @IsOptional()
+  @IsIn(SERVICE_CATEGORIES)
+  category?: ServiceCategory;
+
+  @ApiPropertyOptional({ example: true, description: 'Only tickets that keep a bus off the road' })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  off_road?: boolean;
 
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
@@ -231,6 +402,49 @@ export class TicketDto {
   @ApiProperty({ example: null, nullable: true, type: String })
   notes: string | null;
 
+  @ApiProperty({ enum: TICKET_KINDS, example: 'repair' })
+  kind: TicketKind;
+
+  @ApiProperty({ enum: SERVICE_CATEGORIES, nullable: true, example: 'brakes' })
+  category: ServiceCategory | null;
+
+  @ApiProperty({ example: null, nullable: true, type: Number })
+  schedule_id: number | null;
+
+  @ApiProperty({ example: 3000, nullable: true, type: Number })
+  parts_cost: number | null;
+
+  @ApiProperty({ example: 1500, nullable: true, type: Number })
+  labour_cost: number | null;
+
+  @ApiProperty({ type: VendorRefDto, nullable: true })
+  garage: VendorRefDto | null;
+
+  @ApiProperty({ type: FileDto, nullable: true })
+  bill_file: FileDto | null;
+
+  @ApiProperty({ type: FileDto, nullable: true })
+  photo_file: FileDto | null;
+
+  @ApiProperty({ example: false, description: 'The bus cannot start trips while this is open' })
+  off_road: boolean;
+
+  @ApiProperty({ example: 12, nullable: true, type: Number })
+  warranty_months: number | null;
+
+  @ApiProperty({ example: null, nullable: true, type: Number })
+  warranty_km: number | null;
+
+  @ApiProperty({
+    type: WarrantyClaimDto,
+    nullable: true,
+    description: 'The same part was fitted earlier and is still under warranty: claim it',
+  })
+  warranty_claim: WarrantyClaimDto | null;
+
+  @ApiProperty({ type: PersonRefDto, nullable: true, description: 'Driver or attendant who reported it' })
+  reported_by: PersonRefDto | null;
+
   @ApiProperty({ example: '2026-11-04T08:15:00.000+05:30' })
   created_at: Date;
 
@@ -256,6 +470,9 @@ export class TicketInsightsDto {
 
   @ApiProperty({ example: 12500, description: 'Cost of tickets closed this month, rupees' })
   cost_this_month: number;
+
+  @ApiProperty({ example: 0, description: 'Open tickets keeping a bus off the road' })
+  off_road: number;
 }
 
 export class FuelInputDto {
@@ -303,6 +520,25 @@ export class FuelInputDto {
   @IsInt()
   @Min(1)
   filled_by?: number | null;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Tank filled to full (default true). km/l is worked out between full fills',
+  })
+  @IsOptional()
+  @IsBoolean()
+  is_full?: boolean;
+
+  @ApiPropertyOptional({ enum: PAYMENT_MODES, example: 'fuel_card' })
+  @IsOptional()
+  @IsIn(PAYMENT_MODES)
+  payment_mode?: PaymentMode;
+
+  @ApiPropertyOptional({ example: 2, nullable: true, type: Number, description: 'Saved fuel station' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  station_id?: number | null;
 }
 
 export class UpdateFuelDto {
@@ -356,6 +592,34 @@ export class UpdateFuelDto {
   @IsInt()
   @Min(1)
   filled_by?: number | null;
+
+  @ApiPropertyOptional({ example: true })
+  @ValidateIf(present)
+  @IsBoolean()
+  is_full?: boolean;
+
+  @ApiPropertyOptional({ enum: PAYMENT_MODES })
+  @ValidateIf(present)
+  @IsIn(PAYMENT_MODES)
+  payment_mode?: PaymentMode;
+
+  @ApiPropertyOptional({ example: 2, nullable: true, type: Number })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  station_id?: number | null;
+
+  @ApiPropertyOptional({
+    example: 'Wrong amount typed',
+    nullable: true,
+    type: String,
+    description: 'Kept in the history',
+  })
+  @IsOptional()
+  @Transform(trimToNull)
+  @IsString()
+  @MaxLength(300)
+  reason?: string | null;
 }
 
 export class FuelQueryDto extends ListQueryDto {
@@ -371,6 +635,25 @@ export class FuelQueryDto extends ListQueryDto {
 
   @IsDateOnly('2026-11-30', true)
   to?: string;
+
+  @ApiPropertyOptional({ enum: FUEL_STATUSES, description: 'pending = added by a driver, waiting for the office' })
+  @IsOptional()
+  @IsIn(FUEL_STATUSES)
+  status?: FuelStatus;
+
+  @ApiPropertyOptional({ enum: PAYMENT_MODES })
+  @IsOptional()
+  @IsIn(PAYMENT_MODES)
+  payment_mode?: PaymentMode;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Driver-paid fills not yet paid back (false) or paid back (true)',
+  })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  reimbursed?: boolean;
 }
 
 export class FuelLogDto {
@@ -415,6 +698,33 @@ export class FuelLogDto {
   @ApiProperty({ type: PersonRefDto, nullable: true })
   filled_by: PersonRefDto | null;
 
+  @ApiProperty({ example: true })
+  is_full: boolean;
+
+  @ApiProperty({ enum: FUEL_STATUSES, example: 'approved' })
+  status: FuelStatus;
+
+  @ApiProperty({ example: null, nullable: true, type: String })
+  review_note: string | null;
+
+  @ApiProperty({ type: PersonRefDto, nullable: true })
+  reviewed_by: PersonRefDto | null;
+
+  @ApiProperty({ enum: PAYMENT_MODES, example: 'cash' })
+  payment_mode: PaymentMode;
+
+  @ApiProperty({ example: null, nullable: true, type: Date })
+  reimbursed_at: Date | null;
+
+  @ApiProperty({ type: VendorRefDto, nullable: true })
+  fuel_station: VendorRefDto | null;
+
+  @ApiProperty({ example: null, nullable: true, type: String, description: 'Price far from this bus’s recent average' })
+  price_warning: string | null;
+
+  @ApiProperty({ type: GpsCheckDto, nullable: true, description: 'Full fills only: odometer km against GPS trip km' })
+  gps_check: GpsCheckDto | null;
+
   @ApiProperty({ example: '2026-11-03T18:20:00.000+05:30' })
   created_at: Date;
 }
@@ -431,6 +741,12 @@ export class FuelInsightsDto {
 
   @ApiProperty({ example: 6.8, nullable: true, type: Number, description: 'Fills in the last 90 days' })
   avg_km_per_litre: number | null;
+
+  @ApiProperty({ example: 2, description: 'Entries added by drivers waiting for the office' })
+  pending_approvals: number;
+
+  @ApiProperty({ example: 1200, description: 'Paid by drivers and not yet paid back' })
+  driver_paid_pending: number;
 }
 
 export class ActiveFaultDto {
