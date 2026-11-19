@@ -163,6 +163,31 @@ export class EnvironmentVariables {
   AGORA_REST_URL: string = 'https://api.sd-rtn.com';
 
   @IsOptional()
+  @ValidateIf((env: EnvironmentVariables) => Boolean(env.RAZORPAY_KEY_ID || env.RAZORPAY_KEY_SECRET))
+  @Matches(/^rzp_(test|live)_[A-Za-z0-9]{8,}$/, {
+    message:
+      'RAZORPAY_KEY_ID must be the Key Id from Razorpay Dashboard → API Keys (rzp_test_… or rzp_live_…), or empty to switch online payments off',
+  })
+  RAZORPAY_KEY_ID?: string;
+
+  @IsOptional()
+  @ValidateIf((env: EnvironmentVariables) => Boolean(env.RAZORPAY_KEY_ID || env.RAZORPAY_KEY_SECRET))
+  @MinLength(16, { message: 'RAZORPAY_KEY_SECRET is the Key Secret shown with the Key Id' })
+  RAZORPAY_KEY_SECRET?: string;
+
+  @IsOptional()
+  @ValidateIf((env: EnvironmentVariables) => Boolean(env.RAZORPAY_WEBHOOK_SECRET))
+  @MinLength(8, { message: 'RAZORPAY_WEBHOOK_SECRET is the secret you typed when adding the webhook in Razorpay' })
+  RAZORPAY_WEBHOOK_SECRET?: string;
+
+  @IsOptional()
+  @IsUrl(
+    { require_tld: false, require_protocol: true },
+    { message: 'RAZORPAY_API_URL must be like https://api.razorpay.com' },
+  )
+  RAZORPAY_API_URL?: string;
+
+  @IsOptional()
   @ValidateIf((env: EnvironmentVariables) => Boolean(env.AGORA_WEBHOOK_SECRET))
   @MinLength(16, { message: 'AGORA_WEBHOOK_SECRET is the secret Agora shows when you enable Notifications' })
   AGORA_WEBHOOK_SECRET?: string;

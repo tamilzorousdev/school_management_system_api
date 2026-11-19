@@ -1,4 +1,4 @@
-import { Column, Entity, Index } from 'typeorm';
+import { Check, Column, Entity, Index } from 'typeorm';
 import { SchoolScopedEntity } from '@app/common';
 import { money } from '../../payroll/entities/money';
 
@@ -6,6 +6,7 @@ export const INVOICE_LINE_KINDS = ['plan', 'transport', 'transport_adjustment'] 
 export type InvoiceLineKind = (typeof INVOICE_LINE_KINDS)[number];
 
 @Entity('fee_invoice_lines')
+@Check('CHK_fee_invoice_lines_amount', `"amount" >= 0 OR "kind" = 'transport_adjustment'`)
 export class FeeInvoiceLine extends SchoolScopedEntity {
   @Index()
   @Column({ type: 'int' })

@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   HttpStatus,
   Param,
   ParseIntPipe,
@@ -12,7 +13,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ApiEnvelope, ApiErrors, RequirePermissions, ResponseMessage } from '@app/common';
+import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS } from '../access/access.catalog';
 import { AcademicYearsService } from './academic-years.service';
@@ -92,21 +93,75 @@ export class SetupController {
   @Post('academic-years')
   @RequirePermissions(MANAGE)
   @ResponseMessage('Academic year created')
-  @ApiOperation({ summary: 'Create an academic year. The first one becomes current automatically.' })
+  @ApiOperation({
+    summary: 'Create an academic year. The first one becomes current automatically.',
+    description:
+      'A new year is draft unless is_current is true. Dates may not overlap another year (409 YEAR_OVERLAPS).',
+  })
   @ApiEnvelope(AcademicYearDto, { status: HttpStatus.CREATED, message: 'Academic year created' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.CONFLICT)
-  createYear(@SchoolId() schoolId: number, @Body() dto: AcademicYearInputDto) {
-    return this.years.create(schoolId, dto);
+  createYear(@SchoolId() schoolId: number, @Body() dto: AcademicYearInputDto, @CurrentUser() actor: AuthUser) {
+    return this.years.create(schoolId, dto, actor);
   }
 
   @Patch('academic-years/:id')
   @RequirePermissions(MANAGE)
   @ResponseMessage('Academic year updated')
-  @ApiOperation({ summary: 'Update dates or make this the current year' })
+  @ApiOperation({
+    summary: 'Update name, dates or description, or make this the current year',
+    description:
+      'is_current: true works like POST .../activate. Dates of a closed or archived year cannot change (409 YEAR_CLOSED).',
+  })
   @ApiEnvelope(AcademicYearDto, { message: 'Academic year updated' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
-  updateYear(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateAcademicYearDto) {
-    return this.years.update(schoolId, id, dto);
+  updateYear(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateAcademicYearDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.years.update(schoolId, id, dto, actor);
+  }
+
+  @Post('academic-years/:id/activate')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(MANAGE)
+  @ResponseMessage('Academic year is now current')
+  @ApiOperation({
+    summary: 'Make this the current (active) year',
+    description:
+      'The year that was current becomes closed. An archived year must be restored first (409 YEAR_ARCHIVED).',
+  })
+  @ApiEnvelope(AcademicYearDto, { message: 'Academic year is now current' })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  activateYear(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @CurrentUser() actor: AuthUser) {
+    return this.years.activate(schoolId, id, actor);
+  }
+
+  @Post('academic-years/:id/archive')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(MANAGE)
+  @ResponseMessage('Academic year archived')
+  @ApiOperation({
+    summary: 'Archive a closed year',
+    description:
+      'An archived year takes no fee changes at all, not even payments. 409 INVALID_STATUS_TRANSITION unless closed.',
+  })
+  @ApiEnvelope(AcademicYearDto, { message: 'Academic year archived' })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  archiveYear(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @CurrentUser() actor: AuthUser) {
+    return this.years.archive(schoolId, id, actor);
+  }
+
+  @Post('academic-years/:id/restore')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(MANAGE)
+  @ResponseMessage('Academic year restored')
+  @ApiOperation({ summary: 'Take an archived year back to closed' })
+  @ApiEnvelope(AcademicYearDto, { message: 'Academic year restored' })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  restoreYear(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.years.restore(schoolId, id);
   }
 
   @Delete('academic-years/:id')

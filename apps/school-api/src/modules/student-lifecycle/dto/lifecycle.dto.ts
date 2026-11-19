@@ -53,6 +53,15 @@ export class StudentExitDto {
   @IsString()
   @MaxLength(255)
   remarks?: string | null;
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      'Needed when the student has unpaid fees (409 FEE_DUES_PENDING otherwise). The dues stay on record; write them off with a fee request.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  acknowledge_dues?: boolean;
 }
 
 export class QrVerifyDto {
@@ -176,6 +185,9 @@ export class TransferCertificateDto {
 
   @ApiProperty({ nullable: true, type: String })
   remarks: string | null;
+
+  @ApiProperty({ example: 4500, description: 'Unpaid fees when the TC was issued' })
+  fee_balance: number;
 }
 
 export class DigitalIdDto {

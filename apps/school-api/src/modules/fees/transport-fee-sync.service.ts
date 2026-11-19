@@ -111,6 +111,7 @@ export class TransportFeeSyncService {
         academic_year_id: year.id,
         student_id: In(studentIds),
         status: Not('cancelled'),
+        kind: 'fee',
       },
       order: { due_date: 'ASC', id: 'ASC' },
     });
@@ -200,12 +201,15 @@ export class TransportFeeSyncService {
 
       const next = invoiceAmounts(
         own.map((line) => Number(line.amount)),
+        Number(invoice.benefit),
         Number(invoice.discount),
         Number(invoice.paid),
       );
       if (next.gross <= 0) {
         await manager.update(FeeInvoice, invoice.id, {
           gross: 0,
+          benefit: 0,
+          discount: 0,
           total: 0,
           balance: 0,
           status: 'cancelled',

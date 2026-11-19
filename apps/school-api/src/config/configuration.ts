@@ -121,6 +121,14 @@ export const videoConfig = registerAs('video', () => ({
   timeoutMs: 8000,
 }));
 
+export const paymentsConfig = registerAs('payments', () => ({
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? '',
+  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? '',
+  razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET ?? '',
+  razorpayApiUrl: (process.env.RAZORPAY_API_URL || 'https://api.razorpay.com').replace(/\/+$/, ''),
+  timeoutMs: 10000,
+}));
+
 export const securityConfig = registerAs('security', () => ({
   biometricWebhookKey: process.env.BIOMETRIC_WEBHOOK_KEY ?? '',
   qrSigningSecret: process.env.QR_SIGNING_SECRET ?? '',
@@ -150,6 +158,7 @@ export type SecurityConfig = ConfigType<typeof securityConfig>;
 export type TelematicsConfig = ConfigType<typeof telematicsConfig>;
 export type TransportConfig = ConfigType<typeof transportConfig>;
 export type VideoConfig = ConfigType<typeof videoConfig>;
+export type PaymentsConfig = ConfigType<typeof paymentsConfig>;
 export type LibraryConfig = ConfigType<typeof libraryConfig>;
 
 export const ALL_CONFIGS = [
@@ -168,4 +177,5 @@ export const ALL_CONFIGS = [
   videoConfig,
   libraryConfig,
   queueConfig,
+  paymentsConfig,
 ];

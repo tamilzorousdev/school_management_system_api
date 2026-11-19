@@ -13,14 +13,16 @@ npm run lint                 # must be clean before commit
 npm run format               # prettier
 npm test                     # unit tests, no database needed
 npm run test:e2e             # smoke tests, needs a migrated database
+npm run test:e2e:fees        # fee flows; only on a fresh scratch DB whose DB_NAME contains test or e2e (migrate, seed, seed:demo first)
 npm run migration:generate -- apps/school-api/src/database/migrations/Name
 npm run migration:run
 npm run seed                 # roles, permissions, templates (production-safe)
 npm run seed:demo            # local only: demo school + users (seeds/demo.data.ts)
+npm run seed:demo:fees       # local only, after seed:demo: every fee flow through the real services (approvals, requests, credit, refunds, Razorpay orders, late fees); runs once per year
 npm run seed:super-admin -- --mobile 9xxxxxxxxx --name "Full Name"
 ```
 
-Dev sign-in (after `seed:demo`): super admin `9999999999`, school admin `9876543210`, demo users `9000000001`–`9000000009` (one per role; `9000000009` is the librarian), OTP `123456` (`OTP_MODE=test`).
+Dev sign-in (after `seed:demo`): super admin `9999999999`, school admin `9876543210`, demo users `9000000001`–`9000000010` (one per role; `9000000009` is the librarian, `9000000010` the accountant), OTP `123456` (`OTP_MODE=test`).
 
 Schools and school users are data, created through the API by a super admin. Never put school names, codes or admin numbers in `.env`.
 

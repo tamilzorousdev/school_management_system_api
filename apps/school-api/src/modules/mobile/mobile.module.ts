@@ -4,6 +4,7 @@ import { AppBannersModule } from '../app-banners/app-banners.module';
 import { AttendanceModule } from '../attendance/attendance.module';
 import { ExamsModule } from '../exams/exams.module';
 import { FeesModule } from '../fees/fees.module';
+import { MobileTeacherFinesController } from './mobile-fines.controller';
 import { MeetingsModule } from '../meetings/meetings.module';
 import { DiaryModule } from '../diary/diary.module';
 import { ChatModule } from '../chat/chat.module';
@@ -69,6 +70,7 @@ import { MobileParentLibraryController, MobileTeacherLibraryController } from '.
     LibraryModule,
   ],
   controllers: [
+    MobileTeacherFinesController,
     MobileParentChildController,
     MobileTeacherController,
     MobileParentAttendanceController,

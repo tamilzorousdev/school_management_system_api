@@ -1,5 +1,6 @@
 import { SchoolScopedEntity } from '@app/common';
 import { Column, Entity, Index } from 'typeorm';
+import { money } from '../../payroll/entities/money';
 
 export const EXIT_TYPES = ['transferred', 'withdrawn'] as const;
 export type ExitType = (typeof EXIT_TYPES)[number];
@@ -43,4 +44,7 @@ export class TransferCertificate extends SchoolScopedEntity {
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   remarks: string | null;
+
+  @Column(money())
+  fee_balance: number;
 }

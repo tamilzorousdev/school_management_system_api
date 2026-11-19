@@ -6,3 +6,4 @@ coverage
 .DS_Store
 uploads
 .env
+fees_module_analysis

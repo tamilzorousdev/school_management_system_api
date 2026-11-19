@@ -17,13 +17,15 @@
     "migration:revert": "npm run typeorm -- migration:revert",
     "seed": "ts-node -r tsconfig-paths/register apps/school-api/src/database/seeds/run-seed.ts",
     "seed:demo": "ts-node -r tsconfig-paths/register apps/school-api/src/database/seeds/run-demo-seed.ts",
+    "seed:demo:fees": "ts-node -r tsconfig-paths/register apps/school-api/src/database/seeds/run-demo-fee-flows.ts",
     "seed:super-admin": "ts-node -r tsconfig-paths/register apps/school-api/src/database/seeds/create-super-admin.ts",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:e2e:fees": "jest --config ./test/jest-e2e.json fees"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

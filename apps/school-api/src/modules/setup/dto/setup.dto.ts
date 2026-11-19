@@ -21,6 +21,7 @@ import {
 import { ListQueryDto, toBoolean } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
+import { ACADEMIC_YEAR_STATUSES, AcademicYearStatus } from '../entities/academic-year.entity';
 import { HOLIDAY_TYPES, HolidayType } from '../entities/holiday.entity';
 import { SUBJECT_TYPES, SubjectType } from '../entities/subject.entity';
 
@@ -40,10 +41,19 @@ export class AcademicYearInputDto {
   @IsDateOnly('2027-04-30')
   end_date: string;
 
-  @ApiPropertyOptional({ description: 'Make this the current year. The previous current year is switched off.' })
+  @ApiPropertyOptional({
+    description: 'Make this the current (active) year. The previous current year is closed.',
+  })
   @IsOptional()
   @IsBoolean()
   is_current?: boolean;
+
+  @ApiPropertyOptional({ example: 'Fees revised in April', nullable: true })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(300)
+  description?: string | null;
 }
 
 export class UpdateAcademicYearDto extends PartialType(AcademicYearInputDto) {}
@@ -96,6 +106,35 @@ export class AcademicYearDto {
 
   @ApiProperty()
   is_current: boolean;
+
+  @ApiProperty({
+    enum: ACADEMIC_YEAR_STATUSES,
+    example: 'active',
+    description:
+      'draft: not started; active: the current year; closed: an earlier year, fee plans locked but dues can still be collected; archived: frozen, no fee changes at all',
+  })
+  status: AcademicYearStatus;
+
+  @ApiProperty({ example: null, nullable: true })
+  description: string | null;
+
+  @ApiProperty({ example: '2026-06-01T09:00:00.000+05:30', nullable: true })
+  activated_at: Date | null;
+
+  @ApiProperty({ example: 'Priya Sharma', nullable: true, description: 'Who made it current' })
+  activated_by: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  closed_at: Date | null;
+
+  @ApiProperty({ example: null, nullable: true, description: 'Who made another year current, closing this one' })
+  closed_by: string | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  archived_at: Date | null;
+
+  @ApiProperty({ example: null, nullable: true })
+  archived_by: string | null;
 
   @ApiProperty({ type: [TermDto] })
   terms: TermDto[];

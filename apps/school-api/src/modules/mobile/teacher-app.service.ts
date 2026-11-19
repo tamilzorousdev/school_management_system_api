@@ -8,6 +8,7 @@ import { AchievementsService } from '../achievements/achievements.service';
 import { AttendanceStatus } from '../attendance/entities/attendance-record.entity';
 import { ExamsService } from '../exams/exams.service';
 import { FeesService } from '../fees/fees.service';
+import { feesForTeacher } from '../fees/fee-views';
 import { AttendanceService, summarise } from '../attendance/attendance.service';
 import { StudentLeaveService } from '../attendance/student-leave.service';
 import { StudentLifecycleService } from '../student-lifecycle/student-lifecycle.service';
@@ -186,7 +187,7 @@ export class TeacherAppService {
       this.records.listDocuments(schoolId, studentId),
       this.lifecycle.digitalId(schoolId, studentId).catch(() => null),
       this.exams.studentResults(schoolId, studentId),
-      classTeacher ? this.fees.summary(schoolId, studentId) : Promise.resolve(null),
+      classTeacher ? this.fees.summary(schoolId, studentId).then(feesForTeacher) : Promise.resolve(null),
     ]);
     const year = summarise(statuses.map((row) => row.status));
     return {
