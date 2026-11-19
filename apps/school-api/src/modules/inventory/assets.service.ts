@@ -31,10 +31,11 @@ import {
   TransferInputDto,
   TransferQueryDto,
 } from './dto/asset.dto';
-import { MyAssetDto, PeopleAssetsDto } from './dto/operations.dto';
+import { MyAssetDto, MyReturnedAssetDto, PeopleAssetsDto } from './dto/operations.dto';
 import {
   Asset,
   AssetAllocation,
+  AssetCondition,
   AssetDisposal,
   AssetEventKind,
   AssetTransfer,
@@ -1243,8 +1244,9 @@ export class AssetsService {
       allocated_on: string;
       expected_return_on: string | null;
       acknowledged_at: Date | null;
+      remarks: string | null;
     }[] = await this.dataSource.query(
-      `SELECT id, asset_id, allocated_on::text AS allocated_on, expected_return_on::text AS expected_return_on, acknowledged_at
+      `SELECT id, asset_id, allocated_on::text AS allocated_on, expected_return_on::text AS expected_return_on, acknowledged_at, remarks
          FROM asset_allocations WHERE user_id = $1 AND school_id = $2 AND status = 'active' AND deleted_at IS NULL
          ORDER BY allocated_on DESC`,
       [user.id, user.school_id],
@@ -1266,7 +1268,45 @@ export class AssetsService {
       expected_return_on: row.expected_return_on,
       acknowledged_at: row.acknowledged_at,
       overdue: Boolean(row.expected_return_on && row.expected_return_on < today),
+      days_overdue:
+        row.expected_return_on && row.expected_return_on < today
+          ? Math.round(
+              (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${row.expected_return_on}T00:00:00Z`)) / 86400000,
+            )
+          : 0,
+      remarks: row.remarks ?? null,
     }));
+  }
+
+  async myAssetHistory(user: AuthUser): Promise<MyReturnedAssetDto[]> {
+    if (!user.school_id) return [];
+    const allocations: {
+      id: number;
+      asset_id: number;
+      allocated_on: string;
+      returned_on: string | null;
+      return_condition: AssetCondition | null;
+      acknowledged_at: Date | null;
+    }[] = await this.dataSource.query(
+      `SELECT id, asset_id, allocated_on::text AS allocated_on, returned_on::text AS returned_on, return_condition, acknowledged_at
+         FROM asset_allocations WHERE user_id = $1 AND school_id = $2 AND status = 'returned' AND deleted_at IS NULL
+         ORDER BY returned_on DESC NULLS LAST, id DESC LIMIT 50`,
+      [user.id, user.school_id],
+    );
+    if (!allocations.length) return [];
+    const filter: SqlFilter = { where: [], params: [] };
+    filter.where.push(`a.id = ANY(${param(filter, [...new Set(allocations.map((row) => Number(row.asset_id)))])})`);
+    const assets = await this.read.assets(user.school_id, filter);
+    return allocations
+      .filter((row) => assets.some((asset) => asset.id === Number(row.asset_id)))
+      .map((row) => ({
+        allocation_id: Number(row.id),
+        asset: assets.find((asset) => asset.id === Number(row.asset_id))!,
+        allocated_on: row.allocated_on,
+        returned_on: row.returned_on,
+        return_condition: row.return_condition,
+        acknowledged_at: row.acknowledged_at,
+      }));
   }
 
   async labels(schoolId: number, query: AssetLabelsQueryDto): Promise<{ name: string; pdf: Buffer }> {
