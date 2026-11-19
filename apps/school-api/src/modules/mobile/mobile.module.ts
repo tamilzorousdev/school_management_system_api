@@ -42,6 +42,9 @@ import { TeacherInsightsService } from './teacher-insights.service';
 import { TeacherPreviewController } from './teacher-preview.controller';
 import { TeacherPreviewService } from './teacher-preview.service';
 
+import { LibraryModule } from '../library/library.module';
+import { MobileParentLibraryController, MobileTeacherLibraryController } from './mobile-library.controller';
+
 @Module({
   imports: [
     AppBannersModule,
@@ -63,6 +66,7 @@ import { TeacherPreviewService } from './teacher-preview.service';
     DiaryModule,
     ChatModule,
     AnnouncementsModule,
+    LibraryModule,
   ],
   controllers: [
     MobileParentChildController,
@@ -82,6 +86,8 @@ import { TeacherPreviewService } from './teacher-preview.service';
     MobileParentChatController,
     ParentPreviewController,
     TeacherPreviewController,
+    MobileParentLibraryController,
+    MobileTeacherLibraryController,
   ],
   providers: [
     MobileAccessService,
