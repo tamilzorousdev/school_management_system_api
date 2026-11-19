@@ -1347,3 +1347,68 @@ export async function seedDemoInventory(manager: EntityManager, school: School):
     `Inventory ${school.code}  ${departments.size} departments, ${locations.size} locations, ${assetCount} assets, ${items.size} stock items: created`,
   );
 }
+
+export async function seedDemoCrewAssets(manager: EntityManager, school: School): Promise<void> {
+  const [driver]: { id: number; name: string }[] = await manager.query(
+    `SELECT u.id, u.name FROM users u WHERE u.mobile = '9000000007' AND u.school_id = $1 AND u.deleted_at IS NULL`,
+    [school.id],
+  );
+  if (!driver) return;
+  const [held]: { count: string }[] = await manager.query(
+    `SELECT COUNT(*) AS count FROM asset_allocations WHERE user_id = $1 AND deleted_at IS NULL`,
+    [driver.id],
+  );
+  if (Number(held?.count ?? 0) > 0) {
+    console.log('Inventory driver assets already set up: kept');
+    return;
+  }
+  const spare = await manager.findOne(Asset, {
+    where: { school_id: school.id, status: 'in_store', deleted_at: IsNull() },
+    order: { id: 'ASC' },
+  });
+  if (!spare) {
+    console.log('Inventory no asset in store for the driver demo: skipped');
+    return;
+  }
+  const [keeperRow]: { id: number }[] = await manager.query(
+    `SELECT id FROM users WHERE mobile = '9000000012' AND deleted_at IS NULL`,
+  );
+  const keeper = keeperRow ? Number(keeperRow.id) : null;
+  const today = todayIn(process.env.APP_TIMEZONE || 'Asia/Kolkata');
+  const allocatedOn = shift(today, -2);
+  const allocation = await manager.save(
+    manager.create(AssetAllocation, {
+      school_id: school.id,
+      asset_id: spare.id,
+      assignee_type: 'staff',
+      user_id: Number(driver.id),
+      department_id: null,
+      location_id: null,
+      allocated_on: allocatedOn,
+      expected_return_on: shift(today, 60),
+      acknowledged_at: null,
+      returned_on: null,
+      return_condition: null,
+      status: 'active',
+      allocated_by: keeper,
+      returned_by: null,
+      remarks: 'For the bus. Please keep it safe and return it at the end of the term.',
+      created_by: keeper,
+      created_at: at(allocatedOn),
+    }),
+  );
+  await manager.update(Asset, spare.id, { status: 'allocated', custodian_user_id: Number(driver.id) });
+  await manager.save(
+    manager.create(AssetEvent, {
+      school_id: school.id,
+      asset_id: spare.id,
+      kind: 'allocated',
+      note: `Allocated to ${driver.name}`,
+      ref_type: 'allocation',
+      ref_id: allocation.id,
+      actor_id: keeper,
+      created_at: at(allocatedOn),
+    }),
+  );
+  console.log(`Inventory ${spare.asset_tag} given to driver ${driver.name} (not yet acknowledged)`);
+}

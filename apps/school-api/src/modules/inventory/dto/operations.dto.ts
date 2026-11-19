@@ -725,6 +725,20 @@ export class MyAssetDto {
   @ApiProperty({ nullable: true, type: String }) expected_return_on: string | null;
   @ApiProperty({ nullable: true, type: Date }) acknowledged_at: Date | null;
   @ApiProperty() overdue: boolean;
+  @ApiProperty({ example: 0, description: 'Days past the return date (0 when not late or no date)' })
+  days_overdue: number;
+  @ApiProperty({ nullable: true, type: String, description: 'Note from the store keeper when it was given' })
+  remarks: string | null;
+}
+
+export class MyReturnedAssetDto {
+  @ApiProperty() allocation_id: number;
+  @ApiProperty({ type: AssetDto }) asset: AssetDto;
+  @ApiProperty({ example: '2026-06-10' }) allocated_on: string;
+  @ApiProperty({ nullable: true, type: String, example: '2026-11-15' }) returned_on: string | null;
+  @ApiProperty({ nullable: true, enum: ASSET_CONDITIONS, description: 'Condition when it came back' })
+  return_condition: AssetCondition | null;
+  @ApiProperty({ nullable: true, type: Date }) acknowledged_at: Date | null;
 }
 
 export class PeopleAssetsDto {

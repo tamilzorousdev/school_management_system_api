@@ -94,6 +94,7 @@ import {
   MovementDto,
   MovementQueryDto,
   MyAssetDto,
+  MyReturnedAssetDto,
   PeopleAssetsDto,
   ReceiptDto,
   ReceiptInputDto,
@@ -1315,6 +1316,16 @@ export class MyAssetsController {
   @ApiEnvelope(MyAssetDto, { isArray: true })
   mine(@CurrentUser() user: AuthUser) {
     return this.assets.myAssets(user);
+  }
+
+  @Get('history')
+  @ApiOperation({
+    summary: 'School assets I held and returned (last 50, newest first; any app)',
+    description: 'returned_on and return_condition say when and in what state each one went back to the store.',
+  })
+  @ApiEnvelope(MyReturnedAssetDto, { isArray: true })
+  history(@CurrentUser() user: AuthUser) {
+    return this.assets.myAssetHistory(user);
   }
 
   @Post(':allocationId/acknowledge')
