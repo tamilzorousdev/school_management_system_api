@@ -34,4 +34,3 @@ export class QuizAnswer {
   @CreateDateColumn({ type: 'timestamptz' })
   answered_at: Date;
 }
-

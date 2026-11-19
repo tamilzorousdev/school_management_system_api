@@ -86,4 +86,3 @@ export class OnlineQuiz extends SchoolScopedEntity {
   @OneToMany(() => QuizQuestion, (q) => q.quiz)
   questions?: QuizQuestion[];
 }
-

@@ -217,4 +217,3 @@ export class SubmitQuizDto {
   @IsBoolean()
   auto_submitted?: boolean;
 }
-

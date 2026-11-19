@@ -73,4 +73,3 @@ export class QuizSubmission {
   @OneToMany(() => QuizAnswer, (ans) => ans.submission)
   answers?: QuizAnswer[];
 }
-

@@ -50,4 +50,3 @@ export class OnlineQuizzes1795110000000 implements MigrationInterface {
     await queryRunner.query(`DROP TABLE IF EXISTS "online_quizzes"`);
   }
 }
-
