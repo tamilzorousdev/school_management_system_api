@@ -412,6 +412,9 @@ export class StaffService {
           throw AppException.conflict(`Employee number ${dto.employee_no} is already used`, 'EMPLOYEE_NO_TAKEN');
         }
       }
+      if (dto.status === 'resigned' && row.status !== 'resigned') {
+        await this.assetClearance(manager, schoolId, row.user_id);
+      }
       const userFields = {
         ...(dto.name ? { name: dto.name } : {}),
         ...(dto.mobile ? { mobile: dto.mobile } : {}),
@@ -440,9 +443,25 @@ export class StaffService {
     return this.get(schoolId, id);
   }
 
+  private async assetClearance(manager: EntityManager, schoolId: number, userId: number): Promise<void> {
+    const [pending]: { count: string }[] = await manager.query(
+      `SELECT COUNT(*) AS count FROM asset_allocations
+       WHERE school_id = $1 AND user_id = $2 AND status = 'active' AND deleted_at IS NULL`,
+      [schoolId, userId],
+    );
+    const count = Number(pending?.count ?? 0);
+    if (count) {
+      throw AppException.conflict(
+        `Get the school assets back first: ${count} ${count === 1 ? 'asset is' : 'assets are'} still with this staff member`,
+        'ASSETS_PENDING',
+      );
+    }
+  }
+
   async remove(schoolId: number, id: number, actor: AuthUser): Promise<{ id: number }> {
     const row = await this.find(schoolId, id);
     if (row.user_id === actor.id) throw AppException.badRequest('You cannot remove yourself from the staff list');
+    await this.assetClearance(this.dataSource.manager, schoolId, row.user_id);
     const yearId = await this.currentYearId(schoolId);
     const busy =
       (await this.dataSource.getRepository(TeacherAssignment).existsBy({ teacher_user_id: row.user_id })) ||

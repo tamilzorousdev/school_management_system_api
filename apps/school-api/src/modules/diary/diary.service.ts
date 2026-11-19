@@ -19,13 +19,18 @@ import {
   DiaryInsightsDto,
   DiaryQueryDto,
   DiaryRecipientDto,
+  DiarySubmissionDto,
   DiaryUpdateDto,
+  GradeHomeworkDto,
   ParentDiaryQueryDto,
+  SubmitHomeworkDto,
   TeacherDiaryQueryDto,
 } from './dto/diary.dto';
 import { DiaryAttachment } from './entities/diary-attachment.entity';
 import { DiaryEntry, DiaryStatus } from './entities/diary-entry.entity';
 import { DiaryRecipient } from './entities/diary-recipient.entity';
+import { DiarySubmission } from './entities/diary-submission.entity';
+import { DiarySubmissionAttachment } from './entities/diary-submission-attachment.entity';
 import { canEdit, dueDateError, initialStatus, scopeErrors, targetLabel, TYPE_LABELS } from './diary.logic';
 
 interface Audience {
@@ -42,6 +47,9 @@ export class DiaryService {
     @InjectRepository(DiaryEntry) private readonly entries: Repository<DiaryEntry>,
     @InjectRepository(DiaryRecipient) private readonly recipients: Repository<DiaryRecipient>,
     @InjectRepository(DiaryAttachment) private readonly attachments: Repository<DiaryAttachment>,
+    @InjectRepository(DiarySubmission) private readonly submissions: Repository<DiarySubmission>,
+    @InjectRepository(DiarySubmissionAttachment)
+    private readonly submissionAttachments: Repository<DiarySubmissionAttachment>,
     private readonly assignments: AssignmentsService,
     private readonly files: FilesService,
     private readonly notifications: NotificationsService,
@@ -159,10 +167,14 @@ export class DiaryService {
     if (query.type) qb.andWhere('d.type = :type', { type: query.type });
     qb.skip(offset(query.page, query.limit)).take(query.limit);
     const page = paginate(await qb.getManyAndCount(), query.page, query.limit);
-    const seen = page.items.length
-      ? await this.recipients.findBy({ entry_id: In(page.items.map((item) => item.id)), student_id: studentId })
-      : [];
+    const itemIds = page.items.map((item) => item.id);
+    const [seen, submissionsList] = await Promise.all([
+      itemIds.length ? this.recipients.findBy({ entry_id: In(itemIds), student_id: studentId }) : [],
+      itemIds.length ? this.submissions.findBy({ entry_id: In(itemIds), student_id: studentId }) : [],
+    ]);
     const seenMap = new Map(seen.map((row) => [row.entry_id, row.seen_at]));
+    const presentedSubmissions = submissionsList.length ? await this.presentSubmissions(submissionsList) : [];
+    const submissionMap = new Map(presentedSubmissions.map((s) => [s.entry_id, s]));
     const presented = await this.present(page.items);
     return {
       ...page,
@@ -178,6 +190,7 @@ export class DiaryService {
         published_at: item.published_at as Date,
         seen: Boolean(seenMap.get(item.id)),
         seen_at: seenMap.get(item.id) ?? null,
+        submission: submissionMap.get(item.id) ?? null,
       })),
     };
   }
@@ -485,7 +498,7 @@ export class DiaryService {
       const result: { id: number; name: string }[] = await this.dataSource.query(sql, [wanted]);
       return new Map(result.map((row) => [Number(row.id), row.name]));
     };
-    const [users, subjects, classes, sections, years, files, seen, studentCounts] = await Promise.all([
+    const [users, subjects, classes, sections, years, files, seen, subStats, studentCounts] = await Promise.all([
       lookup(
         `SELECT id, name FROM users WHERE id = ANY($1)`,
         rows.flatMap((row) => [row.created_by, row.reviewed_by]),
@@ -514,9 +527,20 @@ export class DiaryService {
          WHERE entry_id = ANY($1) GROUP BY entry_id`,
         [ids],
       ) as Promise<{ entry_id: number; seen: string }[]>,
+      this.dataSource.query(
+        `SELECT entry_id,
+                COUNT(*) AS submissions,
+                COUNT(*) FILTER (WHERE status = 'graded') AS graded
+         FROM diary_submissions
+         WHERE entry_id = ANY($1)
+         GROUP BY entry_id`,
+        [ids],
+      ) as Promise<{ entry_id: number; submissions: string; graded: string }[]>,
       Promise.resolve(new Map(rows.map((row) => [row.id, row.recipient_count]))),
     ]);
     const seenMap = new Map(seen.map((row) => [Number(row.entry_id), Number(row.seen)]));
+    const subMap = new Map(subStats.map((row) => [Number(row.entry_id), Number(row.submissions)]));
+    const gradedMap = new Map(subStats.map((row) => [Number(row.entry_id), Number(row.graded)]));
     const ref = (map: Map<number, string>, id: number | null) => (id ? { id, name: map.get(id) ?? '' } : null);
     return rows.map((row) => ({
       id: row.id,
@@ -543,8 +567,212 @@ export class DiaryService {
         .filter((file): file is NonNullable<typeof file> => Boolean(file)),
       recipient_count: row.recipient_count,
       seen_count: seenMap.get(row.id) ?? 0,
+      submission_count: subMap.get(row.id) ?? 0,
+      graded_count: gradedMap.get(row.id) ?? 0,
       academic_year: { id: row.academic_year_id, name: years.get(row.academic_year_id) ?? '' },
       created_at: row.created_at,
     }));
+  }
+
+  async submitHomework(
+    schoolId: number,
+    studentId: number,
+    entryId: number,
+    actor: AuthUser,
+    dto: SubmitHomeworkDto,
+  ): Promise<DiarySubmissionDto> {
+    const entry = await this.feedQuery(schoolId, studentId).andWhere('d.id = :entryId', { entryId }).getOne();
+    if (!entry) throw AppException.notFound('Homework post not found', 'DIARY_NOT_FOUND');
+    if (entry.type !== 'homework') {
+      throw AppException.conflict('Only homework assignments can accept submissions', 'NOT_HOMEWORK');
+    }
+    if (!dto.file_ids?.length && !dto.student_notes?.trim()) {
+      throw AppException.badRequest('Attach at least one file or write notes for submission', 'SUBMISSION_EMPTY');
+    }
+    await this.assertFiles(schoolId, dto.file_ids);
+
+    const todayStr = todayIn(this.app.timeZone);
+    const isLate = Boolean(entry.due_date && todayStr > entry.due_date);
+    const now = new Date();
+
+    const submission = await this.dataSource.transaction(async (manager) => {
+      let existing = await manager.findOne(DiarySubmission, {
+        where: { entry_id: entryId, student_id: studentId },
+      });
+      if (existing) {
+        existing.submitted_by = actor.id;
+        existing.submitted_at = now;
+        existing.is_late = isLate;
+        existing.student_notes = dto.student_notes ?? null;
+        existing.status = 'submitted';
+        await manager.save(existing);
+        await manager.delete(DiarySubmissionAttachment, { submission_id: existing.id });
+      } else {
+        existing = await manager.save(
+          manager.create(DiarySubmission, {
+            school_id: schoolId,
+            entry_id: entryId,
+            student_id: studentId,
+            submitted_by: actor.id,
+            submitted_at: now,
+            is_late: isLate,
+            student_notes: dto.student_notes ?? null,
+            status: 'submitted',
+          }),
+        );
+      }
+      if (dto.file_ids?.length) {
+        await manager.insert(
+          DiarySubmissionAttachment,
+          [...new Set(dto.file_ids)].map((fileId, index) => ({
+            submission_id: existing.id,
+            file_id: fileId,
+            sort_order: index,
+          })),
+        );
+      }
+      return existing;
+    });
+
+    const [presented] = await this.presentSubmissions([submission]);
+    return presented;
+  }
+
+  async getSubmissionForStudent(
+    schoolId: number,
+    studentId: number,
+    entryId: number,
+  ): Promise<DiarySubmissionDto | null> {
+    const submission = await this.submissions.findOne({
+      where: { school_id: schoolId, entry_id: entryId, student_id: studentId },
+    });
+    if (!submission) return null;
+    const [presented] = await this.presentSubmissions([submission]);
+    return presented;
+  }
+
+  async listSubmissions(schoolId: number, entryId: number, actor: AuthUser): Promise<DiarySubmissionDto[]> {
+    const entry = await this.schoolEntry(schoolId, entryId);
+    if (actor.roles?.includes('TEACHER') && !actor.roles?.includes('ADMIN') && !actor.roles?.includes('SUPER_ADMIN')) {
+      if (entry.created_by !== actor.id && entry.section_id) {
+        await this.assignments.assertTeachesSection(schoolId, actor.id, entry.section_id);
+      }
+    }
+    const submissions = await this.submissions.find({
+      where: { school_id: schoolId, entry_id: entryId },
+      order: { submitted_at: 'DESC' },
+    });
+    return this.presentSubmissions(submissions);
+  }
+
+  async gradeSubmission(
+    schoolId: number,
+    entryId: number,
+    submissionId: number,
+    actor: AuthUser,
+    dto: GradeHomeworkDto,
+  ): Promise<DiarySubmissionDto> {
+    const entry = await this.schoolEntry(schoolId, entryId);
+    const submission = await this.submissions.findOne({
+      where: { id: submissionId, entry_id: entryId, school_id: schoolId },
+    });
+    if (!submission) throw AppException.notFound('Submission not found', 'SUBMISSION_NOT_FOUND');
+
+    submission.status = dto.status;
+    submission.grade = dto.grade ?? null;
+    submission.marks = dto.marks ?? null;
+    submission.max_marks = dto.max_marks ?? null;
+    submission.teacher_feedback = dto.teacher_feedback ?? null;
+    submission.graded_by = actor.id;
+    submission.graded_at = new Date();
+
+    const saved = await this.submissions.save(submission);
+
+    const guardianRows: { user_ids: number[] }[] = await this.dataSource.query(
+      `SELECT array_remove(array_agg(DISTINCT g.user_id), NULL) AS user_ids
+       FROM student_guardians sg
+       JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
+       WHERE sg.student_id = $1 AND sg.receives_alerts = true`,
+      [submission.student_id],
+    );
+    const userIds = (guardianRows[0]?.user_ids ?? []).map(Number);
+    if (userIds.length) {
+      await this.notifications
+        .dispatch({
+          template: TEMPLATES.DIARY_POSTED,
+          audience: { user_ids: userIds },
+          data: {
+            type: 'Homework Checked',
+            student: 'Student',
+            teacher: actor.name,
+            subject: 'Homework',
+            title: `${entry.title} (${dto.status === 'graded' ? (dto.grade ? `Grade: ${dto.grade}` : 'Graded') : 'Needs Revision'})`,
+            entry_id: String(entry.id),
+          },
+        })
+        .catch((error: Error) => this.logger.warn(`Grade notice failed: ${error.message}`));
+    }
+
+    const [presented] = await this.presentSubmissions([saved]);
+    return presented;
+  }
+
+  private async presentSubmissions(submissions: DiarySubmission[]): Promise<DiarySubmissionDto[]> {
+    if (!submissions.length) return [];
+    const submissionIds = submissions.map((s) => s.id);
+    const studentIds = submissions.map((s) => s.student_id);
+    const graderIds = submissions.map((s) => s.graded_by).filter((id): id is number => Boolean(id));
+
+    const [filesResult, studentsData, graders] = await Promise.all([
+      this.submissionAttachments
+        .find({ where: { submission_id: In(submissionIds) }, order: { sort_order: 'ASC' } })
+        .then(async (list) => ({ list, presented: await this.files.presentMany(list.map((item) => item.file_id)) })),
+      this.dataSource.query(
+        `SELECT s.id, concat_ws(' ', s.first_name, s.last_name) AS name, c.name AS class_name, sec.name AS section_name
+         FROM students s
+         LEFT JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = (SELECT academic_year_id FROM diary_entries WHERE id = $2)
+         LEFT JOIN classes c ON c.id = e.class_id
+         LEFT JOIN sections sec ON sec.id = e.section_id
+         WHERE s.id = ANY($1)`,
+        [studentIds, submissions[0].entry_id],
+      ) as Promise<{ id: number; name: string; class_name: string | null; section_name: string | null }[]>,
+      graderIds.length
+        ? (this.dataSource.query(`SELECT id, name FROM users WHERE id = ANY($1)`, [graderIds]) as Promise<
+            { id: number; name: string }[]
+          >)
+        : Promise.resolve([]),
+    ]);
+
+    const studentMap = new Map(studentsData.map((st) => [Number(st.id), st]));
+    const graderMap = new Map(graders.map((g) => [Number(g.id), g.name]));
+
+    return submissions.map((sub) => {
+      const st = studentMap.get(sub.student_id);
+      const studentName = st?.name || 'Student';
+      const classSection = st?.class_name ? [st.class_name, st.section_name].filter(Boolean).join(' - ') : null;
+      const subFiles = filesResult.list
+        .filter((item) => item.submission_id === sub.id)
+        .map((item) => filesResult.presented.get(item.file_id))
+        .filter((f): f is NonNullable<typeof f> => Boolean(f));
+
+      return {
+        id: sub.id,
+        entry_id: sub.entry_id,
+        student_id: sub.student_id,
+        student_name: studentName,
+        class_section: classSection,
+        submitted_at: sub.submitted_at,
+        is_late: sub.is_late,
+        student_notes: sub.student_notes,
+        status: sub.status,
+        grade: sub.grade,
+        marks: sub.marks,
+        max_marks: sub.max_marks,
+        teacher_feedback: sub.teacher_feedback,
+        graded_by: sub.graded_by ? { id: sub.graded_by, name: graderMap.get(sub.graded_by) || '' } : null,
+        graded_at: sub.graded_at,
+        attachments: subFiles,
+      };
+    });
   }
 }

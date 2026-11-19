@@ -1,5 +1,6 @@
 import { createHmac } from 'crypto';
 import { safeEqual } from '../../shared/crypto';
+import { GateQr, GateQrKind, readGateQr, signGateQr } from '../gate/gate.logic';
 
 const PREFIX = 'TZS1';
 
@@ -22,6 +23,14 @@ export class QrTokens {
     const version = Number(parts[2]);
     if (!Number.isInteger(studentId) || studentId <= 0 || !Number.isInteger(version) || version <= 0) return null;
     return safeEqual(this.signature(studentId, version), parts[3]) ? { student_id: studentId, version } : null;
+  }
+
+  gate(kind: GateQrKind, id: number, version: number): string {
+    return signGateQr(this.secret, kind, id, version);
+  }
+
+  readGate(token: string): GateQr | null {
+    return readGateQr(this.secret, token);
   }
 
   private signature(studentId: number, version: number): string {

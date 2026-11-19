@@ -12,15 +12,26 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequireRoles, ResponseMessage } from '@app/common';
+import {
+  ApiEnvelope,
+  ApiErrors,
+  AppException,
+  AuthUser,
+  CurrentUser,
+  RequireRoles,
+  ResponseMessage,
+} from '@app/common';
 import { ROLES } from '../access/access.catalog';
 import {
   DiaryDetailDto,
   DiaryEntryDto,
   DiaryFeedItemDto,
   DiaryInputDto,
+  DiarySubmissionDto,
   DiaryUpdateDto,
+  GradeHomeworkDto,
   ParentDiaryQueryDto,
+  SubmitHomeworkDto,
   TeacherDiaryQueryDto,
 } from '../diary/dto/diary.dto';
 import { DiaryService } from '../diary/diary.service';
@@ -86,6 +97,30 @@ export class MobileTeacherDiaryController {
     await this.diary.remove(user, id);
     return null;
   }
+
+  @Get(':id/submissions')
+  @ApiOperation({ summary: 'List all student submissions for this homework post' })
+  @ApiEnvelope(DiarySubmissionDto, { isArray: true })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  submissions(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    if (!user.school_id) throw AppException.forbidden('Your account is not linked to a school', 'NO_SCHOOL');
+    return this.diary.listSubmissions(user.school_id, id, user);
+  }
+
+  @Post(':id/submissions/:submissionId/grade')
+  @ResponseMessage('Submission graded')
+  @ApiOperation({ summary: 'Grade a student homework submission (marks/grade + feedback)' })
+  @ApiEnvelope(DiarySubmissionDto, { message: 'Submission graded' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  grade(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('submissionId', ParseIntPipe) submissionId: number,
+    @Body() dto: GradeHomeworkDto,
+  ) {
+    if (!user.school_id) throw AppException.forbidden('Your account is not linked to a school', 'NO_SCHOOL');
+    return this.diary.gradeSubmission(user.school_id, id, submissionId, user, dto);
+  }
 }
 
 @ApiTags(PARENT_MODULE_TAGS.MODULE_4)
@@ -119,5 +154,31 @@ export class MobileParentDiaryController {
     @Param('entryId', ParseIntPipe) entryId: number,
   ) {
     return this.diary.markSeen(await this.access.childSchool(user.id, id), id, entryId, user);
+  }
+
+  @Post(':entryId/submit')
+  @ResponseMessage('Homework submitted')
+  @ApiOperation({ summary: 'Submit homework files or notes for this child' })
+  @ApiEnvelope(DiarySubmissionDto, { status: HttpStatus.CREATED, message: 'Homework submitted' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  async submit(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('entryId', ParseIntPipe) entryId: number,
+    @Body() dto: SubmitHomeworkDto,
+  ) {
+    return this.diary.submitHomework(await this.access.childSchool(user.id, id), id, entryId, user, dto);
+  }
+
+  @Get(':entryId/submission')
+  @ApiOperation({ summary: 'Get current submission details and grade for this child' })
+  @ApiEnvelope(DiarySubmissionDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  async submission(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('entryId', ParseIntPipe) entryId: number,
+  ) {
+    return this.diary.getSubmissionForStudent(await this.access.childSchool(user.id, id), id, entryId);
   }
 }

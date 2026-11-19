@@ -24,9 +24,11 @@ import { SmsModule } from './modules/sms/sms.module';
 import { StudentsModule } from './modules/students/students.module';
 import { FleetModule } from './modules/fleet/fleet.module';
 import { FleetOpsModule } from './modules/fleet-ops/fleet-ops.module';
+import { GateModule } from './modules/gate/gate.module';
 import { MeetingsModule } from './modules/meetings/meetings.module';
 import { DiaryModule } from './modules/diary/diary.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
+import { EventsModule } from './modules/events/events.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { MobileModule } from './modules/mobile/mobile.module';
@@ -41,6 +43,7 @@ import { PayrollModule } from './modules/payroll/payroll.module';
 import { FeesModule } from './modules/fees/fees.module';
 import { LibraryModule } from './modules/library/library.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 import { ExamsModule } from './modules/exams/exams.module';
 import { TransportModule } from './modules/transport/transport.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
@@ -75,6 +78,7 @@ import { UsersModule } from './modules/users/users.module';
     FeesModule,
     LibraryModule,
     AccountsModule,
+    InventoryModule,
     ExamsModule,
     TransportModule,
     TrackingModule,
@@ -87,11 +91,13 @@ import { UsersModule } from './modules/users/users.module';
     MeetingsModule,
     DiaryModule,
     AnnouncementsModule,
+    EventsModule,
     ChatModule,
     RealtimeModule,
     MobileModule,
     FleetModule,
     FleetOpsModule,
+    GateModule,
     AccessModule,
     UsersModule,
     AuthModule,

@@ -47,6 +47,8 @@ export const PERMISSIONS = {
   DIARY_MODERATE: 'diary.moderate',
   ANNOUNCEMENTS_VIEW: 'announcements.view',
   ANNOUNCEMENTS_MANAGE: 'announcements.manage',
+  EVENTS_VIEW: 'events.view',
+  EVENTS_MANAGE: 'events.manage',
   CHAT_AUDIT: 'chat.audit',
   FLEET_VIEW: 'fleet.view',
   FLEET_MANAGE: 'fleet.manage',
@@ -55,6 +57,15 @@ export const PERMISSIONS = {
   LIBRARY_FINES: 'library.fines',
   LIBRARY_WAIVE: 'library.waive',
   LIBRARY_ATTENDANCE: 'library.attendance',
+  GATE_VIEW: 'gate.view',
+  GATE_OPERATE: 'gate.operate',
+  GATE_APPROVE: 'gate.approve',
+  GATE_MANAGE: 'gate.manage',
+  INVENTORY_VIEW: 'inventory.view',
+  INVENTORY_MANAGE: 'inventory.manage',
+  INVENTORY_STOCK: 'inventory.stock',
+  INVENTORY_APPROVE: 'inventory.approve',
+  INVENTORY_AUDIT: 'inventory.audit',
 } as const;
 
 export interface PermissionDefinition {
@@ -157,6 +168,8 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     group: 'Communication',
   },
   { code: PERMISSIONS.ANNOUNCEMENTS_VIEW, name: 'See school announcements and who read them', group: 'Communication' },
+  { code: PERMISSIONS.EVENTS_VIEW, name: 'See school events and parents’ replies', group: 'Communication' },
+  { code: PERMISSIONS.EVENTS_MANAGE, name: 'Create, publish and cancel school events', group: 'Communication' },
   {
     code: PERMISSIONS.ANNOUNCEMENTS_MANAGE,
     name: 'Write, schedule, publish and archive announcements',
@@ -182,6 +195,35 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { code: PERMISSIONS.LIBRARY_FINES, name: 'Collect library fines and give receipts', group: 'Library' },
   { code: PERMISSIONS.LIBRARY_WAIVE, name: 'Waive library fines', group: 'Library' },
   { code: PERMISSIONS.LIBRARY_ATTENDANCE, name: 'Scan library visitors and mark library periods', group: 'Library' },
+  { code: PERMISSIONS.GATE_VIEW, name: 'See gate passes, visitors and the gate log', group: 'Gate' },
+  {
+    code: PERMISSIONS.GATE_OPERATE,
+    name: 'Work the gate: check passes, release students, let visitors in and out',
+    group: 'Gate',
+  },
+  { code: PERMISSIONS.GATE_APPROVE, name: 'Approve gate passes and emergency releases', group: 'Gate' },
+  { code: PERMISSIONS.GATE_MANAGE, name: 'Gate settings, blocked list, pre-invite visitors', group: 'Gate' },
+  {
+    code: PERMISSIONS.INVENTORY_VIEW,
+    name: 'See assets, allocations, maintenance, stock, requisitions and inventory reports',
+    group: 'Inventory',
+  },
+  {
+    code: PERMISSIONS.INVENTORY_MANAGE,
+    name: 'Register assets, allocate and return, transfers, maintenance, disposal requests and masters',
+    group: 'Inventory',
+  },
+  {
+    code: PERMISSIONS.INVENTORY_STOCK,
+    name: 'Receive, issue and adjust stock; raise and issue requisitions',
+    group: 'Inventory',
+  },
+  {
+    code: PERMISSIONS.INVENTORY_APPROVE,
+    name: 'Approve or reject transfers, requisitions and disposals',
+    group: 'Inventory',
+  },
+  { code: PERMISSIONS.INVENTORY_AUDIT, name: 'Run asset verifications and stock counts', group: 'Inventory' },
 ];
 
 export const ROLES = {
@@ -197,6 +239,8 @@ export const ROLES = {
   DRIVER: 'DRIVER',
   ATTENDANT: 'ATTENDANT',
   LIBRARIAN: 'LIBRARIAN',
+  GATE_INCHARGE: 'GATE_INCHARGE',
+  STORE_KEEPER: 'STORE_KEEPER',
 } as const;
 
 export type RoleCode = (typeof ROLES)[keyof typeof ROLES];
@@ -260,12 +304,19 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.DIARY_MODERATE,
       PERMISSIONS.ANNOUNCEMENTS_VIEW,
       PERMISSIONS.ANNOUNCEMENTS_MANAGE,
+      PERMISSIONS.EVENTS_VIEW,
+      PERMISSIONS.EVENTS_MANAGE,
       PERMISSIONS.CHAT_AUDIT,
       PERMISSIONS.FLEET_VIEW,
       PERMISSIONS.EMERGENCY_VIEW,
       PERMISSIONS.EMERGENCY_SEND,
       PERMISSIONS.EMERGENCY_APPROVE,
       PERMISSIONS.LIBRARY_VIEW,
+      PERMISSIONS.GATE_VIEW,
+      PERMISSIONS.GATE_APPROVE,
+      PERMISSIONS.GATE_MANAGE,
+      PERMISSIONS.INVENTORY_VIEW,
+      PERMISSIONS.INVENTORY_APPROVE,
     ],
   },
   {
@@ -304,12 +355,19 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.DIARY_MODERATE,
       PERMISSIONS.ANNOUNCEMENTS_VIEW,
       PERMISSIONS.ANNOUNCEMENTS_MANAGE,
+      PERMISSIONS.EVENTS_VIEW,
+      PERMISSIONS.EVENTS_MANAGE,
       PERMISSIONS.CHAT_AUDIT,
       PERMISSIONS.FLEET_VIEW,
       PERMISSIONS.EMERGENCY_VIEW,
       PERMISSIONS.EMERGENCY_SEND,
       PERMISSIONS.LIBRARY_VIEW,
       PERMISSIONS.LIBRARY_FINES,
+      PERMISSIONS.GATE_VIEW,
+      PERMISSIONS.GATE_APPROVE,
+      PERMISSIONS.GATE_MANAGE,
+      PERMISSIONS.INVENTORY_VIEW,
+      PERMISSIONS.INVENTORY_APPROVE,
     ],
   },
   {
@@ -362,6 +420,22 @@ export const ROLE_CATALOG: RoleDefinition[] = [
     ],
   },
   {
+    code: ROLES.STORE_KEEPER,
+    name: 'Store keeper',
+    description:
+      'Runs school inventory in the admin web: asset register and tags, allocation and returns, transfers, maintenance, stock, requisitions and verification.',
+    app: 'admin',
+    permissions: [
+      PERMISSIONS.INVENTORY_VIEW,
+      PERMISSIONS.INVENTORY_MANAGE,
+      PERMISSIONS.INVENTORY_STOCK,
+      PERMISSIONS.INVENTORY_AUDIT,
+      PERMISSIONS.SCHOOLS_VIEW,
+      PERMISSIONS.STAFF_VIEW,
+      PERMISSIONS.NOTIFICATIONS_VIEW,
+    ],
+  },
+  {
     code: ROLES.HOD,
     name: 'Head of department',
     description: 'Teacher who also approves leave for the department.',
@@ -373,7 +447,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
     name: 'Teacher',
     description: 'Uses the Staff app for classes, attendance, diary and chat.',
     app: 'staff',
-    permissions: [PERMISSIONS.EXAMS_VIEW],
+    permissions: [PERMISSIONS.EXAMS_VIEW, PERMISSIONS.GATE_APPROVE],
   },
   {
     code: ROLES.PARENT,
@@ -395,6 +469,14 @@ export const ROLE_CATALOG: RoleDefinition[] = [
     description: 'Uses the Driver app to scan students on and off the bus.',
     app: 'driver',
     permissions: [],
+  },
+  {
+    code: ROLES.GATE_INCHARGE,
+    name: 'Gate in-charge',
+    description:
+      'Uses the Gate section of the Staff app: checks gate passes, releases students and registers visitors.',
+    app: 'staff',
+    permissions: [PERMISSIONS.GATE_VIEW, PERMISSIONS.GATE_OPERATE],
   },
 ];
 

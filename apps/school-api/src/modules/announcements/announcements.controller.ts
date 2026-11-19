@@ -82,7 +82,11 @@ export class AnnouncementsController {
 
   @Get(':id/readers')
   @RequirePermissions(PERMISSIONS.ANNOUNCEMENTS_VIEW)
-  @ApiOperation({ summary: 'Who received it and who has read it (state=read or unread)' })
+  @ApiOperation({
+    summary: 'Who received it and who has read it',
+    description:
+      'state=read|unread, segment=parent|staff, class_id (parents of that class), search (name or mobile). Parents show the children they got it for.',
+  })
   @ApiEnvelope(AnnouncementReaderDto, { paginated: true })
   @ApiErrors(HttpStatus.NOT_FOUND)
   readers(
@@ -97,8 +101,10 @@ export class AnnouncementsController {
   @RequirePermissions(PERMISSIONS.ANNOUNCEMENTS_MANAGE)
   @ResponseMessage('Announcement updated')
   @ApiOperation({
-    summary: 'Edit a draft or scheduled announcement',
-    description: '409 ANNOUNCEMENT_NOT_EDITABLE once published',
+    summary: 'Edit an announcement. A published one can change its title, message, urgency, expiry and files only.',
+    description:
+      'A published edit is marked edited_at. notify_again: true sends ANNOUNCEMENT_UPDATED to every recipient. ' +
+      'Changing who receives it after sending: 409 ANNOUNCEMENT_AUDIENCE_LOCKED. Archived: 409 ANNOUNCEMENT_NOT_EDITABLE.',
   })
   @ApiEnvelope(AnnouncementDto, { message: 'Announcement updated' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
@@ -141,7 +147,7 @@ export class AnnouncementsController {
   @Delete(':id')
   @RequirePermissions(PERMISSIONS.ANNOUNCEMENTS_MANAGE)
   @ResponseMessage('Announcement deleted')
-  @ApiOperation({ summary: 'Delete a draft or scheduled announcement' })
+  @ApiOperation({ summary: 'Delete an announcement at any stage; a sent one disappears from every feed' })
   @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
   async remove(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
     await this.announcements.remove(schoolId, id);
@@ -159,6 +165,8 @@ export class MyAnnouncementsController {
   @Get()
   @ApiOperation({
     summary: 'Announcements sent to me this academic year (every app: parent, staff and driver), newest first',
+    description:
+      'Filters: unread, search (title and message), priority, from / to (sent date), student_id (parents: only those sent for that child).',
   })
   @ApiEnvelope(MyAnnouncementDto, { paginated: true })
   list(@CurrentUser() user: AuthUser, @Query() query: MyAnnouncementsQueryDto) {

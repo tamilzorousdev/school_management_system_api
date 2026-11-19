@@ -1,7 +1,7 @@
 import { SchoolScopedEntity } from '@app/common';
 import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
-export const ANNOUNCEMENT_AUDIENCES = ['everyone', 'parents', 'staff', 'classes'] as const;
+export const ANNOUNCEMENT_AUDIENCES = ['everyone', 'parents', 'staff', 'classes', 'individuals'] as const;
 export type AnnouncementAudience = (typeof ANNOUNCEMENT_AUDIENCES)[number];
 
 export const ANNOUNCEMENT_PRIORITIES = ['normal', 'urgent'] as const;
@@ -23,7 +23,7 @@ export class Announcement extends SchoolScopedEntity {
   @Column({ type: 'varchar', length: 4000 })
   body: string;
 
-  @Column({ type: 'varchar', length: 10 })
+  @Column({ type: 'varchar', length: 12 })
   audience: AnnouncementAudience;
 
   @Column({ type: 'varchar', length: 10, default: 'normal' })
@@ -49,6 +49,12 @@ export class Announcement extends SchoolScopedEntity {
 
   @Column({ type: 'int', default: 0 })
   recipient_count: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  edited_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  edited_by: number | null;
 }
 
 @Entity('announcement_targets')
@@ -65,6 +71,12 @@ export class AnnouncementTarget {
 
   @Column({ type: 'int', nullable: true })
   section_id: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  student_id: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  user_id: number | null;
 }
 
 @Entity('announcement_recipients')
@@ -86,6 +98,9 @@ export class AnnouncementRecipient {
 
   @Column({ type: 'timestamptz', nullable: true })
   read_at: Date | null;
+
+  @Column({ type: 'int', array: true, nullable: true })
+  student_ids: number[] | null;
 }
 
 @Entity('announcement_attachments')

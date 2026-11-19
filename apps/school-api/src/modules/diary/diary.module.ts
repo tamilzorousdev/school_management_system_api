@@ -6,9 +6,14 @@ import { DiaryService } from './diary.service';
 import { DiaryAttachment } from './entities/diary-attachment.entity';
 import { DiaryEntry } from './entities/diary-entry.entity';
 import { DiaryRecipient } from './entities/diary-recipient.entity';
+import { DiarySubmission } from './entities/diary-submission.entity';
+import { DiarySubmissionAttachment } from './entities/diary-submission-attachment.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([DiaryEntry, DiaryRecipient, DiaryAttachment]), StaffModule],
+  imports: [
+    TypeOrmModule.forFeature([DiaryEntry, DiaryRecipient, DiaryAttachment, DiarySubmission, DiarySubmissionAttachment]),
+    StaffModule,
+  ],
   controllers: [DiaryController],
   providers: [DiaryService],
   exports: [DiaryService],

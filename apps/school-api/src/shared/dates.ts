@@ -1,6 +1,6 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, Matches } from 'class-validator';
+import { IsOptional, Matches, ValidateIf } from 'class-validator';
 
 const DATE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 
@@ -11,6 +11,15 @@ export function IsDateOnly(example = '2026-06-01', optional = false) {
   return applyDecorators(
     property,
     ...(optional ? [IsOptional()] : []),
+    Matches(DATE_PATTERN, { message: '$property must be a date in YYYY-MM-DD format' }),
+  );
+}
+
+export function IsNullableDate(example = '2026-06-01') {
+  return applyDecorators(
+    ApiPropertyOptional({ example, format: 'date', nullable: true, type: String }),
+    IsOptional(),
+    ValidateIf((_object, value) => value !== null),
     Matches(DATE_PATTERN, { message: '$property must be a date in YYYY-MM-DD format' }),
   );
 }

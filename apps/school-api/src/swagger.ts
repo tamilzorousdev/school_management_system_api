@@ -28,6 +28,11 @@ const TAGS: [string, string][] = [
   ['Me · Notifications', 'In-app notification centre'],
   ['Me · Announcements', 'School announcements sent to me, unread count and read receipts'],
   ['Me · Emergency', 'Emergency alerts sent to me (Parent, Staff and Driver apps) and the "I have seen this" button'],
+  ['Me · Visitors', 'Visitors waiting at the gate to meet me: allow or decline'],
+  [
+    'Admin · Gate & visitors',
+    'Gate passes, emergency releases, authorised pickups, visitors, blocked list, live gate board, gate log and reports',
+  ],
   ['Files', 'Uploads and signed download links'],
   [
     'Mobile · Parent · Module 1: Home, Children & Profile',
@@ -109,6 +114,10 @@ const TAGS: [string, string][] = [
     'Mobile · Teacher · Module 11: Library',
     'My library books and fines, overdue books of my class and the library catalogue',
   ],
+  [
+    'Mobile · Teacher · Module 12: Gate, Visitors & Pickups',
+    'Gate in-charge: check passes by QR, 4-digit code or by hand, release students, emergency release with parent consent, walk-in visitors in and out. Class teacher: approve gate passes of my class',
+  ],
   ['Admin · Dashboard', 'Home screen in one call: counts per section, gated by the caller’s permissions'],
   ['Admin · Students', 'Students, class placement, guardians, roll numbers, Excel import'],
   ['Admin · Student records', 'Documents with verification, health and vaccinations, behaviour notes'],
@@ -131,6 +140,10 @@ const TAGS: [string, string][] = [
   [
     'Admin · Library',
     'Catalogue with ISBN and barcode scanning, Excel import, copies and labels, members, issue and return, overdue follow-ups and alerts, fines, library attendance, stock checks and reports',
+  ],
+  [
+    'Admin · Inventory',
+    'Asset register with tags, allocation and return, transfers, maintenance, stock and requisitions, verification, disposals, depreciation and reports',
   ],
   ['Admin · Exams', 'Exams, papers, marks entry, ranked results, rank holders and publishing'],
   ['Admin · Transport', 'Buses, trackers, drivers, document expiry, routes and stops, students by stop'],
@@ -321,7 +334,7 @@ const AUDIENCES: AudienceConfig[] = [
     jsonSlug: 'mobile-teacher',
     title: 'Tamilzorous School Management API · Mobile · Teacher App',
     intro:
-      'Routes for the Teacher & Staff mobile app: Modules 1 to 11 (profile, qualifications, bank, attendance, timetable, homework, exams, chat, video, payroll, fees, holidays, library), plus sign-in, `/me` and files.',
+      'Routes for the Teacher & Staff mobile app: Modules 1 to 12 (profile, qualifications, bank, attendance, timetable, homework, exams, chat, video, payroll, fees, holidays, library, gate and visitors), plus sign-in, `/me` and files.',
     owns: /^\/api\/v\d+\/mobile\/teacher\//,
     stripPrefix: 'Mobile · Teacher · ',
   },
@@ -481,8 +494,8 @@ const SWAGGER_CUSTOM_JS = `
         inGroupClass: 'in-group-teacher',
         icon: '📱',
         title: 'Mobile · Teacher App',
-        badge: '11 Modules',
-        desc: 'Profile, Qualifications, Attendance, Timetable, Class Diary, Exams, Parent Chat, Video Meetings, Payroll, Fees Overview, Holidays and Library',
+        badge: '12 Modules',
+        desc: 'Profile, Qualifications, Attendance, Timetable, Class Diary, Exams, Parent Chat, Video Meetings, Payroll, Fees Overview, Holidays, Library and Gate & Visitors',
         match: function(tag) { return tag.indexOf('Teacher') !== -1; }
       },
       {
@@ -514,7 +527,7 @@ const SWAGGER_CUSTOM_JS = `
         badge: 'Auth & Files',
         desc: 'OTP sign-in, token refresh, user profile, notifications, announcements and file uploads',
         match: function(tag) {
-          return ['Auth', 'Me', 'Me · Notifications', 'Me · Announcements', 'Me · Emergency', 'Files', 'Health'].indexOf(tag) !== -1;
+          return ['Auth', 'Me', 'Me · Notifications', 'Me · Announcements', 'Me · Emergency', 'Me · Visitors', 'Files', 'Health'].indexOf(tag) !== -1;
         }
       }
     ];
@@ -662,7 +675,7 @@ export function setupSwagger(app: INestApplication): void {
   const URL_ITEMS = [
     { name: 'Admin web', url: '/api/docs/admin-json' },
     { name: 'Mobile app (All)', url: '/api/docs/mobile-json' },
-    { name: 'Mobile · Teacher App (Modules 1 - 11)', url: '/api/docs/mobile-teacher-json' },
+    { name: 'Mobile · Teacher App (Modules 1 - 12)', url: '/api/docs/mobile-teacher-json' },
     { name: 'Mobile · Parent App (Modules 1 - 9)', url: '/api/docs/mobile-parent-json' },
     { name: 'Mobile · Driver App (Modules 1 - 5)', url: '/api/docs/mobile-driver-json' },
   ];

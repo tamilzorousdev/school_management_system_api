@@ -14,14 +14,14 @@ The Admin web and the Flutter app (Staff, Parent and Driver roles) call the same
 
 ## Route families
 
-| Prefix | Used by |
-|---|---|
-| `/auth` | Every app: OTP sign-in, refresh, sign-out |
-| `/me` | Every app: profile, language, push device, notification centre |
-| `/mobile/parent/*`, `/mobile/teacher/*`, `/mobile/driver/*` | Flutter role screens (added module by module) |
-| `/admin/*` | Admin web |
-| `/admin/fleet/*` | Admin web: live bus status (read from the Telematics service) |
-| `/files` | Uploads and signed downloads |
+| Prefix                                                      | Used by                                                        |
+| ----------------------------------------------------------- | -------------------------------------------------------------- |
+| `/auth`                                                     | Every app: OTP sign-in, refresh, sign-out                      |
+| `/me`                                                       | Every app: profile, language, push device, notification centre |
+| `/mobile/parent/*`, `/mobile/teacher/*`, `/mobile/driver/*` | Flutter role screens (added module by module)                  |
+| `/admin/*`                                                  | Admin web                                                      |
+| `/admin/fleet/*`                                            | Admin web: live bus status (read from the Telematics service)  |
+| `/files`                                                    | Uploads and signed downloads                                   |
 
 ## Sign-in flow
 
@@ -38,10 +38,10 @@ Sign-in uses the central **Tamilzorous Auth Service** for the OTP (`AUTH_PROVIDE
 
 Send the app on both calls: `"app": "mobile"` in `/auth/otp/request` and `"client": { "app": "mobile", ... }` in `/auth/otp/verify` (the admin web sends `"admin"`). `client.app` is required.
 
-| `app` | Who can sign in |
-|---|---|
-| `mobile` (Flutter) | Users with a Parent, Teacher, HOD, Driver or Attendant role |
-| `admin` (web) | Users with Super admin, Admin, Principal, AO or Transport in-charge |
+| `app`              | Who can sign in                                                     |
+| ------------------ | ------------------------------------------------------------------- |
+| `mobile` (Flutter) | Users with a Parent, Teacher, HOD, Driver or Attendant role         |
+| `admin` (web)      | Users with Super admin, Admin, Principal, AO or Transport in-charge |
 
 Anyone else gets `403 APP_NOT_ALLOWED` at the OTP request, so no SMS is sent.
 
@@ -63,7 +63,6 @@ One person, one sign-in. A number that is both a parent and a teacher signs in o
 - Two or more: show a chooser once, remember it on the phone, and offer "Switch to Parent / Staff" in the profile menu.
 - Switching needs no new OTP and no new token: the same `access_token` works for `/mobile/parent/*` and `/mobile/teacher/*`.
 
-
 1. `POST /auth/otp/request` with `{ "mobile": "9876543210", "app": "mobile", "app_hash": "Xy12AbCd3Ef" }` (`app_hash` on Android only). Returns `expires_in` and `resend_in` (seconds) for the countdown; the Resend button calls `POST /auth/otp/resend` with the same body.
 2. `POST /auth/otp/verify` with `{ "mobile": "...", "otp": "123456", "client": { "app": "parent", "platform": "android", "device_name": "Pixel 7", "app_version": "1.0.0", "fcm_token": "..." } }`.
 3. Store `access_token` and `refresh_token` securely. Send `Authorization: Bearer <access_token>` on every call.
@@ -73,20 +72,21 @@ One person, one sign-in. A number that is both a parent and a teacher signs in o
 
 In development the OTP is always `123456` and no SMS is sent. Demo users (all school 1):
 
-| Mobile | Roles |
-|---|---|
-| 9999999999 | Super admin (platform, every school) |
-| 9876543210 | School admin |
-| 9000000001 | Principal |
-| 9000000002 | Administrative officer |
-| 9000000003 | Transport in-charge |
-| 9000000004 | Teacher, HOD |
-| 9000000005 | Parent (Tamil) |
-| 9000000006 | Teacher and Parent (role picker) |
-| 9000000007 | Driver (Tamil) |
-| 9000000008 | Bus attendant (Tamil) |
-| 9000000009 | Librarian |
-| 9000000010 | Accountant |
+| Mobile                   | Roles                                                                 |
+| ------------------------ | --------------------------------------------------------------------- |
+| 9999999999               | Super admin (platform, every school)                                  |
+| 9876543210               | School admin                                                          |
+| 9000000001               | Principal                                                             |
+| 9000000002               | Administrative officer                                                |
+| 9000000003               | Transport in-charge                                                   |
+| 9000000004               | Teacher, HOD                                                          |
+| 9000000005               | Parent (Tamil)                                                        |
+| 9000000006               | Teacher and Parent (role picker)                                      |
+| 9000000007               | Driver (Tamil)                                                        |
+| 9000000008               | Bus attendant (Tamil)                                                 |
+| 9000000009               | Librarian                                                             |
+| 9000000010               | Accountant                                                            |
+| 9000000011               | Gate in-charge (Tamil)                                                |
 | 9000000401 to 9000000406 | Teachers: Tamil, English, Social Science, PE, Computer Science, Hindi |
 
 ## Response format
@@ -94,7 +94,7 @@ In development the OTP is always `123456` and no SMS is sent. Demo users (all sc
 Success:
 
 ```json
-{ "status": 200, "message": "OK", "data": { } }
+{ "status": 200, "message": "OK", "data": {} }
 ```
 
 List (`data`):
@@ -120,101 +120,102 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 
 ## Error codes
 
-| Code | HTTP | Meaning / what the app does |
-|---|---|---|
-| `VALIDATION_FAILED` | 400 | Highlight `errors[].field` |
-| `MOBILE_NOT_REGISTERED` | 404 | Number is not in the school records |
-| `ACCOUNT_INACTIVE` | 401/403 | Account switched off by the school; go to login |
-| `OTP_INVALID` | 401 | Wrong code; message says attempts left |
-| `OTP_EXPIRED` | 401 | Ask for a new OTP |
-| `OTP_ATTEMPTS_EXCEEDED` | 429 | Ask for a new OTP |
-| `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED` | 429 | Show message; keep the countdown |
-| `SMS_FAILED` | 503 | Ask the user to try again |
-| `TOKEN_MISSING`, `TOKEN_INVALID` | 401 | Go to login |
-| `TOKEN_EXPIRED` | 401 | Refresh and retry once |
-| `SESSION_REVOKED`, `SESSION_INVALID` | 401 | Go to login |
-| `FORBIDDEN` | 403 | The role cannot do this |
-| `NOT_FOUND` | 404 | Record does not exist or is in another school |
-| `DUPLICATE`, `MOBILE_TAKEN` | 409 | Value already used |
-| `INVALID_SORT` | 400 | `sort` value is not allowed for this list |
-| `FILE_MISSING`, `FILE_TYPE_NOT_ALLOWED`, `IMAGE_INVALID` | 400 | Upload problem |
-| `PAYLOAD_TOO_LARGE` | 413 | File over the size limit |
-| `LINK_EXPIRED` | 403 | Fetch the file again to get a fresh link |
-| `SCHOOL_REQUIRED` | 400 | Super admin only: send `X-School-Id` |
-| `YEAR_READ_ONLY` | 403 | Admin web is viewing an earlier academic year; switch back to change anything |
-| `ACADEMIC_YEAR_NOT_FOUND` | 404 | `X-Academic-Year-Id` is not a year of this school |
-| `INVALID_ACADEMIC_YEAR` | 400 | `X-Academic-Year-Id` is not a number |
-| `CHILD_NOT_FOUND` | 404 | Parent app: this child is not linked to the signed-in mobile |
-| `NOT_YOUR_SECTION` | 403 | Staff app: the teacher does not teach this section |
-| `QR_INVALID`, `QR_REPLACED` | 400/409 | Scanned card is not a school card, or it was replaced |
-| `FUTURE_DATE`, `OUTSIDE_YEAR`, `NOT_A_SCHOOL_DAY`, `HOLIDAY` | 400 | Attendance date is not allowed; show the message |
-| `ATTENDANCE_INCOMPLETE`, `DUPLICATE_STUDENT`, `STUDENT_NOT_IN_SECTION` | 400 | Send every student of the section exactly once |
-| `OUTSIDE_SCHOOL` | 400 | Check-in: the phone is outside the school radius; the message says how far |
-| `GEOFENCE_NOT_SET` | 400 | Check-in: the school has no location yet; ask the office |
-| `ALREADY_CHECKED_IN` | 409 | Already checked in today |
-| `NOT_CHECKED_IN` | 400 | Check-out before check-in |
-| `LEAVE_OVERLAP` | 409 | Another request already covers these days |
-| `LEAVE_BALANCE_LOW`, `NO_WORKING_DAYS` | 400 | Not enough balance, or the dates are all holidays and Sundays |
-| `LEAVE_NOT_PENDING` | 409 | The request was already decided or cancelled |
-| `NOT_CLASS_TEACHER`, `NOT_APPROVER`, `OWN_LEAVE` | 403 | This person cannot decide this leave |
-| `TEACHER_CLASH`, `ROOM_CLASH` | 409 | Timetable: the teacher or room is busy in that period |
-| `TEACHER_OVER_LIMIT` | 409 | Teacher assignments or the timetable would give a teacher more periods a week than their `max_periods_per_week`. Changes that bring an old overload down are still allowed |
-| `CLASS_OVER_LIMIT` | 409 | Teacher assignments would give a class (section) more periods a week than `class_periods_per_week` in School setup (default 30). Changes that bring an old overload down are still allowed |
-| `LIMIT_BELOW_LOAD` | 409 | Staff edit: the weekly limit cannot go below the periods a week the teacher already has |
-| `SIGNATURE_NOT_FOUND` | 400 | Signature upload: no ink found in the photo, or the signature pad is empty |
-| `NO_RECIPIENTS` | 400 | Emergency broadcast: nobody matches the chosen audience |
-| `AUDIENCE_INVALID` | 400 | Emergency broadcast: a chosen class, section or student is not in this school |
-| `STILL_SENDING` | 409 | Emergency resend while the broadcast is still going out |
-| `NOT_GROUP_CREATOR` | 403 | Group chat delete: only the person who created the group can delete it in the apps |
-| `RATING_CLOSED` | 403 | Parent rating: the school has teacher ratings off, or today is outside the academic year |
-| `NOT_CHILD_TEACHER` | 400 | Parent rating: the teacher does not teach this child |
-| `ALREADY_RATED` | 409 | Parent rating: already rated this teacher in this window; the message says when the next window opens |
-| `FEEDBACK_CLOSED` | 403 | Student feedback: the school has it off |
-| `NO_TERM_NOW` | 400 | Student feedback: today is not inside any term |
-| `FEEDBACK_ALREADY_GIVEN` | 409 | Student feedback: this teacher already gave this student feedback this term |
-| `BELL_INVALID`, `PERIOD_IN_USE` | 400/409 | Bell schedule overlaps, or removes a period the timetable uses |
-| `TEACHER_NOT_ABSENT`, `SUBSTITUTE_BUSY` | 409 | Substitutes: the period's teacher is in, or the chosen teacher is not free |
-| `RUN_FINALIZED`, `RUN_EMPTY` | 409/400 | Payroll month is already final, or has no payslips |
-| `PAYSLIP_NOT_FOUND` | 404 | Not your payslip, or the month is not final yet |
-| `VEHICLE_EXISTS`, `DEVICE_IN_USE` | 409 | Bus registration already added, or the tracker is on another bus |
-| `ROUTE_EXISTS`, `ROUTE_IN_USE`, `STOP_IN_USE` | 409 | Route code taken, or students still use the route or stop |
-| `BUS_FULL` | 409 | More students than the bus has seats |
-| `TELEMATICS_UNAVAILABLE` | 503 | Bus tracking service is down; try again in a minute |
-| `NOT_ON_THIS_ROUTE`, `NOT_ON_THIS_TRIP` | 409 | Boarding: the student is not on this bus route, or does not ride this pickup/drop |
-| `NOT_BOARDED`, `TRIP_ENDED`, `STUDENT_NOT_ACTIVE` | 409 | Boarding: got off before boarding, the trip is over, or the student has left the school |
-| `UNDO_ALIGHTED_FIRST` | 409 | Boarding undo: remove the "got off" mark before the "boarded" mark |
-| `BOARDING_NOT_FOUND` | 404 | Boarding undo: no such mark on this trip |
-| `NOT_CLASS_TEACHER` | 403 | Class bus boarding: only the class teacher of that section |
-| `ALERT_RESOLVED`, `ALERT_ALREADY_RESOLVED` | 409 | Alerts centre: the alert is already resolved |
-| `TICKET_CLOSED` | 409 | Fleet maintenance: the ticket is already done |
-| `TICKET_NOT_FOUND`, `FUEL_LOG_NOT_FOUND`, `TRACK_NOT_FOUND` | 404 | Fleet maintenance and trip replay: no such ticket or fuel entry, or the trip never reached the tracker |
-| `MEETING_NOT_FOUND` | 404 | Not your meeting, or it does not exist |
-| `MEETING_CLASH` | 409 | The teacher or the parent already has a meeting at that time |
-| `NO_PARENT_ACCOUNT` | 409 | Staff app: no parent of this student has the app yet |
-| `MEETING_NOT_OPEN`, `MEETING_ENDED`, `MEETING_CANCELLED` | 409 | Join: opens 10 minutes before the start; a meeting nobody joined closes 30 minutes after its end; completed or cancelled |
-| `MEETING_NOT_LIVE`, `MEETING_NOT_CANCELLABLE` | 409 | Extend or end needs a meeting in progress; cancel only before it starts |
-| `VIDEO_NOT_CONFIGURED` | 503 | The server has no Agora keys yet |
-| `NO_CURRENT_YEAR` | 400 | The school has no current academic year yet |
-| `SIGNATURE_INVALID`, `AGORA_WEBHOOK_OFF` | 401/503 | Agora webhook: wrong signature, or AGORA_WEBHOOK_SECRET is not set |
-| `DIARY_NOT_FOUND`, `DIARY_NOT_EDITABLE`, `DIARY_WRONG_STATUS` | 404/409 | Diary post not found, already published, or not in the right state for this action |
-| `NO_STUDENTS` | 409 | Diary: the class or section has no students yet |
-| `ANNOUNCEMENT_NOT_FOUND`, `ANNOUNCEMENT_NOT_EDITABLE`, `ANNOUNCEMENT_NOT_PUBLISHED` | 404/409 | Announcement not found, already sent, or not published |
-| `THREAD_NOT_FOUND`, `MESSAGE_NOT_FOUND` | 404 | Not your conversation or message |
-| `NOTE_NOT_FOUND` | 404 | Meeting note is not yours (or was deleted) |
-| `MEETING_CHAT_CLOSED`, `MEETING_NOT_OVER` | 409 | Meeting chat is read-only after the meeting; the recap is ready only after it ends |
-| `NOT_A_TEACHER`, `STAFF_NOT_FOUND` | 400/404 | Teacher app preview: the staff member is not teaching staff, or not in this school |
-| `OWN_MESSAGE`, `ALREADY_FLAGGED`, `ALREADY_HIDDEN`, `NOT_HIDDEN`, `NOT_FLAGGED` | 400/409 | Chat reporting and hiding rules |
-| `PAYMENT_EXCEEDS_BALANCE`, `DISCOUNT_TOO_HIGH`, `NO_PLAN_FOR_INSTALLMENT` | 400 | Fees: the amount is more than the invoice balance, the discount goes below what is paid, or no plan has that installment |
-| `INVOICE_PAID`, `INVOICE_CANCELLED`, `INVOICE_HAS_PAYMENTS` | 409 | Fees: nothing left to pay, the invoice is cancelled, or it has payments and cannot be cancelled |
-| `FEE_HEAD_EXISTS`, `TRANSPORT_HEAD_EXISTS`, `FEE_HEAD_IN_USE` | 409 | Fees: head code taken, a transport head already exists, or the head is on plans or invoices |
-| `INVOICE_NOT_FOUND`, `RECEIPT_NOT_FOUND`, `FEE_HEAD_NOT_FOUND`, `PAYMENT_NOT_FOUND` | 404 | Fees: not found or in another school (or another child for parents) |
-| `YEAR_OVERLAPS`, `YEAR_CLOSED`, `YEAR_ARCHIVED`, `INVALID_STATUS_TRANSITION` | 409 | Academic years: the dates overlap another year; a closed or archived year's dates or fee plans cannot change; an archived year takes no fee changes (restore it first); the year is not in a status that allows this step |
-| `PAYMENT_ALREADY_REVERSED`, `IDEMPOTENCY_CONFLICT`, `BALANCE_MISMATCH` | 409 | Fees: the payment was reversed before; the `Idempotency-Key` was used for another invoice or amount; the invoice shows less paid than the payment being reversed (run the balance check) |
-| `EXAM_NOT_FOUND`, `SECTION_NOT_IN_EXAM`, `SUBJECT_NOT_IN_EXAM`, `CLASS_NOT_IN_EXAM` | 404 | Exams: the exam, or this section or subject in it, does not exist |
-| `NOT_YOUR_SUBJECT` | 403 | Staff app: the teacher neither teaches this subject in the section nor is its class teacher |
-| `EXAM_PUBLISHED` | 409 | Results are out: teachers can no longer change marks and the exam cannot be deleted |
-| `EXAM_EXISTS`, `CLASS_HAS_MARKS`, `SUBJECT_HAS_MARKS`, `MARKS_ABOVE_MAX` | 409 | Exam name taken this year, or the change would lose or invalidate marks already entered |
-| `CLASS_HAS_NO_SUBJECTS`, `NO_MARKS` | 400 | Pick class subjects in School setup first, or enter marks before publishing |
+| Code                                                                                                                                      | HTTP    | Meaning / what the app does                                                                                                                                                                                               |
+| ----------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VALIDATION_FAILED`                                                                                                                       | 400     | Highlight `errors[].field`                                                                                                                                                                                                |
+| `MOBILE_NOT_REGISTERED`                                                                                                                   | 404     | Number is not in the school records                                                                                                                                                                                       |
+| `ACCOUNT_INACTIVE`                                                                                                                        | 401/403 | Account switched off by the school; go to login                                                                                                                                                                           |
+| `OTP_INVALID`                                                                                                                             | 401     | Wrong code; message says attempts left                                                                                                                                                                                    |
+| `OTP_EXPIRED`                                                                                                                             | 401     | Ask for a new OTP                                                                                                                                                                                                         |
+| `OTP_ATTEMPTS_EXCEEDED`                                                                                                                   | 429     | Ask for a new OTP                                                                                                                                                                                                         |
+| `OTP_RESEND_TOO_SOON`, `OTP_RATE_LIMITED`                                                                                                 | 429     | Show message; keep the countdown                                                                                                                                                                                          |
+| `SMS_FAILED`                                                                                                                              | 503     | Ask the user to try again                                                                                                                                                                                                 |
+| `TOKEN_MISSING`, `TOKEN_INVALID`                                                                                                          | 401     | Go to login                                                                                                                                                                                                               |
+| `TOKEN_EXPIRED`                                                                                                                           | 401     | Refresh and retry once                                                                                                                                                                                                    |
+| `SESSION_REVOKED`, `SESSION_INVALID`                                                                                                      | 401     | Go to login                                                                                                                                                                                                               |
+| `FORBIDDEN`                                                                                                                               | 403     | The role cannot do this                                                                                                                                                                                                   |
+| `NOT_FOUND`                                                                                                                               | 404     | Record does not exist or is in another school                                                                                                                                                                             |
+| `DUPLICATE`, `MOBILE_TAKEN`                                                                                                               | 409     | Value already used                                                                                                                                                                                                        |
+| `INVALID_SORT`                                                                                                                            | 400     | `sort` value is not allowed for this list                                                                                                                                                                                 |
+| `FILE_MISSING`, `FILE_TYPE_NOT_ALLOWED`, `IMAGE_INVALID`                                                                                  | 400     | Upload problem                                                                                                                                                                                                            |
+| `PAYLOAD_TOO_LARGE`                                                                                                                       | 413     | File over the size limit                                                                                                                                                                                                  |
+| `LINK_EXPIRED`                                                                                                                            | 403     | Fetch the file again to get a fresh link                                                                                                                                                                                  |
+| `SCHOOL_REQUIRED`                                                                                                                         | 400     | Super admin only: send `X-School-Id`                                                                                                                                                                                      |
+| `YEAR_READ_ONLY`                                                                                                                          | 403     | Admin web is viewing an earlier academic year; switch back to change anything                                                                                                                                             |
+| `ACADEMIC_YEAR_NOT_FOUND`                                                                                                                 | 404     | `X-Academic-Year-Id` is not a year of this school                                                                                                                                                                         |
+| `INVALID_ACADEMIC_YEAR`                                                                                                                   | 400     | `X-Academic-Year-Id` is not a number                                                                                                                                                                                      |
+| `CHILD_NOT_FOUND`                                                                                                                         | 404     | Parent app: this child is not linked to the signed-in mobile                                                                                                                                                              |
+| `NOT_YOUR_SECTION`                                                                                                                        | 403     | Staff app: the teacher does not teach this section                                                                                                                                                                        |
+| `QR_INVALID`, `QR_REPLACED`                                                                                                               | 400/409 | Scanned card is not a school card, or it was replaced                                                                                                                                                                     |
+| `FUTURE_DATE`, `OUTSIDE_YEAR`, `NOT_A_SCHOOL_DAY`, `HOLIDAY`                                                                              | 400     | Attendance date is not allowed; show the message                                                                                                                                                                          |
+| `ATTENDANCE_INCOMPLETE`, `DUPLICATE_STUDENT`, `STUDENT_NOT_IN_SECTION`                                                                    | 400     | Send every student of the section exactly once                                                                                                                                                                            |
+| `OUTSIDE_SCHOOL`                                                                                                                          | 400     | Check-in: the phone is outside the school radius; the message says how far                                                                                                                                                |
+| `GEOFENCE_NOT_SET`                                                                                                                        | 400     | Check-in: the school has no location yet; ask the office                                                                                                                                                                  |
+| `ALREADY_CHECKED_IN`                                                                                                                      | 409     | Already checked in today                                                                                                                                                                                                  |
+| `NOT_CHECKED_IN`                                                                                                                          | 400     | Check-out before check-in                                                                                                                                                                                                 |
+| `LEAVE_OVERLAP`                                                                                                                           | 409     | Another request already covers these days                                                                                                                                                                                 |
+| `LEAVE_BALANCE_LOW`, `NO_WORKING_DAYS`                                                                                                    | 400     | Not enough balance, or the dates are all holidays and Sundays                                                                                                                                                             |
+| `LEAVE_NOT_PENDING`                                                                                                                       | 409     | The request was already decided or cancelled                                                                                                                                                                              |
+| `NOT_CLASS_TEACHER`, `NOT_APPROVER`, `OWN_LEAVE`                                                                                          | 403     | This person cannot decide this leave                                                                                                                                                                                      |
+| `TEACHER_CLASH`, `ROOM_CLASH`                                                                                                             | 409     | Timetable: the teacher or room is busy in that period                                                                                                                                                                     |
+| `TEACHER_OVER_LIMIT`                                                                                                                      | 409     | Teacher assignments or the timetable would give a teacher more periods a week than their `max_periods_per_week`. Changes that bring an old overload down are still allowed                                                |
+| `CLASS_OVER_LIMIT`                                                                                                                        | 409     | Teacher assignments would give a class (section) more periods a week than `class_periods_per_week` in School setup (default 30). Changes that bring an old overload down are still allowed                                |
+| `LIMIT_BELOW_LOAD`                                                                                                                        | 409     | Staff edit: the weekly limit cannot go below the periods a week the teacher already has                                                                                                                                   |
+| `SIGNATURE_NOT_FOUND`                                                                                                                     | 400     | Signature upload: no ink found in the photo, or the signature pad is empty                                                                                                                                                |
+| `NO_RECIPIENTS`                                                                                                                           | 400     | Emergency broadcast: nobody matches the chosen audience                                                                                                                                                                   |
+| `AUDIENCE_INVALID`                                                                                                                        | 400     | Emergency broadcast: a chosen class, section or student is not in this school                                                                                                                                             |
+| `STILL_SENDING`                                                                                                                           | 409     | Emergency resend while the broadcast is still going out                                                                                                                                                                   |
+| `NOT_GROUP_CREATOR`                                                                                                                       | 403     | Group chat delete: only the person who created the group can delete it in the apps                                                                                                                                        |
+| `RATING_CLOSED`                                                                                                                           | 403     | Parent rating: the school has teacher ratings off, or today is outside the academic year                                                                                                                                  |
+| `NOT_CHILD_TEACHER`                                                                                                                       | 400     | Parent rating: the teacher does not teach this child                                                                                                                                                                      |
+| `ALREADY_RATED`                                                                                                                           | 409     | Parent rating: already rated this teacher in this window; the message says when the next window opens                                                                                                                     |
+| `FEEDBACK_CLOSED`                                                                                                                         | 403     | Student feedback: the school has it off                                                                                                                                                                                   |
+| `NO_TERM_NOW`                                                                                                                             | 400     | Student feedback: today is not inside any term                                                                                                                                                                            |
+| `FEEDBACK_ALREADY_GIVEN`                                                                                                                  | 409     | Student feedback: this teacher already gave this student feedback this term                                                                                                                                               |
+| `BELL_INVALID`, `PERIOD_IN_USE`                                                                                                           | 400/409 | Bell schedule overlaps, or removes a period the timetable uses                                                                                                                                                            |
+| `TEACHER_NOT_ABSENT`, `SUBSTITUTE_BUSY`                                                                                                   | 409     | Substitutes: the period's teacher is in, or the chosen teacher is not free                                                                                                                                                |
+| `RUN_FINALIZED`, `RUN_EMPTY`                                                                                                              | 409/400 | Payroll month is already final, or has no payslips                                                                                                                                                                        |
+| `PAYSLIP_NOT_FOUND`                                                                                                                       | 404     | Not your payslip, or the month is not final yet                                                                                                                                                                           |
+| `VEHICLE_EXISTS`, `DEVICE_IN_USE`                                                                                                         | 409     | Bus registration already added, or the tracker is on another bus                                                                                                                                                          |
+| `ROUTE_EXISTS`, `ROUTE_IN_USE`, `STOP_IN_USE`                                                                                             | 409     | Route code taken, or students still use the route or stop                                                                                                                                                                 |
+| `BUS_FULL`                                                                                                                                | 409     | More students than the bus has seats                                                                                                                                                                                      |
+| `TELEMATICS_UNAVAILABLE`                                                                                                                  | 503     | Bus tracking service is down; try again in a minute                                                                                                                                                                       |
+| `NOT_ON_THIS_ROUTE`, `NOT_ON_THIS_TRIP`                                                                                                   | 409     | Boarding: the student is not on this bus route, or does not ride this pickup/drop                                                                                                                                         |
+| `NOT_BOARDED`, `TRIP_ENDED`, `STUDENT_NOT_ACTIVE`                                                                                         | 409     | Boarding: got off before boarding, the trip is over, or the student has left the school                                                                                                                                   |
+| `UNDO_ALIGHTED_FIRST`                                                                                                                     | 409     | Boarding undo: remove the "got off" mark before the "boarded" mark                                                                                                                                                        |
+| `BOARDING_NOT_FOUND`                                                                                                                      | 404     | Boarding undo: no such mark on this trip                                                                                                                                                                                  |
+| `NOT_CLASS_TEACHER`                                                                                                                       | 403     | Class bus boarding: only the class teacher of that section                                                                                                                                                                |
+| `ALERT_RESOLVED`, `ALERT_ALREADY_RESOLVED`                                                                                                | 409     | Alerts centre: the alert is already resolved                                                                                                                                                                              |
+| `TICKET_CLOSED`                                                                                                                           | 409     | Fleet maintenance: the ticket is already done                                                                                                                                                                             |
+| `TICKET_NOT_FOUND`, `FUEL_LOG_NOT_FOUND`, `TRACK_NOT_FOUND`                                                                               | 404     | Fleet maintenance and trip replay: no such ticket or fuel entry, or the trip never reached the tracker                                                                                                                    |
+| `MEETING_NOT_FOUND`                                                                                                                       | 404     | Not your meeting, or it does not exist                                                                                                                                                                                    |
+| `MEETING_CLASH`                                                                                                                           | 409     | The teacher or the parent already has a meeting at that time                                                                                                                                                              |
+| `NO_PARENT_ACCOUNT`                                                                                                                       | 409     | Staff app: no parent of this student has the app yet                                                                                                                                                                      |
+| `MEETING_NOT_OPEN`, `MEETING_ENDED`, `MEETING_CANCELLED`                                                                                  | 409     | Join: opens 10 minutes before the start; a meeting nobody joined closes 30 minutes after its end; completed or cancelled                                                                                                  |
+| `MEETING_NOT_LIVE`, `MEETING_NOT_CANCELLABLE`                                                                                             | 409     | Extend or end needs a meeting in progress; cancel only before it starts                                                                                                                                                   |
+| `VIDEO_NOT_CONFIGURED`                                                                                                                    | 503     | The server has no Agora keys yet                                                                                                                                                                                          |
+| `NO_CURRENT_YEAR`                                                                                                                         | 400     | The school has no current academic year yet                                                                                                                                                                               |
+| `SIGNATURE_INVALID`, `AGORA_WEBHOOK_OFF`                                                                                                  | 401/503 | Agora webhook: wrong signature, or AGORA_WEBHOOK_SECRET is not set                                                                                                                                                        |
+| `DIARY_NOT_FOUND`, `DIARY_NOT_EDITABLE`, `DIARY_WRONG_STATUS`                                                                             | 404/409 | Diary post not found, already published, or not in the right state for this action                                                                                                                                        |
+| `NO_STUDENTS`                                                                                                                             | 409     | Diary: the class or section has no students yet                                                                                                                                                                           |
+| `ANNOUNCEMENT_NOT_FOUND`, `ANNOUNCEMENT_NOT_EDITABLE`, `ANNOUNCEMENT_NOT_PUBLISHED`, `ANNOUNCEMENT_AUDIENCE_LOCKED`                       | 404/409 | Announcement not found, archived, not published, or its audience cannot change after sending                                                                                                                              |
+| `EVENT_NOT_FOUND`, `EVENT_RSVP_CLOSED`, `EVENT_CANCELLED`, `EVENT_NO_RSVP`, `EVENT_NOT_INVITED`, `EVENT_NOT_DRAFT`, `EVENT_NOT_PUBLISHED` | 404/409 | Event not found, replies closed, cancelled, no reply needed, child not invited, already published, or not open yet                                                                                                        |
+| `THREAD_NOT_FOUND`, `MESSAGE_NOT_FOUND`                                                                                                   | 404     | Not your conversation or message                                                                                                                                                                                          |
+| `NOTE_NOT_FOUND`                                                                                                                          | 404     | Meeting note is not yours (or was deleted)                                                                                                                                                                                |
+| `MEETING_CHAT_CLOSED`, `MEETING_NOT_OVER`                                                                                                 | 409     | Meeting chat is read-only after the meeting; the recap is ready only after it ends                                                                                                                                        |
+| `NOT_A_TEACHER`, `STAFF_NOT_FOUND`                                                                                                        | 400/404 | Teacher app preview: the staff member is not teaching staff, or not in this school                                                                                                                                        |
+| `OWN_MESSAGE`, `ALREADY_FLAGGED`, `ALREADY_HIDDEN`, `NOT_HIDDEN`, `NOT_FLAGGED`                                                           | 400/409 | Chat reporting and hiding rules                                                                                                                                                                                           |
+| `PAYMENT_EXCEEDS_BALANCE`, `DISCOUNT_TOO_HIGH`, `NO_PLAN_FOR_INSTALLMENT`                                                                 | 400     | Fees: the amount is more than the invoice balance, the discount goes below what is paid, or no plan has that installment                                                                                                  |
+| `INVOICE_PAID`, `INVOICE_CANCELLED`, `INVOICE_HAS_PAYMENTS`                                                                               | 409     | Fees: nothing left to pay, the invoice is cancelled, or it has payments and cannot be cancelled                                                                                                                           |
+| `FEE_HEAD_EXISTS`, `TRANSPORT_HEAD_EXISTS`, `FEE_HEAD_IN_USE`                                                                             | 409     | Fees: head code taken, a transport head already exists, or the head is on plans or invoices                                                                                                                               |
+| `INVOICE_NOT_FOUND`, `RECEIPT_NOT_FOUND`, `FEE_HEAD_NOT_FOUND`, `PAYMENT_NOT_FOUND`                                                       | 404     | Fees: not found or in another school (or another child for parents)                                                                                                                                                       |
+| `YEAR_OVERLAPS`, `YEAR_CLOSED`, `YEAR_ARCHIVED`, `INVALID_STATUS_TRANSITION`                                                              | 409     | Academic years: the dates overlap another year; a closed or archived year's dates or fee plans cannot change; an archived year takes no fee changes (restore it first); the year is not in a status that allows this step |
+| `PAYMENT_ALREADY_REVERSED`, `IDEMPOTENCY_CONFLICT`, `BALANCE_MISMATCH`                                                                    | 409     | Fees: the payment was reversed before; the `Idempotency-Key` was used for another invoice or amount; the invoice shows less paid than the payment being reversed (run the balance check)                                  |
+| `EXAM_NOT_FOUND`, `SECTION_NOT_IN_EXAM`, `SUBJECT_NOT_IN_EXAM`, `CLASS_NOT_IN_EXAM`                                                       | 404     | Exams: the exam, or this section or subject in it, does not exist                                                                                                                                                         |
+| `NOT_YOUR_SUBJECT`                                                                                                                        | 403     | Staff app: the teacher neither teaches this subject in the section nor is its class teacher                                                                                                                               |
+| `EXAM_PUBLISHED`                                                                                                                          | 409     | Results are out: teachers can no longer change marks and the exam cannot be deleted                                                                                                                                       |
+| `EXAM_EXISTS`, `CLASS_HAS_MARKS`, `SUBJECT_HAS_MARKS`, `MARKS_ABOVE_MAX`                                                                  | 409     | Exam name taken this year, or the change would lose or invalidate marks already entered                                                                                                                                   |
+| `CLASS_HAS_NO_SUBJECTS`, `NO_MARKS`                                                                                                       | 400     | Pick class subjects in School setup first, or enter marks before publishing                                                                                                                                               |
 
 ## Field conventions
 
@@ -254,12 +255,12 @@ When `id_card_design` is `custom`, `GET /admin/students/{id}/id-card` and `GET /
 
 ### Admin web roles
 
-| Role | Sees in the admin web |
-|---|---|
-| School admin | Everything in the school, except assigning substitutes |
-| Principal | Every module read-only, staff leave approval, announcements |
-| AO (Administrative officer) | Admissions, students, staff records, attendance, fee collection, exams (view), timetable (view), announcements, bus status; **the only role that assigns substitutes**. No payroll, users and roles, staff bank details or school setup changes |
-| Transport in-charge | Buses, routes and stops, students (view) |
+| Role                        | Sees in the admin web                                                                                                                                                                                                                                          |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| School admin                | Everything in the school, except assigning substitutes                                                                                                                                                                                                         |
+| Principal                   | Every module read-only, staff leave approval, announcements, school events                                                                                                                                                                                     |
+| AO (Administrative officer) | Admissions, students, staff records, attendance, fee collection, exams (view), timetable (view), announcements, school events, bus status; **the only role that assigns substitutes**. No payroll, users and roles, staff bank details or school setup changes |
+| Transport in-charge         | Buses, routes and stops, students (view)                                                                                                                                                                                                                       |
 
 Substitutes: `POST /admin/substitutes`, `POST /admin/substitutes/auto` and `DELETE /admin/substitutes/{id}` need `substitutes.manage` (AO only; others get `403 FORBIDDEN` and can still view the board). A substitute is set for one date and one period, only for a teacher who is on approved leave or absent that day, and only from the teachers who are free in that period (`GET /admin/substitutes/free`); anyone else returns `409 SUBSTITUTE_BUSY`.
 
@@ -267,15 +268,15 @@ Substitutes: `POST /admin/substitutes`, `POST /admin/substitutes/auto` and `DELE
 
 `GET /admin/dashboard` returns the home screen in one call for every admin-web role. Each section is present only when the caller has its permission and is `null` otherwise:
 
-| Section | Permission | Fields |
-|---|---|---|
-| `students` | `students.view` | `total` (active), `joined_this_month`, `applications_waiting`, `approved_not_enrolled` |
-| `staff` | `staff.view` | `total`, `teachers`, `need_attention` |
+| Section      | Permission        | Fields                                                                                                                                                            |
+| ------------ | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `students`   | `students.view`   | `total` (active), `joined_this_month`, `applications_waiting`, `approved_not_enrolled`                                                                            |
+| `staff`      | `staff.view`      | `total`, `teachers`, `need_attention`                                                                                                                             |
 | `attendance` | `attendance.view` | `students: { working_day, marked_sections, total_sections, present, absent, on_leave, percent }`, `staff: { total, checked_in, late, on_leave, absent, percent }` |
-| `buses` | `fleet.view` | `telematics_available`, `total`, `with_tracker`, `live`, `moving`, `offline` (the last three are `null` when bus tracking is down; the call still returns 200) |
-| `alerts` | `fleet.view` | `open`, `sos_open`, `high_open` |
-| `fees` | `fees.view` | `academic_year`, `due_amount`, `overdue_amount`, `overdue_students`, `todays_collection` (`null` with no current academic year) |
-| `exams` | `exams.view` | `total`, `upcoming`, `in_progress`, `published` for the current year |
+| `buses`      | `fleet.view`      | `telematics_available`, `total`, `with_tracker`, `live`, `moving`, `offline` (the last three are `null` when bus tracking is down; the call still returns 200)    |
+| `alerts`     | `fleet.view`      | `open`, `sos_open`, `high_open`                                                                                                                                   |
+| `fees`       | `fees.view`       | `academic_year`, `due_amount`, `overdue_amount`, `overdue_students`, `todays_collection` (`null` with no current academic year)                                   |
+| `exams`      | `exams.view`      | `total`, `upcoming`, `in_progress`, `published` for the current year                                                                                              |
 
 `date` is today in the school time zone. Percentages have one decimal and are `null` when there is nothing to count. Student `percent` is the attendance board's figure (half day counts half); staff `percent` is `checked_in / (total - on_leave)`.
 
@@ -315,25 +316,25 @@ Brothers and sisters show up together because the school links them to the same 
 
 Child screens (all read-only, `{id}` comes from the list above; a child that is not linked to the parent returns `404 CHILD_NOT_FOUND`):
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/parent/children/{id}` | Child card: class, section, class teacher, photo, blood group, house and `counts` for the tile badges |
-| `GET /mobile/parent/children/{id}/id-card` | Digital ID card. Draw `qr_token` as a QR code; the bus attendant scans it |
-| `GET /mobile/parent/children/{id}/documents` | Documents the school shares, with `status` pending, verified or rejected |
-| `GET /mobile/parent/children/{id}/health` | Health summary, BMI and the vaccination log (`overdue` flag) |
-| `GET /mobile/parent/children/{id}/behaviour` | Behaviour notes shared with parents (appreciation, concern, incident, disciplinary) |
+| Call                                         | Screen                                                                                                |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GET /mobile/parent/children/{id}`           | Child card: class, section, class teacher, photo, blood group, house and `counts` for the tile badges |
+| `GET /mobile/parent/children/{id}/id-card`   | Digital ID card. Draw `qr_token` as a QR code; the bus attendant scans it                             |
+| `GET /mobile/parent/children/{id}/documents` | Documents the school shares, with `status` pending, verified or rejected                              |
+| `GET /mobile/parent/children/{id}/health`    | Health summary, BMI and the vaccination log (`overdue` flag)                                          |
+| `GET /mobile/parent/children/{id}/behaviour` | Behaviour notes shared with parents (appreciation, concern, incident, disciplinary)                   |
 
 If the school replaces a lost card, the old `qr_token` stops working. Fetch the ID card again instead of caching it for long.
 
 ### Attendance and leave (parent)
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/parent/children/{id}/attendance/today` | Home badge: `{ "date": "2026-11-02", "status": "absent" }`; `status` is `null` until the class teacher marks |
-| `GET /mobile/parent/children/{id}/attendance?month=2026-11` | Calendar: `days[]` with `date` and `status` (present, absent, late, half_day, leave, holiday), plus `summary.percent` |
-| `GET /mobile/parent/children/{id}/leaves` | Leave requests, newest first, with `status` pending, approved, rejected or cancelled |
-| `POST /mobile/parent/children/{id}/leaves` | `{ "from_date": "2026-11-10", "to_date": "2026-11-11", "reason": "Fever", "file_id": null }`. Up to 7 days back, 30 days long. **Half day:** add `"half_day": "morning"` or `"afternoon"` with the same from and to date; it counts 0.5 day, the child defaults to leave only in that session, and a morning and an afternoon half day on the same date are both allowed (`400` on `to_date` for two dates, `409 LEAVE_OVERLAP` against a full day). Every leave has `half_day` (null for full days) |
-| `POST /mobile/parent/children/{id}/leaves/{leaveId}/cancel` | Cancel while it is still pending |
+| Call                                                        | Screen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/parent/children/{id}/attendance/today`         | Home badge: `{ "date": "2026-11-02", "status": "absent" }`; `status` is `null` until the class teacher marks                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET /mobile/parent/children/{id}/attendance?month=2026-11` | Calendar: `days[]` with `date` and `status` (present, absent, late, half_day, leave, holiday), plus `summary.percent`                                                                                                                                                                                                                                                                                                                                                                                |
+| `GET /mobile/parent/children/{id}/leaves`                   | Leave requests, newest first, with `status` pending, approved, rejected or cancelled                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `POST /mobile/parent/children/{id}/leaves`                  | `{ "from_date": "2026-11-10", "to_date": "2026-11-11", "reason": "Fever", "file_id": null }`. Up to 7 days back, 30 days long. **Half day:** add `"half_day": "morning"` or `"afternoon"` with the same from and to date; it counts 0.5 day, the child defaults to leave only in that session, and a morning and an afternoon half day on the same date are both allowed (`400` on `to_date` for two dates, `409 LEAVE_OVERLAP` against a full day). Every leave has `half_day` (null for full days) |
+| `POST /mobile/parent/children/{id}/leaves/{leaveId}/cancel` | Cancel while it is still pending                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 | `GET /mobile/parent/children/{id}/achievements` | Achievements the school shares, newest first |
 | `GET /mobile/parent/children/{id}/transport` | Bus card: route, `stop` (pickup, or the only stop) with `pickup_time` and `drop_time`, `drop_stop` (evening stop when it differs, else `null`), bus registration, driver and attendant with mobile, `monthly_fee` (the higher of the two stops) and `fee` (`monthly_fee`, `billed`, `paid`, `pending` this year, `next_due_date`, `status`: `paid`, `pending`, `overdue` or `not_billed`). `null` when the child does not use the bus |
@@ -344,17 +345,17 @@ When the class teacher marks the child absent for today's morning attendance, th
 
 The admin web shows the parent app for any student in a phone frame. It never signs in as the parent: these read-only calls (`students.view`) use the same services as the parent endpoints. Attendance, results and fees come from the existing admin calls (`/admin/attendance/students/{id}?month=`, `/admin/students/{id}/results`, `/admin/students/{id}/fees`).
 
-| Call | Same data as |
-|---|---|
-| `GET /admin/students/{id}/parent-view` | `{ parent, child, today }`: `child` is the parent's child card, `today` the attendance badge. `parent` and `child` are `null` when no parent of the student has an app login |
-| `GET /admin/students/{id}/parent-view/bus` | `GET /mobile/parent/children/{id}/bus` |
-| `GET /admin/students/{id}/parent-view/achievements` | `GET /mobile/parent/children/{id}/achievements` |
-| `GET /admin/students/{id}/parent-view/notifications?page=1&limit=10` | The primary parent's `GET /me/notifications` |
-| `GET /admin/students/{id}/parent-view/diary?type=` | `GET /mobile/parent/children/{id}/diary` (also needs `diary.view`) |
-| `GET /admin/students/{id}/parent-view/meetings?scope=upcoming\|past\|all` | The primary parent's `GET /mobile/parent/meetings?student_id={id}` (also needs `meetings.view`) |
-| `GET /admin/students/{id}/parent-view/chat` | The primary parent's threads about this child (also needs `chat.audit`) |
-| `GET /admin/students/{id}/parent-view/chat/{threadId}/messages?before_id=&limit=` | Messages as the parent sees them. Each call writes a `viewed_thread` row to the chat access log under the admin |
-| `GET /admin/students/{id}/parent-view/announcements?unread=` | The primary parent's `GET /me/announcements` (also needs `announcements.view`) |
+| Call                                                                              | Same data as                                                                                                                                                                 |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/students/{id}/parent-view`                                            | `{ parent, child, today }`: `child` is the parent's child card, `today` the attendance badge. `parent` and `child` are `null` when no parent of the student has an app login |
+| `GET /admin/students/{id}/parent-view/bus`                                        | `GET /mobile/parent/children/{id}/bus`                                                                                                                                       |
+| `GET /admin/students/{id}/parent-view/achievements`                               | `GET /mobile/parent/children/{id}/achievements`                                                                                                                              |
+| `GET /admin/students/{id}/parent-view/notifications?page=1&limit=10`              | The primary parent's `GET /me/notifications`                                                                                                                                 |
+| `GET /admin/students/{id}/parent-view/diary?type=`                                | `GET /mobile/parent/children/{id}/diary` (also needs `diary.view`)                                                                                                           |
+| `GET /admin/students/{id}/parent-view/meetings?scope=upcoming\|past\|all`         | The primary parent's `GET /mobile/parent/meetings?student_id={id}` (also needs `meetings.view`)                                                                              |
+| `GET /admin/students/{id}/parent-view/chat`                                       | The primary parent's threads about this child (also needs `chat.audit`)                                                                                                      |
+| `GET /admin/students/{id}/parent-view/chat/{threadId}/messages?before_id=&limit=` | Messages as the parent sees them. Each call writes a `viewed_thread` row to the chat access log under the admin                                                              |
+| `GET /admin/students/{id}/parent-view/announcements?unread=`                      | The primary parent's `GET /me/announcements` (also needs `announcements.view`)                                                                                               |
 
 Without a parent login, meetings, chat and announcements return an empty page and a thread returns `404 THREAD_NOT_FOUND`. Everything is the current academic year only.
 
@@ -362,49 +363,49 @@ Without a parent login, meetings, chat and announcements return an empty page an
 
 The same idea for a teacher, by **staff id** (`staff.view`). Non-teaching staff return `400 NOT_A_TEACHER`, an unknown id `404 STAFF_NOT_FOUND`.
 
-| Call | Same data as |
-|---|---|
-| `GET /admin/staff/{id}/teacher-view` | `{ teacher, today, classes, counts }`: `today` is `GET /mobile/teacher/timetable/today`, `classes` is `GET /mobile/teacher/classes`, `counts` has `diary_pending`, `meetings_upcoming`, `chat_unread`, `announcements_unread`. `teacher.can_sign_in` is `false` when the login is switched off |
-| `GET /admin/staff/{id}/teacher-view/diary?status=&type=&section_id=` | `GET /mobile/teacher/diary` (also needs `diary.view`) |
-| `GET /admin/staff/{id}/teacher-view/meetings?scope=` | `GET /mobile/teacher/meetings` (also needs `meetings.view`) |
-| `GET /admin/staff/{id}/teacher-view/chat?student_id=` | `GET /mobile/teacher/chat/threads` (also needs `chat.audit`) |
-| `GET /admin/staff/{id}/teacher-view/chat/{threadId}/messages` | Messages as the teacher sees them; logged as `viewed_thread` |
-| `GET /admin/staff/{id}/teacher-view/announcements?unread=` | The teacher's `GET /me/announcements` (also needs `announcements.view`) |
+| Call                                                                 | Same data as                                                                                                                                                                                                                                                                                   |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/staff/{id}/teacher-view`                                 | `{ teacher, today, classes, counts }`: `today` is `GET /mobile/teacher/timetable/today`, `classes` is `GET /mobile/teacher/classes`, `counts` has `diary_pending`, `meetings_upcoming`, `chat_unread`, `announcements_unread`. `teacher.can_sign_in` is `false` when the login is switched off |
+| `GET /admin/staff/{id}/teacher-view/diary?status=&type=&section_id=` | `GET /mobile/teacher/diary` (also needs `diary.view`)                                                                                                                                                                                                                                          |
+| `GET /admin/staff/{id}/teacher-view/meetings?scope=`                 | `GET /mobile/teacher/meetings` (also needs `meetings.view`)                                                                                                                                                                                                                                    |
+| `GET /admin/staff/{id}/teacher-view/chat?student_id=`                | `GET /mobile/teacher/chat/threads` (also needs `chat.audit`)                                                                                                                                                                                                                                   |
+| `GET /admin/staff/{id}/teacher-view/chat/{threadId}/messages`        | Messages as the teacher sees them; logged as `viewed_thread`                                                                                                                                                                                                                                   |
+| `GET /admin/staff/{id}/teacher-view/announcements?unread=`           | The teacher's `GET /me/announcements` (also needs `announcements.view`)                                                                                                                                                                                                                        |
 
 ## Staff app: teachers
 
 Teacher, HOD and Principal roles. Everything is limited to the teacher's own sections this year; other sections return `403 NOT_YOUR_SECTION`.
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/teacher/classes` | My classes: class-teacher sections first, then sections I teach, with my subjects and student count |
-| `GET /mobile/teacher/sections/{id}/students` | Class roster in roll-number order |
-| `GET /mobile/teacher/students/{id}` | Student detail (read-only) |
-| `GET /mobile/teacher/students/{id}/behaviour` | Behaviour notes |
+| Call                                           | Screen                                                                                                     |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/teacher/classes`                  | My classes: class-teacher sections first, then sections I teach, with my subjects and student count        |
+| `GET /mobile/teacher/sections/{id}/students`   | Class roster in roll-number order                                                                          |
+| `GET /mobile/teacher/students/{id}`            | Student detail (read-only)                                                                                 |
+| `GET /mobile/teacher/students/{id}/behaviour`  | Behaviour notes                                                                                            |
 | `POST /mobile/teacher/students/{id}/behaviour` | Add a note: `{ "category": "appreciation", "title": "Neat notebook all week", "visible_to_parent": true }` |
 
 Sign in as 9000000004 (Priya, class teacher of 6-A) to try it.
 
 ### Attendance, check-in, leave and timetable (staff)
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/teacher/check-in` | Today's card: `check_in_at`, `check_out_at`, `status` (present, late, not_checked_in), distance from school |
-| `POST /mobile/teacher/check-in` | `{ "lat": 13.0879, "lng": 80.2102, "accuracy_m": 12 }`. Refused with `OUTSIDE_SCHOOL` outside the school radius. Late is after the school reporting time plus 10 minutes |
-| `POST /mobile/teacher/check-out` | Same body |
-| `GET /mobile/teacher/my-attendance?month=2026-11` | My month |
-| `GET /mobile/teacher/sections/{id}/attendance?date=2026-11-02&session=morning` | Roster for the **morning (1st period)** or **afternoon (5th period)** session. `open` is true only today between `opens_at` and `closes_at`; students on approved leave default to `leave`; the afternoon starts from the morning marks |
-| `PUT /mobile/teacher/sections/{id}/attendance` | `{ "date": "2026-11-02", "session": "afternoon", "items": [{ "student_id": 12, "status": "absent", "remarks": null }] }`. Send every student once. `400 SESSION_NOT_OPEN` before the period, `400 SESSION_CLOSED` after it, `400 PERIOD_NOT_ALLOWED` for other periods. Absent alerts go once a day per student |
-| `PATCH /mobile/teacher/sections/{id}/attendance` | **Mark only some students in one call**, each with its own status: `{ "date": "2026-11-10", "session": "morning", "items": [{ "student_id": 12, "status": "A" }, { "student_id": 14, "status": "L", "remarks": "Came 9:20" }] }`. Everyone else keeps the saved status (or the default). Status can be the word or the button letter: **P = present, A = absent, L = late** (L is never leave). Same period window and absent alerts as PUT. Admin twin: `PATCH /admin/attendance/sections/{id}` |
-| `GET /mobile/teacher/timetable` | My week: `periods` (bell schedule) and `slots` with `day_of_week` 1 Monday … 6 Saturday |
-| `GET /mobile/teacher/leave-balances` | Per leave type: allowed, used, pending, balance |
-| `GET /mobile/teacher/leaves` | My requests |
-| `POST /mobile/teacher/leaves` | `{ "leave_type_id": 1, "from_date": "2026-11-20", "to_date": "2026-11-21", "half_day": false, "reason": "Family function" }`. Goes to the HOD of my department, then the principal |
-| `POST /mobile/teacher/leaves/{id}/cancel` | Cancel while waiting |
-| `GET /mobile/teacher/leave-approvals` | HOD / principal: staff requests waiting for me |
-| `POST /mobile/teacher/leave-approvals/{id}/decision` | `{ "status": "approved", "note": null }` |
-| `GET /mobile/teacher/student-leaves?status=pending` | Class teacher: parent leave requests for my sections (paginated) |
-| `POST /mobile/teacher/student-leaves/{id}/decision` | `{ "status": "rejected", "note": "Please bring the medical note" }` |
+| Call                                                                           | Screen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /mobile/teacher/check-in`                                                 | Today's card: `check_in_at`, `check_out_at`, `status` (present, late, not_checked_in), distance from school                                                                                                                                                                                                                                                                                                                                                                                      |
+| `POST /mobile/teacher/check-in`                                                | `{ "lat": 13.0879, "lng": 80.2102, "accuracy_m": 12 }`. Refused with `OUTSIDE_SCHOOL` outside the school radius. Late is after the school reporting time plus 10 minutes                                                                                                                                                                                                                                                                                                                         |
+| `POST /mobile/teacher/check-out`                                               | Same body                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `GET /mobile/teacher/my-attendance?month=2026-11`                              | My month                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET /mobile/teacher/sections/{id}/attendance?date=2026-11-02&session=morning` | Roster for the **morning (1st period)** or **afternoon (5th period)** session. `open` is true only today between `opens_at` and `closes_at`; students on approved leave default to `leave`; the afternoon starts from the morning marks                                                                                                                                                                                                                                                          |
+| `PUT /mobile/teacher/sections/{id}/attendance`                                 | `{ "date": "2026-11-02", "session": "afternoon", "items": [{ "student_id": 12, "status": "absent", "remarks": null }] }`. Send every student once. `400 SESSION_NOT_OPEN` before the period, `400 SESSION_CLOSED` after it, `400 PERIOD_NOT_ALLOWED` for other periods. Absent alerts go once a day per student                                                                                                                                                                                  |
+| `PATCH /mobile/teacher/sections/{id}/attendance`                               | **Mark only some students in one call**, each with its own status: `{ "date": "2026-11-10", "session": "morning", "items": [{ "student_id": 12, "status": "A" }, { "student_id": 14, "status": "L", "remarks": "Came 9:20" }] }`. Everyone else keeps the saved status (or the default). Status can be the word or the button letter: **P = present, A = absent, L = late** (L is never leave). Same period window and absent alerts as PUT. Admin twin: `PATCH /admin/attendance/sections/{id}` |
+| `GET /mobile/teacher/timetable`                                                | My week: `periods` (bell schedule) and `slots` with `day_of_week` 1 Monday … 6 Saturday                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `GET /mobile/teacher/leave-balances`                                           | Per leave type: allowed, used, pending, balance                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `GET /mobile/teacher/leaves`                                                   | My requests                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `POST /mobile/teacher/leaves`                                                  | `{ "leave_type_id": 1, "from_date": "2026-11-20", "to_date": "2026-11-21", "half_day": false, "reason": "Family function" }`. Goes to the HOD of my department, then the principal                                                                                                                                                                                                                                                                                                               |
+| `POST /mobile/teacher/leaves/{id}/cancel`                                      | Cancel while waiting                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `GET /mobile/teacher/leave-approvals`                                          | HOD / principal: staff requests waiting for me                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `POST /mobile/teacher/leave-approvals/{id}/decision`                           | `{ "status": "approved", "note": null }`                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `GET /mobile/teacher/student-leaves?status=pending`                            | Class teacher: parent leave requests for my sections (paginated)                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `POST /mobile/teacher/student-leaves/{id}/decision`                            | `{ "status": "rejected", "note": "Please bring the medical note" }`                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 | `GET /mobile/teacher/timetable/today` | Home: today's periods in bell order with `kind` (class, substitute, free, break), section, subject, room, `students`, `present` (after the morning attendance) and `is_now`. Tap a section to open its student list |
 | `GET /mobile/teacher/students/{id}/history` | Student full history: profile and parents (with mobile numbers), attendance this year and this month, leave, remarks and discipline (`behaviour`), `achievements`, health, documents and ID card |
@@ -442,29 +443,29 @@ Every broadcast has `state`: `pending_approval`, `scheduled`, `active` (on scree
 
 **Admin web (`/admin/emergency-broadcasts`).**
 
-| Call | What it does |
-|---|---|
-| `GET /templates?all=` | The school's ready messages in English and Tamil (`id`, `is_active`, `sort_order`, …). A school starts with rain holiday, early closure, security, transport delay, health and all clear; `all=true` also lists switched-off ones |
-| `POST /templates`, `PATCH /templates/{id}`, `DELETE /templates/{id}` | Add, change (`is_active: false` hides it), remove a ready message. 404 `TEMPLATE_NOT_FOUND` |
-| `POST /preview` `{ audience, class_ids?, section_ids?, student_ids?, include_teachers?, staff_groups? }` | People it will reach: `recipients`, `parents`, `staff`, `with_app`, `with_mobile`, `sms_only`, `unreachable` |
+| Call                                                                                                                                                                                | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /templates?all=`                                                                                                                                                               | The school's ready messages in English and Tamil (`id`, `is_active`, `sort_order`, …). A school starts with rain holiday, early closure, security, transport delay, health and all clear; `all=true` also lists switched-off ones                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `POST /templates`, `PATCH /templates/{id}`, `DELETE /templates/{id}`                                                                                                                | Add, change (`is_active: false` hides it), remove a ready message. 404 `TEMPLATE_NOT_FOUND`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `POST /preview` `{ audience, class_ids?, section_ids?, student_ids?, include_teachers?, staff_groups? }`                                                                            | People it will reach: `recipients`, `parents`, `staff`, `with_app`, `with_mobile`, `sms_only`, `unreachable`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `POST` `{ audience, …, title, message, title_ta?, message_ta?, category, severity?, channels?: ["push","sms"], client_id?, follow_up_of?, expires_in?: { value, unit }, send_at? }` | Sends now, later or for approval (201). `audience` = `everyone`, `parents`, `staff`, `classes`, `sections`, `students`. With `staff`, `staff_groups` picks some of `teachers` (teaching staff), `drivers` (drivers and attendants) and `office` (other non-teaching staff); leave it out for all staff. The broadcast returns `staff_groups` (empty = all) and an `audience_label` like `Staff: drivers & attendants`. `category` = `weather`, `school_closed`, `security`, `health`, `transport`, `all_clear`, `other`. `severity` = `info`, `warning`, `critical` (default). `client_id` stops a double click sending twice. `follow_up_of` links an all clear to the original |
-| `GET` | History, paged: `search`, `category`, `status`, `state` (`active`, `expired`, `ended`, `scheduled`, `pending_approval`, `rejected`, `cancelled`), `from`, `to`, `sort=sent_at|title` |
-| `GET /{id}` | One broadcast with `audience_label` and `counts`: `total`, `parents`, `staff`, `in_app`, `push` and `sms` (`pending`, `sending`, `sent`, `failed`, `skipped`), `reached`, `read`, `acknowledged` and the two percentages. Poll while `status` is `sending` |
-| `GET /{id}/recipients` | Paged people with `push_status`, `sms_status` and the reason when not sent, `read_at`, `acknowledged_at`, and their children. `filter` = `all`, `failed`, `not_read`, `not_acknowledged`, `sms_only`, `unreachable`; `search` = name, mobile or child |
-| `POST /{id}/resend` `{ target: "failed" | "not_acknowledged", channels?: ["sms"] }` | Sends again to those it failed for, or to everyone who has not acknowledged; `channels` limits it, for example SMS only to people who have not seen it. 409 `STILL_SENDING`, `NOT_SENT_YET`, `NOT_ACTIVE` once it has ended |
-| `POST /{id}/approve` `{ note? }`, `POST /{id}/reject` `{ note }` | `emergency.approve` only. 409 `NOT_PENDING_APPROVAL` |
-| `POST /{id}/cancel` | Cancel a scheduled or waiting broadcast. 409 `NOT_CANCELLABLE` |
-| `POST /{id}/end` | End now. 409 `NOT_ACTIVE` |
-| `DELETE /{id}` | `emergency.approve`: remove an expired, ended, cancelled or rejected broadcast from the history and the counts (kept in the database). 409 `STILL_ACTIVE` |
-| `GET /insights` | This month: broadcasts, people, reached % and acknowledged %, broadcasts still sending, and the last broadcast |
+| `GET`                                                                                                                                                                               | History, paged: `search`, `category`, `status`, `state` (`active`, `expired`, `ended`, `scheduled`, `pending_approval`, `rejected`, `cancelled`), `from`, `to`, `sort=sent_at                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | title`                                                                                                                                                                                                                      |
+| `GET /{id}`                                                                                                                                                                         | One broadcast with `audience_label` and `counts`: `total`, `parents`, `staff`, `in_app`, `push` and `sms` (`pending`, `sending`, `sent`, `failed`, `skipped`), `reached`, `read`, `acknowledged` and the two percentages. Poll while `status` is `sending`                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `GET /{id}/recipients`                                                                                                                                                              | Paged people with `push_status`, `sms_status` and the reason when not sent, `read_at`, `acknowledged_at`, and their children. `filter` = `all`, `failed`, `not_read`, `not_acknowledged`, `sms_only`, `unreachable`; `search` = name, mobile or child                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `POST /{id}/resend` `{ target: "failed"                                                                                                                                             | "not_acknowledged", channels?: ["sms"] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Sends again to those it failed for, or to everyone who has not acknowledged; `channels` limits it, for example SMS only to people who have not seen it. 409 `STILL_SENDING`, `NOT_SENT_YET`, `NOT_ACTIVE` once it has ended |
+| `POST /{id}/approve` `{ note? }`, `POST /{id}/reject` `{ note }`                                                                                                                    | `emergency.approve` only. 409 `NOT_PENDING_APPROVAL`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `POST /{id}/cancel`                                                                                                                                                                 | Cancel a scheduled or waiting broadcast. 409 `NOT_CANCELLABLE`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `POST /{id}/end`                                                                                                                                                                    | End now. 409 `NOT_ACTIVE`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `DELETE /{id}`                                                                                                                                                                      | `emergency.approve`: remove an expired, ended, cancelled or rejected broadcast from the history and the counts (kept in the database). 409 `STILL_ACTIVE`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `GET /insights`                                                                                                                                                                     | This month: broadcasts, people, reached % and acknowledged %, broadcasts still sending, and the last broadcast                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 **Parent and Staff apps (`/me/emergency-broadcasts`).**
 
-| Call | What it does |
-|---|---|
+| Call                                                       | What it does                                                                                                                                                                                                                                               |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /me/emergency-broadcasts?pending=true&include_ended=` | My emergency messages still on screen, newest first, in my language; `pending=true` only the ones I have not acknowledged; `include_ended=true` adds expired and ended ones (history). Call it on app open and show any pending one as a full-screen alert |
-| `GET /me/emergency-broadcasts/{id}` | One message; opening it marks it read (and its in-app notification) |
-| `POST /me/emergency-broadcasts/{id}/acknowledge` | The "I have seen this" button; safe to press twice |
+| `GET /me/emergency-broadcasts/{id}`                        | One message; opening it marks it read (and its in-app notification)                                                                                                                                                                                        |
+| `POST /me/emergency-broadcasts/{id}/acknowledge`           | The "I have seen this" button; safe to press twice                                                                                                                                                                                                         |
 
 Each item has `title`, `message`, `category`, `severity`, `school`, `students` (my children it is about, for parents), `sent_at`, `read_at`, `acknowledged_at`, `follow_up_of`, `is_active`, `expires_at`, `ended_at` and `end_reason`. Hide the red strip and close the full-screen alert when `is_active` is false, at `expires_at`, or on the `emergency.ended` socket event. The push has `category: "alert"` and `broadcast_id`; the in-app notification `data` also has `expires_at` when one is set.
 
@@ -479,11 +480,11 @@ Then save the file id with `PUT /mobile/teacher/signature` or `PUT /mobile/paren
 
 **Teacher and parent signatures are separate.** One person who is both a teacher and a parent has two signatures. Saving one never changes the other, with one exception: the first time they save a teacher signature while the Parent app one is empty, it is copied there. The save answers `{ signature_file_id, signature_url, parent_signature_copied, message }`; show `message` when it is not null:
 
-| Saved from | When | `message` |
-|---|---|---|
-| Staff app | first time, copied | This signature is also set for your Parent app. You can change it there anytime. |
-| Staff app | Parent app already has one | Your Parent app signature stays the same. Change it in the Parent app. |
-| Parent app | the parent is also staff | Your Staff app signature stays the same. Change it in the Staff app. |
+| Saved from | When                       | `message`                                                                        |
+| ---------- | -------------------------- | -------------------------------------------------------------------------------- |
+| Staff app  | first time, copied         | This signature is also set for your Parent app. You can change it there anytime. |
+| Staff app  | Parent app already has one | Your Parent app signature stays the same. Change it in the Parent app.           |
+| Parent app | the parent is also staff   | Your Staff app signature stays the same. Change it in the Staff app.             |
 
 **On report cards.** A box shows a signature only after that person signs the card (`teacher_signed`, `parent_signed`). When someone changes their signature, cards they already signed **this academic year** switch to the new one and get `teacher_signature_updated_at` / `parent_signature_updated_at`; the PDF prints "Signed 12 Nov 2026 · updated 16 Nov 2026" under the box. Earlier years never change. Removing a signature leaves signed cards as they are, and signing again needs a signature (`400 NO_SIGNATURE_UPLOADED`).
 
@@ -515,10 +516,10 @@ Student attendance is taken in the **1st period (`session: "morning"`)** and the
 
 **Session-wise or period-wise.** The school picks it in School profile (`attendance_mode` on `PATCH /admin/school`):
 
-| `attendance_mode` | How attendance is taken | What the app sends |
-|---|---|---|
-| `session` (default) | Twice a day: 1st period (morning) and 5th period (afternoon) | `session`; other periods give `400 PERIOD_NOT_ALLOWED` |
-| `period` | Every teaching period of the bell schedule; the teacher of that period in the timetable (or the proxy) can mark it | `period` = 1 to the last period; beyond the bell schedule gives `400 PERIOD_NOT_ALLOWED` |
+| `attendance_mode`   | How attendance is taken                                                                                            | What the app sends                                                                       |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `session` (default) | Twice a day: 1st period (morning) and 5th period (afternoon)                                                       | `session`; other periods give `400 PERIOD_NOT_ALLOWED`                                   |
+| `period`            | Every teaching period of the bell schedule; the teacher of that period in the timetable (or the proxy) can mark it | `period` = 1 to the last period; beyond the bell schedule gives `400 PERIOD_NOT_ALLOWED` |
 
 Every roster and board answer has `mode`, `session` and `period`. The `/current` endpoints pick the period running now in either mode, so the Staff app needs no change if it uses them. In period mode a later period starts from the marks of the period before, the grace minutes apply after each period, reminders go to the teacher of that period, and the day status is the average of all periods (all present = present, all absent = absent, otherwise half day).
 
@@ -529,26 +530,26 @@ Every roster and board answer has `mode`, `session` and `period`. The `/current`
 
 ### Attendance reports (admin web)
 
-| Call | What it gives |
-|---|---|
-| `GET /admin/attendance/board?date=&session=morning` | Every section for the session, with `morning_marked` and `afternoon_marked` |
-| `GET /admin/attendance/sections/{id}?date=&session=` | Section roster for the session |
-| `GET /admin/attendance/sections/{id}/report?month=` | Section, student-wise %, monthly |
-| `GET /admin/attendance/sections/{id}/report/xlsx?month=` | Same as Excel |
-| `GET /admin/attendance/classes/{id}/report?month=` | **Class-wise**: every section of the class with students, days marked, average % and below 75% |
-| `GET /admin/attendance/classes/{id}/report/xlsx?month=` | Same as Excel |
-| `GET /admin/attendance/students/{id}?month=` | Student-wise month: each day with `morning`, `afternoon` and the day `status` |
-| `GET /admin/attendance/sections/{id}/day?date=` | **Daily** report of a section: each student with `morning`, `afternoon`, day `status`, plus `summary` counts and % |
-| `GET /admin/attendance/students/{id}/summary` | Student this academic year: `year` totals and `months[]`, each with `working_days`, `marked_days`, counts and `percent` |
+| Call                                                     | What it gives                                                                                                           |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/attendance/board?date=&session=morning`      | Every section for the session, with `morning_marked` and `afternoon_marked`                                             |
+| `GET /admin/attendance/sections/{id}?date=&session=`     | Section roster for the session                                                                                          |
+| `GET /admin/attendance/sections/{id}/report?month=`      | Section, student-wise %, monthly                                                                                        |
+| `GET /admin/attendance/sections/{id}/report/xlsx?month=` | Same as Excel                                                                                                           |
+| `GET /admin/attendance/classes/{id}/report?month=`       | **Class-wise**: every section of the class with students, days marked, average % and below 75%                          |
+| `GET /admin/attendance/classes/{id}/report/xlsx?month=`  | Same as Excel                                                                                                           |
+| `GET /admin/attendance/students/{id}?month=`             | Student-wise month: each day with `morning`, `afternoon` and the day `status`                                           |
+| `GET /admin/attendance/sections/{id}/day?date=`          | **Daily** report of a section: each student with `morning`, `afternoon`, day `status`, plus `summary` counts and %      |
+| `GET /admin/attendance/students/{id}/summary`            | Student this academic year: `year` totals and `months[]`, each with `working_days`, `marked_days`, counts and `percent` |
 
 ### Child timetable and teachers (Parent app)
 
-| Call | What it gives |
-|---|---|
-| `GET /mobile/parent/children/{id}/timetable?date=` | The child's day (default today): `day`, `class_section`, `working_day`, `holiday` and `periods[]` in bell order with breaks: `period_no`, `name`, `start_time`, `end_time`, `is_break`, `state` (`done`/`now`/`next`/`later`, today only), `subject`, `teacher` (`id`, `name`, `photo_url`), `usual_teacher` (when a proxy takes it), `note` ("Combined with 6 - B"), `room` |
-| `GET /mobile/parent/children/{id}/teachers` | The child's teachers, class teacher first: `id`, `name`, `is_class_teacher`, `subjects` (taught to this child), `designation`, `department`, `experience_years`, `photo_url`. Same `id` for meetings and chat |
-| `GET /mobile/parent/children/{id}/teachers-overview` | For the teachers screen: `class_teacher` on its own (or `null`) and `subject_teachers` without the class teacher, by name. Same fields as the list |
-| `GET /mobile/parent/children/{id}/teachers/{teacherId}` | Teacher profile: everything above plus `joined_year`, `qualifications[]` (`degree`, `specialization`, `institution`, `year_completed`), `classes[]` they handle this year (`class_section`, `subjects`, `is_class_teacher`) and `periods_per_week` |
+| Call                                                    | What it gives                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/parent/children/{id}/timetable?date=`      | The child's day (default today): `day`, `class_section`, `working_day`, `holiday` and `periods[]` in bell order with breaks: `period_no`, `name`, `start_time`, `end_time`, `is_break`, `state` (`done`/`now`/`next`/`later`, today only), `subject`, `teacher` (`id`, `name`, `photo_url`), `usual_teacher` (when a proxy takes it), `note` ("Combined with 6 - B"), `room` |
+| `GET /mobile/parent/children/{id}/teachers`             | The child's teachers, class teacher first: `id`, `name`, `is_class_teacher`, `subjects` (taught to this child), `designation`, `department`, `experience_years`, `photo_url`. Same `id` for meetings and chat                                                                                                                                                                |
+| `GET /mobile/parent/children/{id}/teachers-overview`    | For the teachers screen: `class_teacher` on its own (or `null`) and `subject_teachers` without the class teacher, by name. Same fields as the list                                                                                                                                                                                                                           |
+| `GET /mobile/parent/children/{id}/teachers/{teacherId}` | Teacher profile: everything above plus `joined_year`, `qualifications[]` (`degree`, `specialization`, `institution`, `year_completed`), `classes[]` they handle this year (`class_section`, `subjects`, `is_class_teacher`) and `periods_per_week`                                                                                                                           |
 
 - `experience_years` = experience before joining + full years at this school.
 - Only teachers of this child: other ids give `404 TEACHER_NOT_FOUND`. Phone, email, address, salary, bank and staff documents are never returned to parents.
@@ -556,10 +557,10 @@ Every roster and board answer has `mode`, `session` and `period`. The `/current`
 
 ### Parent profile (Parent app)
 
-| Call | What it does |
-|---|---|
-| `GET /mobile/parent/profile` | My profile: `name`, `mobile`, `alt_mobile`, `email`, `occupation`, `qualification`, `language`, `address_line`, `city`, `pincode`, `on_app`, `last_login_at`, `children[]` (`id`, `full_name`, `class_section`, `relation`, `admission_date`, `years_in_school`) and `co_guardians[]` (the other parent: `name`, `mobile`, `relation`) |
-| `PATCH /mobile/parent/profile` | Change `alt_mobile`, `email`, `occupation`, `qualification`, `address_line`, `city`, `pincode`, `language` (`en`/`ta`). Send only what changes; `null` clears a field. Returns the profile |
+| Call                           | What it does                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/parent/profile`   | My profile: `name`, `mobile`, `alt_mobile`, `email`, `occupation`, `qualification`, `language`, `address_line`, `city`, `pincode`, `on_app`, `last_login_at`, `children[]` (`id`, `full_name`, `class_section`, `relation`, `admission_date`, `years_in_school`) and `co_guardians[]` (the other parent: `name`, `mobile`, `relation`) |
+| `PATCH /mobile/parent/profile` | Change `alt_mobile`, `email`, `occupation`, `qualification`, `address_line`, `city`, `pincode`, `language` (`en`/`ta`). Send only what changes; `null` clears a field. Returns the profile                                                                                                                                             |
 
 - Name, mobile (the login), children and relation are changed only by the school office (`PATCH /admin/guardians/{id}`); sending `name` or `mobile` gives `400 VALIDATION_FAILED`.
 - `language` also changes the app and notification language (`GET /me` shows it).
@@ -572,11 +573,11 @@ Teachers mark the **morning** session in the 1st period and the **afternoon** se
 
 **Teacher, without date or session** (the API uses its own clock in India time; the phone time is never used):
 
-| Call | What it does |
-|---|---|
-| `GET /mobile/teacher/sections/{section_id}/attendance/current` | Roster of the session open now. Outside the windows `open` is false (read-only) |
-| `PUT /mobile/teacher/sections/{section_id}/attendance/current` | `{ "items": [{ "student_id", "status", "remarks" }] }` with every student |
-| `PATCH /mobile/teacher/sections/{section_id}/attendance/current` | `{ "items": [...] }` with only the students to change |
+| Call                                                             | What it does                                                                    |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `GET /mobile/teacher/sections/{section_id}/attendance/current`   | Roster of the session open now. Outside the windows `open` is false (read-only) |
+| `PUT /mobile/teacher/sections/{section_id}/attendance/current`   | `{ "items": [{ "student_id", "status", "remarks" }] }` with every student       |
+| `PATCH /mobile/teacher/sections/{section_id}/attendance/current` | `{ "items": [...] }` with only the students to change                           |
 
 - Roster fields: `date`, `session`, `open`, `opens_at`, `period_ends_at`, `closes_at` (period end + grace), `grace_minutes`.
 - `400 SESSION_NOT_OPEN` before the period, `400 SESSION_CLOSED` after the grace. Sending `date` or `session` to `/current` gives `400 VALIDATION_FAILED`.
@@ -585,13 +586,14 @@ Teachers mark the **morning** session in the 1st period and the **afternoon** se
 
 **Missed** = not marked when the period plus grace is over (Sundays and holidays never count).
 
-| Call | What it gives |
-|---|---|
-| `GET /admin/attendance/board?date=&session=&status=missed` | Each section has `missed` and `class_teacher_id`; the board has `sections_missed`, `opens_at`, `closes_at`, `grace_minutes`. `status` = `marked`, `not_marked` or `missed` filters the list |
-| `GET /admin/attendance/board?date=&session=` (On Duty) | `on_duty`: students on Sports OD for that date and session, marked or not (`student_id`, `name`, `admission_no`, `section_id`, `section`, `title`, `sport_name`, `session`: null = full day). Each section's `od` is the saved OD count once marked, else the students on OD who will be marked OD. OD counts as present |
-| `GET /admin/attendance/missed?month=2026-11` | Per class teacher: `missed` count and `sessions[]` (`date`, `session`, `section`, `still_not_marked`), most missed first |
+| Call                                                       | What it gives                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /admin/attendance/board?date=&session=&status=missed` | Each section has `missed` and `class_teacher_id`; the board has `sections_missed`, `opens_at`, `closes_at`, `grace_minutes`. `status` = `marked`, `not_marked` or `missed` filters the list                                                                                                                              |
+| `GET /admin/attendance/board?date=&session=` (On Duty)     | `on_duty`: students on Sports OD for that date and session, marked or not (`student_id`, `name`, `admission_no`, `section_id`, `section`, `title`, `sport_name`, `session`: null = full day). Each section's `od` is the saved OD count once marked, else the students on OD who will be marked OD. OD counts as present |
+| `GET /admin/attendance/missed?month=2026-11`               | Per class teacher: `missed` count and `sessions[]` (`date`, `session`, `section`, `still_not_marked`), most missed first                                                                                                                                                                                                 |
 
 Alerts (every minute, once per section and session):
+
 - `ATTENDANCE_REMINDER` to the class teacher and the proxy when the period ends and it is still not marked ("You can still mark it until 10:00").
 - `ATTENDANCE_MISSED` to AO and Admin once the grace is over, listing the sections.
 
@@ -599,31 +601,31 @@ Alerts (every minute, once per section and session):
 
 Class teacher (Staff app). Only the class teacher of the section or student; others get `403 NOT_CLASS_TEACHER`.
 
-| Call | Report |
-|---|---|
-| `GET /mobile/teacher/sections/{id}/attendance/day?date=2026-11-10` | Daily: every student with morning, afternoon, day status and the day counts |
+| Call                                                                | Report                                                                               |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `GET /mobile/teacher/sections/{id}/attendance/day?date=2026-11-10`  | Daily: every student with morning, afternoon, day status and the day counts          |
 | `GET /mobile/teacher/sections/{id}/attendance/report?month=2026-11` | Monthly, class-wise: every student with present, late, half day, absent, leave and % |
-| `GET /mobile/teacher/students/{id}/attendance?month=2026-11` | Student-wise month: each day and the month % |
-| `GET /mobile/teacher/students/{id}/attendance/summary` | Student-wise year: year % and each month's % |
+| `GET /mobile/teacher/students/{id}/attendance?month=2026-11`        | Student-wise month: each day and the month %                                         |
+| `GET /mobile/teacher/students/{id}/attendance/summary`              | Student-wise year: year % and each month's %                                         |
 
 Parent (own child only, else `404 CHILD_NOT_FOUND`).
 
-| Call | Report |
-|---|---|
-| `GET /mobile/parent/children/{id}/attendance/today` | Daily: today's morning, afternoon and day status |
-| `GET /mobile/parent/children/{id}/attendance?month=2026-11` | Monthly: each day and the month % |
-| `GET /mobile/parent/children/{id}/attendance/summary` | Year: year % and each month's % |
+| Call                                                        | Report                                           |
+| ----------------------------------------------------------- | ------------------------------------------------ |
+| `GET /mobile/parent/children/{id}/attendance/today`         | Daily: today's morning, afternoon and day status |
+| `GET /mobile/parent/children/{id}/attendance?month=2026-11` | Monthly: each day and the month %                |
+| `GET /mobile/parent/children/{id}/attendance/summary`       | Year: year % and each month's %                  |
 
 `percent` = (present + late + half of half_day) / marked days × 100, one decimal; `null` when nothing is marked yet. Sundays and holidays are not working days.
 
 ### Admin web: daily attendance and bulk marking (AO, admin)
 
-| Call | What it does |
-|---|---|
-| `GET /admin/staff-attendance/board?date=&page=1&limit=20&search=&status=` | Staff for a date, **a page at a time** (default 20, max 100). `total`, `present`, `late`, `on_leave`, `not_checked_in` count the whole school; `staff` is the page after `search` (name, designation, department) and `status` (`present` includes half day, `not_checked_in` includes absent). Also `page`, `limit`, `filtered_total`, `total_pages`, `has_next` |
-| `PUT /admin/staff-attendance/{userId}` | Correct one person; reason required, saved as manual |
-| `PUT /admin/staff-attendance/bulk` | Mark many staff: `{ "date", "user_ids": [9, 12], "status": "present", "check_in_at": null, "check_out_at": null, "remarks": null }`, or `"all_not_checked_in": true` instead of `user_ids`. **Reason optional**. Staff on approved leave are skipped unless the status is `absent`. Returns `{ marked, skipped: [{ id, name, reason }] }`; `400` on `user_ids` when nobody is chosen, `FUTURE_DATE` |
-| `PUT /admin/attendance/bulk` | Mark many sections for a session: `{ "date", "session": "morning", "section_ids": [3, 4], "status": "present", "remarks": null, "overwrite": false }`; leave out `section_ids` for every section not marked yet. Every student gets the status, students on approved leave stay `leave`, sections already marked are skipped unless `overwrite`. Absent alerts go to parents as usual (today only). Returns `{ marked, students, skipped }`; `HOLIDAY`, `NOT_A_SCHOOL_DAY`, `NOTHING_TO_MARK` |
+| Call                                                                      | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/staff-attendance/board?date=&page=1&limit=20&search=&status=` | Staff for a date, **a page at a time** (default 20, max 100). `total`, `present`, `late`, `on_leave`, `not_checked_in` count the whole school; `staff` is the page after `search` (name, designation, department) and `status` (`present` includes half day, `not_checked_in` includes absent). Also `page`, `limit`, `filtered_total`, `total_pages`, `has_next`                                                                                                                             |
+| `PUT /admin/staff-attendance/{userId}`                                    | Correct one person; reason required, saved as manual                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `PUT /admin/staff-attendance/bulk`                                        | Mark many staff: `{ "date", "user_ids": [9, 12], "status": "present", "check_in_at": null, "check_out_at": null, "remarks": null }`, or `"all_not_checked_in": true` instead of `user_ids`. **Reason optional**. Staff on approved leave are skipped unless the status is `absent`. Returns `{ marked, skipped: [{ id, name, reason }] }`; `400` on `user_ids` when nobody is chosen, `FUTURE_DATE`                                                                                           |
+| `PUT /admin/attendance/bulk`                                              | Mark many sections for a session: `{ "date", "session": "morning", "section_ids": [3, 4], "status": "present", "remarks": null, "overwrite": false }`; leave out `section_ids` for every section not marked yet. Every student gets the status, students on approved leave stay `leave`, sections already marked are skipped unless `overwrite`. Absent alerts go to parents as usual (today only). Returns `{ marked, students, skipped }`; `HOLIDAY`, `NOT_A_SCHOOL_DAY`, `NOTHING_TO_MARK` |
 
 Permission `attendance.manage` (AO, school admin, super admin).
 
@@ -633,18 +635,18 @@ Biometric machines push punches to `POST /integrations/biometric/punches` with h
 
 Crew are staff rows whose user has the `DRIVER` or `ATTENDANT` role. Permission `fleet.view` to read, `fleet.manage` to change. `{id}` is the staff id.
 
-| Call | Use |
-|---|---|
-| `GET /admin/crew` | List. Filters: `role` (`driver`/`attendant`), `duty_status` (`pending`/`approved`/`blocked`), `expiry_state` (`expired`/`due_soon`/`missing`), `vehicle_id`, `unassigned`, `status`. Search: name, mobile, employee no, licence no, badge no. Sort: `name`, `employee_no`, `licence_expiry`, `joining_date`, `created_at` |
-| `GET /admin/crew/insights` | `{ drivers, attendants, approved, pending, blocked, due_soon, unassigned }` |
-| `GET /admin/crew/{id}` | Profile with `checks`, `clear`, `approved_at`/`approved_by`/`approved_until`, `last_reminded_at`/`last_reminded_by`, `documents` |
-| `POST /admin/crew` | `{ role, name, mobile, …, licence_no, licence_type (LMV/HMV/TRANSPORT), licence_issued_on, licence_expiry, badge_no, badge_expiry, medical_fitness_expiry, police_verified_on, police_verification_expiry }`. Licence and badge fields are dropped for attendants. 409 `MOBILE_TAKEN`, `STAFF_EXISTS`, `EMPLOYEE_NO_TAKEN` |
-| `PATCH /admin/crew/{id}` | Same fields plus `status`, `left_on`. Changing any licence, badge, medical or police field clears the approval |
-| `DELETE /admin/crew/{id}` | Removes from staff and takes them off their bus |
-| `POST /admin/crew/{id}/approve` | Approve for duty. 400 `CREW_NOT_CLEAR` (message lists the failing checks), 400 `CREW_INACTIVE` |
-| `POST /admin/crew/{id}/remind` | Push "Renew your documents" to the crew member. 400 `NOTHING_DUE`, 429 `REMINDER_TOO_SOON` (6 hours) |
-| `POST /admin/crew/remind` | `{ staff_ids: [] }` → `{ sent, skipped }` |
-| `POST /admin/crew/{id}/documents`, `…/documents/{documentId}/verify`, `DELETE …/documents/{documentId}` | Same body as staff documents. Types `driving_licence`, `psv_badge`, `medical_fitness`, `police_verification` count for clearance; a new one clears the approval |
+| Call                                                                                                    | Use                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/crew`                                                                                       | List. Filters: `role` (`driver`/`attendant`), `duty_status` (`pending`/`approved`/`blocked`), `expiry_state` (`expired`/`due_soon`/`missing`), `vehicle_id`, `unassigned`, `status`. Search: name, mobile, employee no, licence no, badge no. Sort: `name`, `employee_no`, `licence_expiry`, `joining_date`, `created_at`  |
+| `GET /admin/crew/insights`                                                                              | `{ drivers, attendants, approved, pending, blocked, due_soon, unassigned }`                                                                                                                                                                                                                                                |
+| `GET /admin/crew/{id}`                                                                                  | Profile with `checks`, `clear`, `approved_at`/`approved_by`/`approved_until`, `last_reminded_at`/`last_reminded_by`, `documents`                                                                                                                                                                                           |
+| `POST /admin/crew`                                                                                      | `{ role, name, mobile, …, licence_no, licence_type (LMV/HMV/TRANSPORT), licence_issued_on, licence_expiry, badge_no, badge_expiry, medical_fitness_expiry, police_verified_on, police_verification_expiry }`. Licence and badge fields are dropped for attendants. 409 `MOBILE_TAKEN`, `STAFF_EXISTS`, `EMPLOYEE_NO_TAKEN` |
+| `PATCH /admin/crew/{id}`                                                                                | Same fields plus `status`, `left_on`. Changing any licence, badge, medical or police field clears the approval                                                                                                                                                                                                             |
+| `DELETE /admin/crew/{id}`                                                                               | Removes from staff and takes them off their bus                                                                                                                                                                                                                                                                            |
+| `POST /admin/crew/{id}/approve`                                                                         | Approve for duty. 400 `CREW_NOT_CLEAR` (message lists the failing checks), 400 `CREW_INACTIVE`                                                                                                                                                                                                                             |
+| `POST /admin/crew/{id}/remind`                                                                          | Push "Renew your documents" to the crew member. 400 `NOTHING_DUE`, 429 `REMINDER_TOO_SOON` (6 hours)                                                                                                                                                                                                                       |
+| `POST /admin/crew/remind`                                                                               | `{ staff_ids: [] }` → `{ sent, skipped }`                                                                                                                                                                                                                                                                                  |
+| `POST /admin/crew/{id}/documents`, `…/documents/{documentId}/verify`, `DELETE …/documents/{documentId}` | Same body as staff documents. Types `driving_licence`, `psv_badge`, `medical_fitness`, `police_verification` count for clearance; a new one clears the approval                                                                                                                                                            |
 
 **Checks.** Drivers: driving licence, PSV badge, medical fitness, police verification. Attendants: medical fitness, police verification. A check is clear when its newest document is verified and its date is today or later.
 
@@ -660,15 +662,15 @@ Permission `fleet.view` to read, `fleet.manage` to change.
 
 **Documents and dates.** Nine dated documents: `insurance`, `fitness`, `permit`, `puc`, `rc`, `road_tax`, `speed_governor`, `fire_extinguisher`, `first_aid` (each has a `<kind>_expiry` field on the bus), plus `other`. `expiries` on every bus lists all nine with `days_left` and `state`.
 
-| Call | Use |
-|---|---|
-| `GET /admin/transport/vehicles/{id}/documents` | Newest first; `current` is true for the newest copy of each type, older copies are the renewal history |
-| `POST /admin/transport/vehicles/{id}/documents` | `{ type, file_id, title?, number?, expiry_date }` (upload with `POST /files`, purpose `vehicle_document`). `expiry_date` is required except for `other` and becomes the bus's date, so a renewal updates the alerts and road-worthiness at once. Starts as `pending` |
-| `POST …/documents/{documentId}/verify` | `{ status: "verified" \| "rejected", remarks }` (remarks required to reject) |
-| `DELETE …/documents/{documentId}` | Removes a wrong upload; the bus date stays |
-| `GET /admin/transport/vehicles/insights` | `{ total, not_road_worthy, expired, due_soon, nearly_full, contractor }` for active buses |
-| `GET /admin/transport/vehicles?flag=` | `not_road_worthy`, `expired`, `due_soon`, `nearly_full`, `contractor`; also `vehicle_type` |
-| `POST /admin/transport/vehicles/{id}/allow-today` | `{ reason }`: lets a bus that is not road-worthy run trips until midnight; shows as `allowed_today` on the bus |
+| Call                                              | Use                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/transport/vehicles/{id}/documents`    | Newest first; `current` is true for the newest copy of each type, older copies are the renewal history                                                                                                                                                               |
+| `POST /admin/transport/vehicles/{id}/documents`   | `{ type, file_id, title?, number?, expiry_date }` (upload with `POST /files`, purpose `vehicle_document`). `expiry_date` is required except for `other` and becomes the bus's date, so a renewal updates the alerts and road-worthiness at once. Starts as `pending` |
+| `POST …/documents/{documentId}/verify`            | `{ status: "verified" \| "rejected", remarks }` (remarks required to reject)                                                                                                                                                                                         |
+| `DELETE …/documents/{documentId}`                 | Removes a wrong upload; the bus date stays                                                                                                                                                                                                                           |
+| `GET /admin/transport/vehicles/insights`          | `{ total, not_road_worthy, expired, due_soon, nearly_full, contractor }` for active buses                                                                                                                                                                            |
+| `GET /admin/transport/vehicles?flag=`             | `not_road_worthy`, `expired`, `due_soon`, `nearly_full`, `contractor`; also `vehicle_type`                                                                                                                                                                           |
+| `POST /admin/transport/vehicles/{id}/allow-today` | `{ reason }`: lets a bus that is not road-worthy run trips until midnight; shows as `allowed_today` on the bus                                                                                                                                                       |
 
 **Road-worthy.** A bus is `road_worthy: false` when insurance, fitness or permit has expired; `road_blockers` names them. Trips cannot start on it (403 `VEHICLE_NOT_ROADWORTHY`) unless it is allowed for today. Other documents (PUC, RC, road tax and the rest) raise alerts but do not stop trips. Missing dates do not stop trips.
 
@@ -680,24 +682,26 @@ Permission `fleet.view` to read, `fleet.manage` to change.
 
 Permission `fleet.view` to read, `fleet.manage` to change. A student has one route, a pickup `stop` and optionally a different `drop_stop` on the same route (only with `mode: both`).
 
-| Call | Use |
-|---|---|
-| `PUT /admin/students/{id}/transport` | `{ route_id, stop_id, drop_stop_id?, mode?, start_date? }`. Assigns or moves the student. `drop_stop_id` must be on the same route and only with `mode: both` (field error otherwise); the same stop as `stop_id` is stored as no separate drop stop |
-| `DELETE /admin/students/{id}/transport` | Takes the student off the bus |
-| `GET /admin/students/{id}/transport` | Current assignment with `stop`, `drop_stop`, `monthly_fee`, or `null` |
-| `GET /admin/students/{id}/transport/history` | Assignments, moves and removals, newest first: `{ action, from, to, mode, by, at }` |
-| `POST /admin/transport/routes/{id}/stops/{stopId}/students` | Bulk: `{ student_ids, mode? }` put on this stop for both trips (clears any separate drop stop) |
-| `GET /admin/transport/students` | Paged riders. Filters `route_id`, `stop_id` (pickup or drop), `class_id`, `section_id`, `mode`. Sort `name`, `admission_no`, `class`, `stop`, `created_at` |
-| `GET /admin/transport/routes/{id}/roster` | Route list: stops in order, each with `pickup_students` and `drop_students` (name, admission no, class, mode, guardian name and mobile, `pass_status`), plus `morning_riders`/`evening_riders` for the route and `bus_morning_riders`/`bus_evening_riders` for the whole bus |
+| Call                                                        | Use                                                                                                                                                                                                                                                                          |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PUT /admin/students/{id}/transport`                        | `{ route_id, stop_id, drop_stop_id?, mode?, start_date? }`. Assigns or moves the student. `drop_stop_id` must be on the same route and only with `mode: both` (field error otherwise); the same stop as `stop_id` is stored as no separate drop stop                         |
+| `DELETE /admin/students/{id}/transport`                     | Takes the student off the bus                                                                                                                                                                                                                                                |
+| `GET /admin/students/{id}/transport`                        | Current assignment with `stop`, `drop_stop`, `monthly_fee`, or `null`                                                                                                                                                                                                        |
+| `GET /admin/students/{id}/transport/history`                | Assignments, moves and removals, newest first: `{ action, from, to, mode, by, at }`                                                                                                                                                                                          |
+| `POST /admin/transport/routes/{id}/stops/{stopId}/students` | Bulk: `{ student_ids, mode? }` put on this stop for both trips (clears any separate drop stop)                                                                                                                                                                               |
+| `GET /admin/transport/students`                             | Paged riders. Filters `route_id`, `stop_id` (pickup or drop), `class_id`, `section_id`, `mode`. Sort `name`, `admission_no`, `class`, `stop`, `created_at`                                                                                                                   |
+| `GET /admin/transport/routes/{id}/roster`                   | Route list: stops in order, each with `pickup_students` and `drop_students` (name, admission no, class, mode, guardian name and mobile, `pass_status`), plus `morning_riders`/`evening_riders` for the route and `bus_morning_riders`/`bus_evening_riders` for the whole bus |
 
 **Seats.** Counted per trip across every active route of the bus: morning riders (`both` + `pickup`) and evening riders (`both` + `drop`) must each fit `capacity`. Only active students count. A pickup-only and a drop-only student share one seat. Over capacity returns 409 `BUS_FULL` naming the trip. Giving a route a different bus checks the new bus the same way.
 
 **Notifications** on every assign, move and removal: parents with alerts on get `TRANSPORT_ASSIGNED` (route, pickup and drop with times) or `TRANSPORT_REMOVED`; the driver and attendant of the old and new bus get `BUS_RIDER_CHANGED`. Drop trips use the drop stop for `BUS_APPROACHING`/`BUS_ARRIVED`, the child bus card, boarding and the trip rider list.
+
 ## Routes, stops and timings (admin web, Parent and Driver apps)
 
 **Route timings.** Every route (`GET /admin/transport/routes`, `GET …/routes/{id}`) has `timings`: `leaves_at` (first pickup), `reaches_school_at` (estimated from the last stop's distance to school, never after school starts), `leaves_school_at` and `last_drop_at`, plus `problems` (number of stop time errors). School start and end come from the bell schedule. `GET /admin/transport/routes?flag=` takes `no_bus`, `inactive` or `has_problems`; `GET /admin/transport/routes/insights` gives `{ routes, active, stops, students, no_bus, with_problems }`.
 
 **Stop time checks** on `PUT /admin/transport/routes/{id}/stops` (they block saving):
+
 - Once one stop has a pickup (or drop) time, every stop needs one.
 - Pickup times go up stop by stop, at least 2 minutes apart, and the last pickup is before school starts.
 - Drop times go up from the last stop outwards (the evening order), at least 2 minutes apart, and the first drop is after school ends.
@@ -723,15 +727,16 @@ Errors are `400 VALIDATION_FAILED` with `field` `items.N.pickup_time` or `items.
 
 **Driver rating.** Parents rate their child's bus driver once a month (sending again the same month changes it).
 
-| Call | Use |
-|---|---|
-| `GET /mobile/parent/children/{id}/driver-rating` | Parent app (Module 2): `driver` (name, photo), `vehicle`, `month`, `can_rate` (false when the child does not use the bus or the bus has no driver), `my_rating` (`rating`, `tags`, `comment`, `updated_at`) and `tags` (the chips: code, label, positive) |
-| `PUT /mobile/parent/children/{id}/driver-rating` | `{ "rating": 1-5, "tags"?: ["safe_driving", "on_time"], "comment"? }`. For 1 or 2 stars pick a complaint chip (`rash_driving`, `late`, `rude`, `uses_phone`) or write a comment, else 400 `VALIDATION_FAILED` on `comment`. 400 `NOT_ON_BUS`, `NO_DRIVER`. A new 1 or 2 star rating sends `DRIVER_LOW_RATING` (in-app) to admins and the transport in-charge |
-| `GET /admin/transport/driver-ratings/summary` | Each driver of an active bus (and anyone rated): `average`, `count`, `month_average`, `month_count`, `low_count`, `distribution` (1 to 5 star counts) and `top_tags`. Lowest average first. Permission `fleet.view` |
-| `GET /admin/transport/driver-ratings?driver_user_id&vehicle_id&rating&low=true&from&to&search&sort` | The ratings with driver, bus, student, parent, chips and comment. search: driver, parent or student name, or comment. sort: `updated_at` (default), `created_at`, `rating` |
-| `GET /admin/transport/driver-ratings/insights` | `average`, `count`, `month_count`, `month_low`, `drivers_rated` |
+| Call                                                                                                | Use                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /mobile/parent/children/{id}/driver-rating`                                                    | Parent app (Module 2): `driver` (name, photo), `vehicle`, `month`, `can_rate` (false when the child does not use the bus or the bus has no driver), `my_rating` (`rating`, `tags`, `comment`, `updated_at`) and `tags` (the chips: code, label, positive)                                                                                                    |
+| `PUT /mobile/parent/children/{id}/driver-rating`                                                    | `{ "rating": 1-5, "tags"?: ["safe_driving", "on_time"], "comment"? }`. For 1 or 2 stars pick a complaint chip (`rash_driving`, `late`, `rude`, `uses_phone`) or write a comment, else 400 `VALIDATION_FAILED` on `comment`. 400 `NOT_ON_BUS`, `NO_DRIVER`. A new 1 or 2 star rating sends `DRIVER_LOW_RATING` (in-app) to admins and the transport in-charge |
+| `GET /admin/transport/driver-ratings/summary`                                                       | Each driver of an active bus (and anyone rated): `average`, `count`, `month_average`, `month_count`, `low_count`, `distribution` (1 to 5 star counts) and `top_tags`. Lowest average first. Permission `fleet.view`                                                                                                                                          |
+| `GET /admin/transport/driver-ratings?driver_user_id&vehicle_id&rating&low=true&from&to&search&sort` | The ratings with driver, bus, student, parent, chips and comment. search: driver, parent or student name, or comment. sort: `updated_at` (default), `created_at`, `rating`                                                                                                                                                                                   |
+| `GET /admin/transport/driver-ratings/insights`                                                      | `average`, `count`, `month_count`, `month_low`, `drivers_rated`                                                                                                                                                                                                                                                                                              |
 
 **Bus pass (digital).** Every student with a bus stop gets one pass a year (`pass_no` like `TZMS-BP-2026-0042`, `valid_from` = year start, `valid_until` = the settings date or the year end). State:
+
 - `awaiting_payment` until the first bus fee invoice of the year is fully paid (free stops are active at once);
 - `active`;
 - `on_hold` when the office restricts it. A hold made while a bus fee is pending (`hold_kind: fee`) lifts by itself once nothing is past the grace days; an office hold (`hold_kind: office`) stays until the office activates it;
@@ -739,16 +744,16 @@ Errors are `400 VALIDATION_FAILED` with `field` `items.N.pickup_time` or `items.
 
 The bus fee is the transport line on the fee plan installment invoices (the cycle is the installments). A bus fee counts as paid when its invoice is fully paid. `fee.standing`: `clear`, `due` (unpaid, within the grace days) or `past_grace` (the fee pending list). A job every 10 minutes issues passes that became paid (`BUS_PASS_ISSUED`), sends one reminder the day the grace ends (`BUS_FEE_REMINDER`) and reactivates paid fee holds (`BUS_PASS_ACTIVE`).
 
-| Call | Use |
-|---|---|
-| `GET /admin/transport/bus-passes?search&state&fee&route_id` | Passes with `student`, `route`, `pickup`, `drop`, `bus` (of today), `fee { standing, oldest_due, grace_ends, pending_amount }`. `fee=past_grace` is the fee pending list |
-| `GET /admin/transport/bus-passes/insights` | `total`, `active`, `awaiting_payment`, `on_hold`, `fee_due`, `fee_past_grace`, `expired` |
-| `GET` / `PUT /admin/transport/bus-passes/settings` | `{ grace_days (0-90), valid_until? }` (`null` = end of year) |
+| Call                                                                                                | Use                                                                                                                                                                                |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/transport/bus-passes?search&state&fee&route_id`                                         | Passes with `student`, `route`, `pickup`, `drop`, `bus` (of today), `fee { standing, oldest_due, grace_ends, pending_amount }`. `fee=past_grace` is the fee pending list           |
+| `GET /admin/transport/bus-passes/insights`                                                          | `total`, `active`, `awaiting_payment`, `on_hold`, `fee_due`, `fee_past_grace`, `expired`                                                                                           |
+| `GET` / `PUT /admin/transport/bus-passes/settings`                                                  | `{ grace_days (0-90), valid_until? }` (`null` = end of year)                                                                                                                       |
 | `POST /admin/transport/bus-passes/restrict` `{ student_ids, note? }` / `activate` `{ student_ids }` | One or many. Parents get `BUS_PASS_HELD` ("The bus pass for Kavin is on hold as the bus fee is pending. Please pay in the app or contact the school office.") or `BUS_PASS_ACTIVE` |
-| `GET` / `PATCH /admin/transport/bus-passes/{studentId}` `{ valid_until }` | One pass (print card); change its end date |
-| `POST /admin/transport/bus-passes/check-payments` | Run the 10-minute job now |
-| `GET /mobile/parent/children/{id}/bus-pass` | Parent app (Module 2): the digital pass with `school`, `message` and `qr` (the signed ID card QR, only while active); `null` when the child does not use the bus |
-| `GET /mobile/driver/passes-on-hold` | Driver app (Module 3): children on my bus today whose pass is on hold, with `label` ("Pass on hold – fee pending, contact office"). No amounts. Still take the child |
+| `GET` / `PATCH /admin/transport/bus-passes/{studentId}` `{ valid_until }`                           | One pass (print card); change its end date                                                                                                                                         |
+| `POST /admin/transport/bus-passes/check-payments`                                                   | Run the 10-minute job now                                                                                                                                                          |
+| `GET /mobile/parent/children/{id}/bus-pass`                                                         | Parent app (Module 2): the digital pass with `school`, `message` and `qr` (the signed ID card QR, only while active); `null` when the child does not use the bus                   |
+| `GET /mobile/driver/passes-on-hold`                                                                 | Driver app (Module 3): children on my bus today whose pass is on hold, with `label` ("Pass on hold – fee pending, contact office"). No amounts. Still take the child               |
 
 Crew lists (duty, students, roster, trip checklist) also have `pass_label` (null when active).
 
@@ -767,40 +772,52 @@ Crew lists (duty, students, roster, trip checklist) also have `pass_label` (null
 ## Live bus
 
 ### Driver app (Driver and Attendant)
-| Call | Screen |
-|---|---|
-| `GET /mobile/driver/trips/today` | Home: my bus, `active_trip` (the trip running now) and each route with today's trips. Show "Start morning pickup" / "Start evening drop" when `active_trip` is null |
-| `POST /mobile/driver/trips` | `{ "route_id": 1, "kind": "pickup" }` starts the trip. Parents of the route get "Bus has started". 409 `TRIP_ALREADY_ACTIVE`, 400 `NO_TRACKER`, 403 `CREW_NOT_APPROVED` when the bus driver or attendant is not cleared for duty (show the message: renew documents at the transport office) |
-| `GET /mobile/driver/trips/{id}` | Trip screen: `stop_list` in travel order with `status` and `eta_seconds`, `school` (end of a pickup), `riders` (with `boarded`, `alighted`), `not_boarded` and `boardings` (newest first) |
-| `POST /mobile/driver/trips/{id}/positions` | Phone GPS fallback every 5–10 s: `{ "lat", "lng", "speed", "heading" }`. Used only when the bus tracker is silent for 60 s |
-| `POST /mobile/driver/trips/{id}/end` | End by hand. A pickup also ends by itself inside the school gate; a drop after the last stop. The response also has `not_alighted` (boarded but never marked off) |
-| `POST /mobile/driver/trips/{id}/boardings` | Scan or tap: `{ "action": "boarded", "qr_token": "TZS1.12.1.…" }` after scanning the ID card, or `{ "action": "alighted", "student_id": 12 }` from the `riders` list. Returns the row with `method` (`qr`/`manual`), `stop` (null at the school gate), `occurred_at` and `already_recorded` (a double scan is safe and sends nothing). Parents get **{child} boarded the bus** / **got off the bus**. 409 `NOT_ON_THIS_ROUTE`, `NOT_ON_THIS_TRIP`, `NOT_BOARDED`, `QR_REPLACED` (old card), `TRIP_ENDED`; 400 `QR_INVALID` |
-| `GET /mobile/driver/trips/{id}/checklist` | **Boarding checklist** (Module 3): `trip`, `summary` `{ total, away, waiting, on_bus, off_bus, not_boarded, not_alighted }` and `students` in stop order, each with `stop`, `status` (`waiting`, `on_bus`, `off_bus`, `away` = on leave or absent today), `flag` (after the trip ends: `not_boarded` or `not_alighted`, else null), and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Each student also has `photo_url`, `parents` (name, relation, mobile, primary first; call them when the child is still `waiting`) and `pass_status` (`on_hold`: show "Bus pass on hold – contact office", never leave the child behind). Lighter than the trip screen, so poll it freely. Works for past trips too. In this phase the attendant marks by tapping (`POST …/boardings` with `student_id`) |
-| `DELETE /mobile/driver/trips/{id}/boardings/{boardingId}` | Undo a wrong tap while the trip runs (`boardingId` = the mark's `id` from the checklist). Returns the updated checklist; parents are not told. Undo "got off" before "boarded" (409 `UNDO_ALIGHTED_FIRST`); 404 `BOARDING_NOT_FOUND`; 409 `TRIP_ENDED` |
-| `GET /mobile/driver/trips/history?from=&to=&page=&limit=` | Past trips of my bus, newest first, each with the checklist `summary`. `from`/`to` default to the last 30 days. Open one with `…/{id}/checklist` |
-| `POST /mobile/driver/sos` | SOS button: `{ "trip_id"?, "lat"?, "lng"?, "note"? }` (all optional, and no trip needs to be running; the running trip and the bus position are used). School admins, the transport in-charge and every teacher get a push and an SMS with the bus, route, place, time and number to call. A press by me or the other crew member of my bus within 2 minutes returns the same alert with `already_raised: true` |
-| `GET /mobile/driver/sos/active` | My bus's SOS that is still `open` (waiting) or `acknowledged` (the office has seen it: `acknowledged_by`), else `null`. Poll every 10 s while one is open |
-| `POST /mobile/driver/sos/{id}/location` | `{ "lat", "lng" }` every 15 s while the SOS is open so the office map moves. 409 `SOS_CLOSED` once resolved, 403 `NOT_YOUR_SOS` |
-| `POST /mobile/driver/sos/{id}/cancel` | False alarm: `{ "note"? }`. Closes it as resolved with `data.cancelled: true`; the office and teachers get `SOS_CANCELLED` |
-| `GET /mobile/driver/vehicle/maintenance` | My bus upkeep (Module 5): `current_km`, `services` (most urgent first, same shape as the admin rules), `last_service`, `open_problems`, `today_check`, `check_required`, `off_road` |
-| `GET` / `POST /mobile/driver/vehicle/fuel` | My fuel entries, or add one `{ "litres", "amount", "odometer_km", "bill_file_id" (required, from `POST /files`), "filled_on"? (today), "is_full"?, "payment_mode"? (`driver_paid` when I paid myself), "station_id"? or "station"? }`. Saved as `pending` until the office approves it; I get `FUEL_ENTRY_REVIEWED`. Same checks as the office (409 `FUEL_DUPLICATE`) |
-| `POST /mobile/driver/vehicle/problems` | Report a problem `{ "title", "description"?, "category"?, "photo_file_id"?, "odometer_km"? }`: opens a repair ticket and the office gets `BUS_PROBLEM_REPORTED` |
-| `GET` / `POST /mobile/driver/pre-trip-check` | Daily check before the first trip (Module 4): GET gives the 10 `items` (`item`, `label`, `critical`), `required` and `today`. POST `{ "items": [{ "item": "brakes", "ok": true, "note"? }], "odometer_km"?, "photo_file_id"? }` (a missing item counts as not OK). Any not OK item opens a repair ticket; a critical one (tyres, brakes, doors) blocks trips (`BUS_CHECK_FAILED`) until the office clears it, and checking again before that gives 409 `CHECK_BLOCKED` |
-| `GET /mobile/driver/profile` | My profile (Module 5): `me` (details, photo, licence and badge, `checks` for licence, badge, medical and police with expiry and document status, `duty_status`, `allowed_today`, `documents`), `duty_message` (one line to show when not cleared, else null) and `vehicle` (my bus: registration, type, fuel, year, chassis and engine number, owner, seats and students, the 9 document expiries, `road_worthy`, routes, driver and attendant). 404 `CREW_NOT_FOUND` when the office has not added me |
-| `PATCH /mobile/driver/profile` | Change my own `email`, `language`, `address`, `emergency_contact_name`, `emergency_contact_mobile` and `photo_file_id` (upload with `POST /files`, purpose `profile_photo`); null clears. Name, mobile, licence, badge, medical and police details stay with the transport office (any other field gives 400) |
+
+| Call                                                                                                | Screen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/driver/trips/today`                                                                    | Home: my bus, `active_trip` (the trip running now) and each route with today's trips. Show "Start morning pickup" / "Start evening drop" when `active_trip` is null                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `POST /mobile/driver/trips`                                                                         | `{ "route_id": 1, "kind": "pickup" }` starts the trip. Parents of the route get "Bus has started". 409 `TRIP_ALREADY_ACTIVE`, 400 `NO_TRACKER`, 403 `CREW_NOT_APPROVED` when the bus driver or attendant is not cleared for duty (show the message: renew documents at the transport office)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `GET /mobile/driver/trips/{id}`                                                                     | Trip screen: `stop_list` in travel order with `status` and `eta_seconds`, `school` (end of a pickup), `riders` (with `boarded`, `alighted`), `not_boarded` and `boardings` (newest first)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `POST /mobile/driver/trips/{id}/positions`                                                          | Phone GPS fallback every 5–10 s: `{ "lat", "lng", "speed", "heading" }`. Used only when the bus tracker is silent for 60 s                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `POST /mobile/driver/trips/{id}/end`                                                                | End by hand. A pickup also ends by itself inside the school gate; a drop after the last stop. The response also has `not_alighted` (boarded but never marked off)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `POST /mobile/driver/trips/{id}/boardings`                                                          | Scan or tap: `{ "action": "boarded", "qr_token": "TZS1.12.1.…" }` after scanning the ID card, or `{ "action": "alighted", "student_id": 12 }` from the `riders` list. Returns the row with `method` (`qr`/`manual`), `stop` (null at the school gate), `occurred_at` and `already_recorded` (a double scan is safe and sends nothing). Parents get **{child} boarded the bus** / **got off the bus**. 409 `NOT_ON_THIS_ROUTE`, `NOT_ON_THIS_TRIP`, `NOT_BOARDED`, `QR_REPLACED` (old card), `TRIP_ENDED`; 400 `QR_INVALID`                                                                                                                                                                                                                                                                                            |
+| `GET /mobile/driver/trips/{id}/checklist`                                                           | **Boarding checklist** (Module 3): `trip`, `summary` `{ total, away, waiting, on_bus, off_bus, not_boarded, not_alighted }` and `students` in stop order, each with `stop`, `status` (`waiting`, `on_bus`, `off_bus`, `away` = on leave or absent today), `flag` (after the trip ends: `not_boarded` or `not_alighted`, else null), and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Each student also has `photo_url`, `parents` (name, relation, mobile, primary first; call them when the child is still `waiting`) and `pass_status` (`on_hold`: show "Bus pass on hold – contact office", never leave the child behind). Lighter than the trip screen, so poll it freely. Works for past trips too. In this phase the attendant marks by tapping (`POST …/boardings` with `student_id`) |
+| `DELETE /mobile/driver/trips/{id}/boardings/{boardingId}`                                           | Undo a wrong tap while the trip runs (`boardingId` = the mark's `id` from the checklist). Returns the updated checklist; parents are not told. Undo "got off" before "boarded" (409 `UNDO_ALIGHTED_FIRST`); 404 `BOARDING_NOT_FOUND`; 409 `TRIP_ENDED`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `GET /mobile/driver/trips/history?from=&to=&page=&limit=`                                           | Past trips of my bus, newest first, each with the checklist `summary`. `from`/`to` default to the last 30 days. Open one with `…/{id}/checklist`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `POST /mobile/driver/sos`                                                                           | SOS button: `{ "trip_id"?, "lat"?, "lng"?, "note"? }` (all optional, and no trip needs to be running; the running trip and the bus position are used). School admins, the transport in-charge and every teacher get a push and an SMS with the bus, route, place, time and number to call. A press by me or the other crew member of my bus within 2 minutes returns the same alert with `already_raised: true`                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `GET /mobile/driver/sos/active`                                                                     | My bus's SOS that is still `open` (waiting) or `acknowledged` (the office has seen it: `acknowledged_by`), else `null`. Poll every 10 s while one is open                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `POST /mobile/driver/sos/{id}/location`                                                             | `{ "lat", "lng" }` every 15 s while the SOS is open so the office map moves. 409 `SOS_CLOSED` once resolved, 403 `NOT_YOUR_SOS`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `POST /mobile/driver/sos/{id}/cancel`                                                               | False alarm: `{ "note"? }`. Closes it as resolved with `data.cancelled: true`; the office and teachers get `SOS_CANCELLED`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `GET /mobile/teacher/gate/today`                                                                    | **Gate** (Staff Module 11, role Gate in-charge): home board (same as the admin board)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `POST /mobile/teacher/gate/check`                                                                   | `{ qr }` or `{ code }` or `{ number }` → `ok` (green/red), `kind` pass or visit, `verdict`, `message`, `pass` or `visit`. Changes nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `GET /mobile/teacher/gate/students?search=`                                                         | Manual check: find the student; registered people with photos and today's passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `POST /mobile/teacher/gate/passes/{id}/release`                                                     | `{ method: qr\|code\|manual, photo_file_id?, id_proof_kind?, id_proof_last4? }` (manual needs all three)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `POST /mobile/teacher/gate/emergency` · `GET .../passes/{id}` · `POST .../passes/{id}/consent-code` | Emergency without a pass; poll the pass until approved; enter the parent's code `{ code }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `POST /mobile/teacher/gate/visitors` · `GET .../visitors` · `POST .../visitors/{id}/in` · `/out`    | Walk-in `{ name, mobile, purpose, host_user_id?, student_id?, company?, people_count?, vehicle_no?, photo_file_id, id_proof_kind?, id_proof_last4? }`; today's visitors; in/out `{ method }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `GET /mobile/teacher/gate/approvals` · `POST .../passes/{id}/decision` · `POST .../passes`          | Class teacher: passes and emergencies of my class to decide; create one for a parent who phoned                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `GET/POST /mobile/parent/children/{id}/gate-passes` · `POST .../{passId}/cancel`                    | **Parent** (Module 2): my child's passes (approved ones carry `qr_token`, `code`, `pass_no`: show the QR big, the code and number under it); ask `{ pass_date, from_time, until_time?, reason, pickup }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET/POST /mobile/parent/children/{id}/pickups` · `PATCH/DELETE .../{pickupId}`                     | People I allow to pick up my child (photo, relation, mobile, `valid_until`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `GET /mobile/parent/gate-consents` · `POST .../{passId}/decision`                                   | Someone not registered is at the gate today: `{ approve }`; after agreeing show `code` to read out                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET /mobile/driver/vehicle/maintenance`                                                            | My bus upkeep (Module 5): `current_km`, `services` (most urgent first, same shape as the admin rules), `last_service`, `open_problems`, `today_check`, `check_required`, `off_road`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET` / `POST /mobile/driver/vehicle/fuel`                                                          | My fuel entries, or add one `{ "litres", "amount", "odometer_km", "bill_file_id" (required, from `POST /files`), "filled_on"? (today), "is_full"?, "payment_mode"? (`driver_paid` when I paid myself), "station_id"? or "station"? }`. Saved as `pending` until the office approves it; I get `FUEL_ENTRY_REVIEWED`. Same checks as the office (409 `FUEL_DUPLICATE`)                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `POST /mobile/driver/vehicle/problems`                                                              | Report a problem `{ "title", "description"?, "category"?, "photo_file_id"?, "odometer_km"? }`: opens a repair ticket and the office gets `BUS_PROBLEM_REPORTED`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `GET` / `POST /mobile/driver/pre-trip-check`                                                        | Daily check before the first trip (Module 4): GET gives the 10 `items` (`item`, `label`, `critical`), `required` and `today`. POST `{ "items": [{ "item": "brakes", "ok": true, "note"? }], "odometer_km"?, "photo_file_id"? }` (a missing item counts as not OK). Any not OK item opens a repair ticket; a critical one (tyres, brakes, doors) blocks trips (`BUS_CHECK_FAILED`) until the office clears it, and checking again before that gives 409 `CHECK_BLOCKED`                                                                                                                                                                                                                                                                                                                                                |
+| `GET /mobile/driver/profile`                                                                        | My profile (Module 5): `me` (details, photo, licence and badge, `checks` for licence, badge, medical and police with expiry and document status, `duty_status`, `allowed_today`, `documents`), `duty_message` (one line to show when not cleared, else null) and `vehicle` (my bus: registration, type, fuel, year, chassis and engine number, owner, seats and students, the 9 document expiries, `road_worthy`, routes, driver and attendant). 404 `CREW_NOT_FOUND` when the office has not added me                                                                                                                                                                                                                                                                                                                |
+| `PATCH /mobile/driver/profile`                                                                      | Change my own `email`, `language`, `address`, `emergency_contact_name`, `emergency_contact_mobile` and `photo_file_id` (upload with `POST /files`, purpose `profile_photo`); null clears. Name, mobile, licence, badge, medical and police details stay with the transport office (any other field gives 400)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 The Driver app Swagger (`/api/docs`, "Mobile · Driver App") is split into modules: 1 Home, My Bus & Duty · 2 Trips & Live Tracking · 3 Student Boarding · 4 Safety & SOS · 5 My Profile & Vehicle.
 
 ### Parent app
+
 `GET /mobile/parent/children/{id}/bus` returns `status` (`no_trip`, `on_the_way`, `approaching`, `at_stop`, `passed`, `trip_ended`), a ready `headline` ("Bus is 4 min away from Thirumangalam metro"), the child's `stop`, `eta_seconds`, `position` (live, or the bus's last known position with `position_stale`), `trip` and `boarding` (the child's latest scan on that trip: `action`, `method`, `stop`, `occurred_at`; null before the first scan). It is `null` when the child does not use the bus.
 
 **v2 with the stop timeline.** `GET /api/v2/mobile/parent/children/{id}/bus` is the same call with the same access rules; **v1 stays unchanged** and keeps working. v2 returns every v1 field plus:
 
-| Field | Meaning |
-|---|---|
-| `boarding_status` | `not_yet`, `boarded` or `alighted` on today's trip |
-| `last_position_at` | Time of the bus's last position, or `null` |
-| `timeline` | `{ source, trip_id, kind, trip_date, child_stop_id, stops }`, or `null` when the route has no stops or no trip is planned in the next 14 days |
+| Field              | Meaning                                                                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `boarding_status`  | `not_yet`, `boarded` or `alighted` on today's trip                                                                                            |
+| `last_position_at` | Time of the bus's last position, or `null`                                                                                                    |
+| `timeline`         | `{ source, trip_id, kind, trip_date, child_stop_id, stops }`, or `null` when the route has no stops or no trip is planned in the next 14 days |
 
 `timeline.source` is `live` while a trip runs (`trip_id` is that trip) and `scheduled` when none is running: then it is the next planned trip for the child's route and mode (today's pickup or drop if it has not run and its time has not passed, otherwise the next working day), `trip_id` is `null` and every stop is `pending`. Each item of `stops`, in travel order: `stop_id`, `name`, `sequence`, `planned_time` ("07:25"), `planned_at`, `status` (`pending`, `approaching`, `arrived`, `departed`, `skipped`), `eta_seconds` and `eta_at` (upcoming stops only, counted from the last bus position), `arrived_at` and `departed_at` (past stops only), `is_child_stop`, and `minutes_late` (minutes behind `planned_time`, negative when early: from the arrival for past stops, from the ETA for upcoming ones; `null` when unknown or skipped).
 
@@ -814,17 +831,18 @@ At the same moment the parents of each child who was expected on that trip (not 
 
 **Boarding history.**
 
-| Call | Use |
-|---|---|
+| Call                                                                  | Use                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /mobile/parent/children/{id}/bus-history?from=&to=&page=&limit=` | The child's trips, newest first: `trip_id`, `trip_date`, `kind`, `trip_status`, `route`, `status` (`waiting`, `on_bus`, `off_bus`, `away`), `flag` (`not_boarded` / `not_alighted` after the trip ends) and `boarded` / `alighted` marks `{ id, at, method, stop, recorded_by }`. Last 30 days by default |
-| `GET /mobile/teacher/sections/{id}/bus-boarding?date=` | Class teacher: each bus student of the class with that day's pickup and drop trips (same fields as above). `date` defaults to today. 403 `NOT_CLASS_TEACHER` for other sections |
-| `GET /mobile/parent/children/{id}/transport` | The transport card also has `today`: the trips that have started today, morning first, with the same fields as bus-history ("Boarded at 07:02, Kilpauk"). Empty before the first trip starts |
-| `GET /admin/transport/trips/{id}/checklist` | Office: the same checklist the attendant sees (permission `fleet.view`). 404 `TRIP_NOT_FOUND` |
-| `GET /admin/students/{id}/bus-history?from=&to=&page=&limit=` | Office: the student's trips, same fields as the parent bus-history. 404 `STUDENT_NOT_FOUND` |
+| `GET /mobile/teacher/sections/{id}/bus-boarding?date=`                | Class teacher: each bus student of the class with that day's pickup and drop trips (same fields as above). `date` defaults to today. 403 `NOT_CLASS_TEACHER` for other sections                                                                                                                           |
+| `GET /mobile/parent/children/{id}/transport`                          | The transport card also has `today`: the trips that have started today, morning first, with the same fields as bus-history ("Boarded at 07:02, Kilpauk"). Empty before the first trip starts                                                                                                              |
+| `GET /admin/transport/trips/{id}/checklist`                           | Office: the same checklist the attendant sees (permission `fleet.view`). 404 `TRIP_NOT_FOUND`                                                                                                                                                                                                             |
+| `GET /admin/students/{id}/bus-history?from=&to=&page=&limit=`         | Office: the student's trips, same fields as the parent bus-history. 404 `STUDENT_NOT_FOUND`                                                                                                                                                                                                               |
 
 Bus-history covers trips on the child's current route plus any trip where the child was marked. After a move to another route, trips on the old route where the child was not marked do not show.
 
 ### Live updates (socket.io)
+
 Connect to the namespace `/live` on the API host with `{ auth: { token: "<access_token>" } }`, then:
 
 - `emit('trip.subscribe', { trip_id })` → ack `{ ok: true }`. A parent can follow only a trip their child rides; a driver only their own bus; admins any trip of their school. Otherwise `{ ok: false, error: "FORBIDDEN" }`.
@@ -837,52 +855,80 @@ Connect to the namespace `/live` on the API host with `{ auth: { token: "<access
 **SOS screen in the driver app.** Show the SOS button on the trip screen while a trip runs, and also on the home screen. Trigger it with a 3-second long press or a confirm dialog, never a single tap. Send the phone's `lat`/`lng` with the press. If the request fails, retry until it gets through; a repeat within 2 minutes is safe. Then show a full-screen status: "Sent, waiting for the office" (`open`) or "{acknowledged_by.name} has seen it" (`acknowledged`). Keep sending the location every 15 s, offer **Cancel (false alarm)**, and close the screen when `sos/active` returns `null`. The crew also get the push `SOS_ACKNOWLEDGED` / `SOS_RESOLVED` (category `alert`, `alert_id` in data) and the `/comm` socket event `sos.updated` with the alert. Teachers receive `SOS_ALERT`, `SOS_RESOLVED` and `SOS_CANCELLED` as read-only alert cards in the staff app.
 
 ### Alerts centre (admin web)
+
 `GET /admin/fleet/alerts` lists SOS and safety alerts, newest first: search (message, bus, driver), `kind` (`sos`, `overspeed`, `harsh_braking`, `idle`, `route_deviation`, `vehicle_fault`, `other`), `status` (`open`, `acknowledged`, `resolved`), `severity`, `active=true` (not resolved), `vehicle_id`, `trip_id`, `from`, `to`. Each row has `kind_label`, `message`, `vehicle`, `route`, `trip`, `raised_by` (with `mobile` to call), `position`, `data` and who acknowledged or resolved it. `GET /admin/fleet/alerts/insights` returns `open`, `sos_active`, `high_active`, `acknowledged`, `resolved_today`, `raised_today` and `active_by_kind`. `GET /admin/fleet/alerts/{id}` returns one alert. `POST .../{id}/acknowledge` (safe to repeat) and `POST .../{id}/resolve` `{ "resolution_note": "Called the driver, all safe" }` (at least 3 characters) need `fleet.manage`; reading needs `fleet.view`. Acknowledging or resolving an SOS tells the driver and attendant (push and `sos.updated`), and resolving also tells the teachers. Statuses read as Raised (`open`), Acknowledged and Resolved; a crew cancel has `data.cancelled: true`.
 
 Safety alerts come from the Telematics service as `alert.raised` webhook events (overspeed, harsh braking, idling, off route). The bus is found from `device_id` (and the trip, when given). Retries of the same event are stored once. The office gets a push; `high` severity also an SMS when the push does not reach the phone.
 
 ### Maintenance, fuel, vehicle health and trip replay (admin web)
+
 Read with `fleet.view`, change with `fleet.manage`. `{id}` of a bus is the school bus (`/admin/transport/vehicles`).
 
-| Call | Use |
-|---|---|
-| `GET /admin/fleet/buses/{id}/health` | Health card: `bus`, `has_tracker`, `open_tickets` and `health` (null without a tracker): `status` `good`/`warning`/`critical`/`unknown`, `reasons`, `battery_v`, `coolant_c`, `rpm`, `fuel_pct`, `odometer_km`, `engine_load_pct`, `reading_at` and `faults` `[{ code, description, severity, first_seen_at }]` |
-| `GET /admin/fleet/buses/{id}/obd?from&to&page&limit` | OBD log, newest first. 400 `NO_TRACKER` |
-| `GET /admin/fleet/maintenance` | **Service history** (planned services and repairs): search, `status` (`open`, `in_progress`, `done`), `source` (`obd`, `manual`, `driver`), `kind` (`service`, `repair`), `category`, `off_road=true`, `vehicle_id`; sort `opened_at`, `closed_at`, `cost`, `status`. Each ticket also has `kind`, `category`, `schedule_id`, `parts_cost`, `labour_cost`, `garage`, `bill_file`, `photo_file`, `off_road`, `warranty_months`, `warranty_km`, `reported_by` and `warranty_claim` `{ ticket_id, until, until_km }` (the same part was fitted earlier and is still under warranty: claim it). `GET .../insights?vehicle_id=` returns `total`, `open`, `in_progress`, `done`, `obd_open`, `off_road`, `cost_this_month` |
-| `POST /admin/fleet/maintenance` | `{ "vehicle_id": 1, "title": "Front tyre worn", "kind"? (`repair` default, `service`), "category"? (`engine_oil`, `tyres`, `brakes`, `battery`, `ac`, `body`, `electrical`, `general_service`, `other`), "schedule_id"?, "description"?, "fault_code"? ("P0301"), "severity"?, "odometer_km"?, "vendor_id"? (saved garage) or "vendor"?, "parts_cost"?, "labour_cost"? (cost = parts + labour) or "cost"?, "bill_file_id"?, "photo_file_id"?, "off_road"? (the bus cannot start trips until the ticket is done), "warranty_months"?, "warranty_km"?, "notes"? }` |
-| `PATCH /admin/fleet/maintenance/{id}` | Any field above (not the bus) and `status`; `done` sets `closed_at`, takes the bus back on the road and resets the service rule of a `service`; leaving `done` clears `closed_at`. Cost and garage changes go to the change history. 409 `MONTH_LOCKED` for a ticket closed in a locked month |
-| `POST /admin/fleet/maintenance/{id}/close` | `{ "cost"?, "parts_cost"?, "labour_cost"?, "vendor_id"?, "vendor"?, "bill_file_id"?, "odometer_km"?, "warranty_months"?, "warranty_km"?, "notes"? }`. Closing a `service` sets its rule's last done to today and this odometer (or the bus's current km). 409 `TICKET_CLOSED` |
-| `GET /admin/fleet/fuel` | Fuel log: `vehicle_id`, `from`, `to`, `status` (`approved`, `pending` = added by a driver, `rejected`), `payment_mode`, `reimbursed`, search (station, bus); sort `filled_on`, `amount`, `litres`, `odometer_km`. Each entry has `price_per_litre`, `km_since_last`, `km_per_litre` (full fills only: km since the previous full fill ÷ litres put in since then, part fills included), `is_full`, `status`, `review_note`, `reviewed_by`, `payment_mode`, `reimbursed_at`, `fuel_station`, `price_warning` (price far from the bus's recent average, else null) and `gps_check` `{ odometer_km, gps_km, status: ok\|mismatch\|unknown }` (full fills: km on the odometer against km the GPS tracker recorded on trips since the last full fill). `GET .../insights?vehicle_id=` adds `pending_approvals` and `driver_paid_pending` |
-| `POST` / `PATCH` / `DELETE /admin/fleet/fuel[/{id}]` | `{ "vehicle_id": 1, "filled_on": "2026-11-03", "litres": 60.5, "amount": 5800, "odometer_km": 48213, "is_full"? (true), "payment_mode"? (`cash`, `upi`, `card`, `fuel_card`, `credit`, `driver_paid`), "station_id"? (saved station) or "station"?, "bill_file_id"? (from `POST /files`), "filled_by"? (user id) }`. PATCH takes `reason`, DELETE `?reason=` (kept in the change history). `filled_on` cannot be in the future, `odometer_km` must sit between the fills before and after it, `litres` cannot be more than the bus tank (field errors). 409 `FUEL_DUPLICATE` (same bus, date and odometer), 409 `MONTH_LOCKED`. A full fill whose km/l is more than the low-mileage percent below the bus's normal sends `BUS_LOW_MILEAGE` |
-| `POST /admin/fleet/fuel/{id}/approve` · `/reject` · `/reimburse` | Approve `{ note? }` or reject `{ note }` an entry a driver added (409 `FUEL_NOT_PENDING`); only approved entries count in km/l, reports and budgets; the driver gets `FUEL_ENTRY_REVIEWED`. Reimburse marks a `driver_paid` entry as paid back (409 `NOT_DRIVER_PAID`, `FUEL_NOT_APPROVED`, `ALREADY_REIMBURSED`) |
-| `GET/POST/PATCH/DELETE /admin/fleet/schedules[/{id}]` | **Service rules.** List (most urgent first; `vehicle_id`, `status` `ok`/`due_soon`/`overdue`, `category`, search): each rule has `every_km`, `every_months`, `last_done_on`, `last_done_km`, `current_km`, `next_due_on`, `next_due_km`, `days_left`, `km_left`, `status` (whichever of km or date comes first; due soon inside the settings window). POST `{ "vehicle_ids": [1, 2], "category": "engine_oil", "title"?, "every_km"?, "every_months"?, "last_done_on"? (today), "last_done_km"? (current km) }` returns one rule per bus; 409 `SCHEDULE_EXISTS`. `POST .../apply-standard` `{ vehicle_ids? }` adds engine oil 10,000 km or 6 months, tyres 15,000 km, brakes 3 months and general service 6 months where missing → `{ added, buses }`. Every day at 07:00 the office gets `SERVICE_DUE_SOON` / `SERVICE_OVERDUE` once per change |
-| `GET/POST/PATCH/DELETE /admin/fleet/expenses[/{id}]` | **Other expenses**: `{ "vehicle_id", "spent_on", "category" (`tyres`, `insurance`, `fitness`, `permit`, `puc`, `road_tax`, `rc`, `speed_governor`, `fire_extinguisher`, `first_aid`, `fine`, `toll`, `parking`, `cleaning`, `other`), "amount", "vendor_id"? or "paid_to"?, "payment_mode"?, "bill_file_id"?, "note"?, "renewed_until"? }`. For a document category `renewed_until` is also saved as the bus's expiry in Vehicle Master. List filters `vehicle_id`, `category`, `payment_mode`, `reimbursed`, `from`, `to`; `/insights`; PATCH takes `reason`, DELETE `?reason=`; `POST .../{id}/reimburse` for driver-paid ones |
-| `GET/POST/PATCH/DELETE /admin/fleet/vendors[/{id}]` | Saved garages and fuel stations `{ kind: garage\|fuel_station\|other, name, phone?, gst_no?, address?, is_active? }` with `total_spent`. 409 `VENDOR_EXISTS` |
-| `GET /admin/fleet/pre-trip-checks` · `/today` · `/{id}` · `POST /{id}/clear` | Drivers' daily checks (`vehicle_id`, `date`, `state` `ok`/`failed`/`blocked`). `/today` lists every active bus with today's check (or null) and `off_road`. Clear `{ note }` lets a bus with a critical failure run (409 `CHECK_NOT_BLOCKED`) |
-| `GET /admin/fleet/vehicles/{id}/summary` · `/log` · `/log/xlsx` · `PATCH /plan` | **Bus log**: summary (`current_km` and `odometer_source` tracker/entries/none, next service, spend and km/l this month, budget, open tickets, off road); log of fuel, services, repairs, expenses and checks newest first (`type`, `from`, `to`, search, `order`), with an Excel download. Plan `{ tank_litres?, monthly_budget? }`; the first time a month's spend goes over the budget the office gets `BUS_BUDGET_EXCEEDED` |
-| `GET /admin/fleet/reports/insights` · `costs` · `mileage` · `due` · `spend?group=category\|vendor` · `idle` · `reimbursements` · `{report}/xlsx` | Cards; cost per bus by month (fuel, service, repair, other, km, cost per km and per seat, budget); km/l by month against the bus normal (`low`); services due and documents expiring in 30 days; spend by category or garage; idle fuel (idle minutes ÷ 60 × `idle_litres_per_hour` × the bus's price per litre); driver-paid amounts not yet paid back. `from`/`to` default to the academic year being viewed |
-| `GET/PATCH /admin/fleet/maintenance-settings` | `due_soon_km` (500), `due_soon_days` (15), `low_mileage_drop_pct` (20), `price_warning_pct` (15), `idle_litres_per_hour` (2.5), `pre_trip_check_required` (false), `locked_until` (last day of an ended month; entries up to it cannot be added, changed or deleted: 409 `MONTH_LOCKED`; null unlocks) |
-| `GET /admin/fleet/changes?entity&entity_id&vehicle_id` | Change history of fuel, expenses, ticket costs and settings: `action` (`update`, `delete`, `approve`, `reject`, `reimburse`, `lock`), `before`, `after`, `summary`, `note`, `changed_by`, `at` |
-| `GET /admin/transport/trips?date&route_id&vehicle_id&status=ended&flag=` | Trip history. Ended trips have `flags` `{ not_boarded, not_alighted }` (the same counts as the checklist; null while running). `flag`: `not_alighted` (a child left marked on the bus), `not_boarded` (a child who was not away and never got on) or `any` |
-| `GET /admin/fleet/trips/{id}/playback?max_points=1500` | Replay: `trip`, `school`, `path` (planned route), `points` `[{ at, lat, lng, speed, heading }]` oldest first (thinned evenly to `max_points`, `sampled` says so), `distance_km`, `duration_seconds`, `max_speed`, `avg_speed`, `stop_arrivals` and `safety_events`. 404 `TRACK_NOT_FOUND` |
+| Call                                                                                                                                             | Use                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /admin/fleet/buses/{id}/health`                                                                                                             | Health card: `bus`, `has_tracker`, `open_tickets` and `health` (null without a tracker): `status` `good`/`warning`/`critical`/`unknown`, `reasons`, `battery_v`, `coolant_c`, `rpm`, `fuel_pct`, `odometer_km`, `engine_load_pct`, `reading_at` and `faults` `[{ code, description, severity, first_seen_at }]`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `GET /admin/fleet/buses/{id}/obd?from&to&page&limit`                                                                                             | OBD log, newest first. 400 `NO_TRACKER`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `GET /admin/fleet/maintenance`                                                                                                                   | **Service history** (planned services and repairs): search, `status` (`open`, `in_progress`, `done`), `source` (`obd`, `manual`, `driver`), `kind` (`service`, `repair`), `category`, `off_road=true`, `vehicle_id`; sort `opened_at`, `closed_at`, `cost`, `status`. Each ticket also has `kind`, `category`, `schedule_id`, `parts_cost`, `labour_cost`, `garage`, `bill_file`, `photo_file`, `off_road`, `warranty_months`, `warranty_km`, `reported_by` and `warranty_claim` `{ ticket_id, until, until_km }` (the same part was fitted earlier and is still under warranty: claim it). `GET .../insights?vehicle_id=` returns `total`, `open`, `in_progress`, `done`, `obd_open`, `off_road`, `cost_this_month`                                                                                                                             |
+| `POST /admin/fleet/maintenance`                                                                                                                  | `{ "vehicle_id": 1, "title": "Front tyre worn", "kind"? (`repair`default,`service`), "category"? (`engine_oil`, `tyres`, `brakes`, `battery`, `ac`, `body`, `electrical`, `general_service`, `other`), "schedule_id"?, "description"?, "fault_code"? ("P0301"), "severity"?, "odometer_km"?, "vendor_id"? (saved garage) or "vendor"?, "parts_cost"?, "labour_cost"? (cost = parts + labour) or "cost"?, "bill_file_id"?, "photo_file_id"?, "off_road"? (the bus cannot start trips until the ticket is done), "warranty_months"?, "warranty_km"?, "notes"? }`                                                                                                                                                                                                                                                                                   |
+| `PATCH /admin/fleet/maintenance/{id}`                                                                                                            | Any field above (not the bus) and `status`; `done` sets `closed_at`, takes the bus back on the road and resets the service rule of a `service`; leaving `done` clears `closed_at`. Cost and garage changes go to the change history. 409 `MONTH_LOCKED` for a ticket closed in a locked month                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `POST /admin/fleet/maintenance/{id}/close`                                                                                                       | `{ "cost"?, "parts_cost"?, "labour_cost"?, "vendor_id"?, "vendor"?, "bill_file_id"?, "odometer_km"?, "warranty_months"?, "warranty_km"?, "notes"? }`. Closing a `service` sets its rule's last done to today and this odometer (or the bus's current km). 409 `TICKET_CLOSED`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET /admin/fleet/fuel`                                                                                                                          | Fuel log: `vehicle_id`, `from`, `to`, `status` (`approved`, `pending` = added by a driver, `rejected`), `payment_mode`, `reimbursed`, search (station, bus); sort `filled_on`, `amount`, `litres`, `odometer_km`. Each entry has `price_per_litre`, `km_since_last`, `km_per_litre` (full fills only: km since the previous full fill ÷ litres put in since then, part fills included), `is_full`, `status`, `review_note`, `reviewed_by`, `payment_mode`, `reimbursed_at`, `fuel_station`, `price_warning` (price far from the bus's recent average, else null) and `gps_check` `{ odometer_km, gps_km, status: ok\|mismatch\|unknown }` (full fills: km on the odometer against km the GPS tracker recorded on trips since the last full fill). `GET .../insights?vehicle_id=` adds `pending_approvals` and `driver_paid_pending`              |
+| `POST` / `PATCH` / `DELETE /admin/fleet/fuel[/{id}]`                                                                                             | `{ "vehicle_id": 1, "filled_on": "2026-11-03", "litres": 60.5, "amount": 5800, "odometer_km": 48213, "is_full"? (true), "payment_mode"? (`cash`, `upi`, `card`, `fuel_card`, `credit`, `driver_paid`), "station_id"? (saved station) or "station"?, "bill_file_id"? (from `POST /files`), "filled_by"? (user id) }`. PATCH takes `reason`, DELETE `?reason=` (kept in the change history). `filled_on` cannot be in the future, `odometer_km` must sit between the fills before and after it, `litres` cannot be more than the bus tank (field errors). 409 `FUEL_DUPLICATE` (same bus, date and odometer), 409 `MONTH_LOCKED`. A full fill whose km/l is more than the low-mileage percent below the bus's normal sends `BUS_LOW_MILEAGE`                                                                                                       |
+| `POST /admin/fleet/fuel/{id}/approve` · `/reject` · `/reimburse`                                                                                 | Approve `{ note? }` or reject `{ note }` an entry a driver added (409 `FUEL_NOT_PENDING`); only approved entries count in km/l, reports and budgets; the driver gets `FUEL_ENTRY_REVIEWED`. Reimburse marks a `driver_paid` entry as paid back (409 `NOT_DRIVER_PAID`, `FUEL_NOT_APPROVED`, `ALREADY_REIMBURSED`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `GET/POST/PATCH/DELETE /admin/fleet/schedules[/{id}]`                                                                                            | **Service rules.** List (most urgent first; `vehicle_id`, `status` `ok`/`due_soon`/`overdue`, `category`, search): each rule has `every_km`, `every_months`, `last_done_on`, `last_done_km`, `current_km`, `next_due_on`, `next_due_km`, `days_left`, `km_left`, `status` (whichever of km or date comes first; due soon inside the settings window). POST `{ "vehicle_ids": [1, 2], "category": "engine_oil", "title"?, "every_km"?, "every_months"?, "last_done_on"? (today), "last_done_km"? (current km) }` returns one rule per bus; 409 `SCHEDULE_EXISTS`. `POST .../apply-standard` `{ vehicle_ids? }` adds engine oil 10,000 km or 6 months, tyres 15,000 km, brakes 3 months and general service 6 months where missing → `{ added, buses }`. Every day at 07:00 the office gets `SERVICE_DUE_SOON` / `SERVICE_OVERDUE` once per change |
+| `GET/POST/PATCH/DELETE /admin/fleet/expenses[/{id}]`                                                                                             | **Other expenses**: `{ "vehicle_id", "spent_on", "category" (`tyres`, `insurance`, `fitness`, `permit`, `puc`, `road_tax`, `rc`, `speed_governor`, `fire_extinguisher`, `first_aid`, `fine`, `toll`, `parking`, `cleaning`, `other`), "amount", "vendor_id"? or "paid_to"?, "payment_mode"?, "bill_file_id"?, "note"?, "renewed_until"? }`. For a document category `renewed_until` is also saved as the bus's expiry in Vehicle Master. List filters `vehicle_id`, `category`, `payment_mode`, `reimbursed`, `from`, `to`; `/insights`; PATCH takes `reason`, DELETE `?reason=`; `POST .../{id}/reimburse` for driver-paid ones                                                                                                                                                                                                                 |
+| `GET/POST/PATCH/DELETE /admin/fleet/vendors[/{id}]`                                                                                              | Saved garages and fuel stations `{ kind: garage\|fuel_station\|other, name, phone?, gst_no?, address?, is_active? }` with `total_spent`. 409 `VENDOR_EXISTS`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `GET /admin/fleet/pre-trip-checks` · `/today` · `/{id}` · `POST /{id}/clear`                                                                     | Drivers' daily checks (`vehicle_id`, `date`, `state` `ok`/`failed`/`blocked`). `/today` lists every active bus with today's check (or null) and `off_road`. Clear `{ note }` lets a bus with a critical failure run (409 `CHECK_NOT_BLOCKED`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `GET /admin/fleet/vehicles/{id}/summary` · `/log` · `/log/xlsx` · `PATCH /plan`                                                                  | **Bus log**: summary (`current_km` and `odometer_source` tracker/entries/none, next service, spend and km/l this month, budget, open tickets, off road); log of fuel, services, repairs, expenses and checks newest first (`type`, `from`, `to`, search, `order`), with an Excel download. Plan `{ tank_litres?, monthly_budget? }`; the first time a month's spend goes over the budget the office gets `BUS_BUDGET_EXCEEDED`                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET /admin/fleet/reports/insights` · `costs` · `mileage` · `due` · `spend?group=category\|vendor` · `idle` · `reimbursements` · `{report}/xlsx` | Cards; cost per bus by month (fuel, service, repair, other, km, cost per km and per seat, budget); km/l by month against the bus normal (`low`); services due and documents expiring in 30 days; spend by category or garage; idle fuel (idle minutes ÷ 60 × `idle_litres_per_hour` × the bus's price per litre); driver-paid amounts not yet paid back. `from`/`to` default to the academic year being viewed                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET/PATCH /admin/fleet/maintenance-settings`                                                                                                    | `due_soon_km` (500), `due_soon_days` (15), `low_mileage_drop_pct` (20), `price_warning_pct` (15), `idle_litres_per_hour` (2.5), `pre_trip_check_required` (false), `locked_until` (last day of an ended month; entries up to it cannot be added, changed or deleted: 409 `MONTH_LOCKED`; null unlocks)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `GET /admin/fleet/changes?entity&entity_id&vehicle_id`                                                                                           | Change history of fuel, expenses, ticket costs and settings: `action` (`update`, `delete`, `approve`, `reject`, `reimburse`, `lock`), `before`, `after`, `summary`, `note`, `changed_by`, `at`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET /admin/transport/trips?date&route_id&vehicle_id&status=ended&flag=`                                                                         | Trip history. Ended trips have `flags` `{ not_boarded, not_alighted }` (the same counts as the checklist; null while running). `flag`: `not_alighted` (a child left marked on the bus), `not_boarded` (a child who was not away and never got on) or `any`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `GET /admin/fleet/trips/{id}/playback?max_points=1500`                                                                                           | Replay: `trip`, `school`, `path` (planned route), `points` `[{ at, lat, lng, speed, heading }]` oldest first (thinned evenly to `max_points`, `sampled` says so), `distance_km`, `duration_seconds`, `max_speed`, `avg_speed`, `stop_arrivals` and `safety_events`. 404 `TRACK_NOT_FOUND`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 **Bus can't run.** Starting a trip is refused with 403 `VEHICLE_OFF_ROAD` while the bus has an open ticket marked off the road, 403 `BUS_CHECK_FAILED` while today's pre-trip check has a critical item (tyres, brakes, doors) not OK and not cleared, and 403 `PRE_TRIP_CHECK_MISSING` when the school requires the check and it is not done. The current km of a bus is the GPS tracker odometer (read every morning at 06:30) or, without one, the highest km typed in fuel, services and checks. The km each trip covered is read from the tracker after the trip, for the fuel cross-check.
 
 When the Telematics service reports a new engine fault code it sends `vehicle.fault` `{ id, type, at, device_id, fault: { code, description, severity }, odometer_km? }`. The bus with that tracker gets a maintenance ticket (`source: obd`, one open ticket per code; retries are stored once) and admins and the transport in-charge get `VEHICLE_FAULT` (push and in-app; `bus`, `code`, `fault`, `severity`).
 
+## Gate passes and visitors
+
+New role **Gate in-charge** (`GATE_INCHARGE`, Staff app; demo 9000000009). Permissions: `gate.view` (see), `gate.operate` (work the gate), `gate.approve` (teachers for their own class, principal, AO, admin), `gate.manage` (office: invite, cancel, blocked list, pickups, settings).
+
+**A gate pass can be checked three ways**, all against the server: scan the **QR** (`qr_token`, signed `TZG1.p.<id>.<version>.<sig>`), type the **4-digit code**, or type the **pass number** (`GP-2026-0042`). Without any of them the gate finds the student (**manual**) and must take a photo of the person and note the ID proof (last 4 only). Green needs: approved, for today, inside `from_time`–`until_time` with `grace_minutes`, not used, parent code entered when needed, student not marked absent. Red verdicts: `not_approved`, `rejected`, `cancelled`, `used`, `expired`, `not_today`, `too_early`, `consent_needed`, `student_absent`, `not_found`. 5 wrong codes in 10 minutes lock code entry for that user (429 `TOO_MANY_TRIES`). Only the parent and the office see `qr_token` and `code`; the gate never does. Releasing before the afternoon attendance adds an approved afternoon half-day leave (attendance and the evening bus show the child away). Both parents get `GATE_RELEASED`; a manual release also tells the office (`GATE_MANUAL_RELEASE`, setting `notify_office_on_manual`).
+
+**Emergency without a pass** (`POST /mobile/teacher/gate/emergency`): for a registered parent (`can_pickup`) or a saved pickup person the class teacher and the office get `GATE_EMERGENCY` and the first answer wins (`PASS_ALREADY_DECIDED`). For anyone else (`pickup.kind = other`, photo required) the parents also get `GATE_CONSENT_NEEDED`; the office cannot approve until a parent agrees (409 `CONSENT_PENDING`); the parent's app then shows a code the parent reads out, and the gate enters it (`POST .../consent-code`) before release. Someone on the blocked list gets 403 `PERSON_BLOCKED` and the office `GATE_BLOCKED_PERSON`. Unanswered after `emergency_wait_minutes` → the gate gets `GATE_NO_ANSWER` (call the office).
+
+**Visitors**: walk-in (photo required by default) waits for the staff member being met (or the office) → `allowed` → in → out; invited visitors get an SMS with a slip number (`VP-2026-0009`) and a 4-digit code and go straight in. Visitors past `expected_until` give the office `VISITOR_OVERSTAY`; anyone still inside at `visitor_checkout_time` is checked out (`check_out_method: auto`).
+
+| Call                                                                                                                   | Use                                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/gate/today`                                                                                                | Live board: `counts` (`waiting_release`, `released_today`, `pending_approvals`, `emergencies_waiting`, `manual_today`, `visitors_inside`, `visitors_expected`, `visitors_waiting`, `overstays`, `blocked_today`), `due`, `emergencies`, `inside`, `coming`, `recent` (20 events) |
+| `GET /admin/gate/events`                                                                                               | Gate log (every request, decision, check including refused ones, release, visitor in/out): `kind`, `pass_id`, `visit_id`, `from`, `to`, search                                                                                                                                   |
+| `GET /admin/gate/report?from&to`                                                                                       | `by_day`, `by_class`, `by_method`, `by_purpose`, `by_hour` (default last 30 days)                                                                                                                                                                                                |
+| `GET/PATCH /admin/gate/settings`                                                                                       | `grace_minutes` (30), `emergency_wait_minutes` (10), `visitor_photo_required` (true), `visitor_id_required` (false), `visitor_checkout_time` ("18:00"), `notify_office_on_manual` (true)                                                                                         |
+| `GET /admin/gate/passes` · `/xlsx` · `/{id}`                                                                           | List (`from`, `to`, `status`, `source`, `method`, `emergency`, `class_id`, `section_id`, search) and Excel                                                                                                                                                                       |
+| `POST /admin/gate/passes`                                                                                              | For a parent who phoned: `{ student_id, pass_date, from_time, until_time?, reason, pickup: { kind, guardian_id? \| authorised_id? \| name, relation, mobile, photo_file_id? }, approve_now? }`                                                                                   |
+| `POST /admin/gate/passes/{id}/decision` · `/cancel`                                                                    | `{ approve, note? }`; cancel a waiting or approved pass                                                                                                                                                                                                                          |
+| `GET /admin/gate/students?search=`                                                                                     | Student cards: photo, class, `people` (registered parents and pickup persons with photos), `today_passes`, `absent_today`                                                                                                                                                        |
+| `GET/POST /admin/gate/students/{id}/pickups` · `PATCH/DELETE /admin/gate/pickups/{id}`                                 | Authorised pickup persons (up to 6; `valid_until`)                                                                                                                                                                                                                               |
+| `GET /admin/gate/visits` · `/xlsx` · `/{id}` · `POST /visits/invite` · `/{id}/decision` · `/{id}/out` · `/{id}/cancel` | Visitor log and office actions                                                                                                                                                                                                                                                   |
+| `GET/POST /admin/gate/blocklist` · `PATCH/DELETE /{id}`                                                                | Blocked people (name, mobile, reason)                                                                                                                                                                                                                                            |
+| `GET /admin/gate/staff?search=`                                                                                        | Host picker                                                                                                                                                                                                                                                                      |
+| `GET /me/visitors` · `POST /me/visitors/{id}/decision`                                                                 | Visitors waiting to meet me: `{ allow, note? }` (any staff, admin web or Staff app)                                                                                                                                                                                              |
+
 ## Class performance, special classes and extra classes
 
-| Call | What it gives |
-|---|---|
-| `GET /admin/performance/classes?exam_id=&class_id=` | Class-wise report: for each section `average_percent`, `pass_percent`, `fail_percent`, `attendance_percent` (this academic year) and `below_average`, plus school `totals`. Without `exam_id` every published exam of the year counts |
-| `GET /admin/performance/sections/{id}/below-average?band=&below=&from=&to=` | Students to pick, lowest first, with `gap` (points below the class average), `weak_subjects`, `attendance_percent` and the classes they already attend. `band=below` (default): under the class average or under `below` %. `band=average`: within 10 points of the class average. `band=range`: between `from` and `to` % |
-| `GET/POST /admin/special-classes`, `PATCH/DELETE /admin/special-classes/{id}` | See below. Filter the list with `section_id` (who in a class has one) or `teacher_user_id` (a teacher's profile) |
-| `GET/PUT /admin/special-classes/settings` | `class_ids`: classes that can have a whole-class special class; `null` = every class |
-| `GET/PUT /admin/special-classes/{id}/attendance?date=` | Attendance of the class for a date; students not sent stay present |
-| `GET /mobile/teacher/special-classes` | Staff app: classes I take |
-| `GET /mobile/teacher/special-classes/sections/{sectionId}` | Staff app: who in my section has a special or extra class |
-| `GET/PUT /mobile/teacher/special-classes/{id}/attendance` | Staff app: take attendance (only the teacher of that class, else 403 `NOT_YOUR_SPECIAL_CLASS`) |
-| `GET /mobile/parent/children/{id}/special-classes` | Parent app: classes the child attends, with `attendance` (days, present, absent, late, percent) |
+| Call                                                                          | What it gives                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/performance/classes?exam_id=&class_id=`                           | Class-wise report: for each section `average_percent`, `pass_percent`, `fail_percent`, `attendance_percent` (this academic year) and `below_average`, plus school `totals`. Without `exam_id` every published exam of the year counts                                                                                      |
+| `GET /admin/performance/sections/{id}/below-average?band=&below=&from=&to=`   | Students to pick, lowest first, with `gap` (points below the class average), `weak_subjects`, `attendance_percent` and the classes they already attend. `band=below` (default): under the class average or under `below` %. `band=average`: within 10 points of the class average. `band=range`: between `from` and `to` % |
+| `GET/POST /admin/special-classes`, `PATCH/DELETE /admin/special-classes/{id}` | See below. Filter the list with `section_id` (who in a class has one) or `teacher_user_id` (a teacher's profile)                                                                                                                                                                                                           |
+| `GET/PUT /admin/special-classes/settings`                                     | `class_ids`: classes that can have a whole-class special class; `null` = every class                                                                                                                                                                                                                                       |
+| `GET/PUT /admin/special-classes/{id}/attendance?date=`                        | Attendance of the class for a date; students not sent stay present                                                                                                                                                                                                                                                         |
+| `GET /mobile/teacher/special-classes`                                         | Staff app: classes I take                                                                                                                                                                                                                                                                                                  |
+| `GET /mobile/teacher/special-classes/sections/{sectionId}`                    | Staff app: who in my section has a special or extra class                                                                                                                                                                                                                                                                  |
+| `GET/PUT /mobile/teacher/special-classes/{id}/attendance`                     | Staff app: take attendance (only the teacher of that class, else 403 `NOT_YOUR_SPECIAL_CLASS`)                                                                                                                                                                                                                             |
+| `GET /mobile/parent/children/{id}/special-classes`                            | Parent app: classes the child attends, with `attendance` (days, present, absent, late, percent)                                                                                                                                                                                                                            |
 
 **Kinds.** `kind=extra`: only `student_ids` (for example below-average or average students). `kind=special`: the whole section, including students who join later; only for classes turned on in the settings (`400 CLASS_NOT_ALLOWED`).
 
@@ -902,21 +948,61 @@ Grades (CBSE-like, on the percentage): A1 91+, A2 81+, B1 71+, B2 61+, C1 51+, C
 
 ### Staff app (Teacher, HOD, Principal)
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/teacher/exams` | Exams this year with my sections and the subjects I can enter (class teacher: every subject), each with `entered` / `total` |
-| `GET /mobile/teacher/exams/{id}/sections/{sectionId}/marks?subject_id=4` | Marks sheet in roll order: `marks`, `is_absent`, `entered`; `editable` is false once results are published |
+| Call                                                                     | Screen                                                                                                                                                                                                                                                                                                              |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/teacher/exams`                                              | Exams this year with my sections and the subjects I can enter (class teacher: every subject), each with `entered` / `total`                                                                                                                                                                                         |
+| `GET /mobile/teacher/exams/{id}/sections/{sectionId}/marks?subject_id=4` | Marks sheet in roll order: `marks`, `is_absent`, `entered`; `editable` is false once results are published                                                                                                                                                                                                          |
 | `PUT /mobile/teacher/exams/{id}/sections/{sectionId}/marks?subject_id=4` | `{ "items": [{ "student_id": 12, "marks": 78.5, "is_absent": false }] }`. Marks 0 to max marks; `is_absent: true` saves an absence; `marks: null` with `is_absent: false` clears. Some or all students. `400 VALIDATION_FAILED` with `errors[].field` `items.N.marks`; `403 NOT_YOUR_SUBJECT`; `409 EXAM_PUBLISHED` |
-| `GET /mobile/teacher/sections/{id}/ranking?exam_id=1` | Students by rank. Without `exam_id`: the latest published exam of the section's class; `exam` is `null` when there is none |
+| `GET /mobile/teacher/sections/{id}/ranking?exam_id=1`                    | Students by rank. Without `exam_id`: the latest published exam of the section's class; `exam` is `null` when there is none                                                                                                                                                                                          |
 
 ```json
 {
-  "exam": { "id": 1, "name": "Quarterly exam", "status": "published", "start_date": "2026-09-14", "end_date": "2026-09-24", "published_at": "2026-10-03T10:30:00.000+05:30" },
+  "exam": {
+    "id": 1,
+    "name": "Quarterly exam",
+    "status": "published",
+    "start_date": "2026-09-14",
+    "end_date": "2026-09-24",
+    "published_at": "2026-10-03T10:30:00.000+05:30"
+  },
   "section": { "id": 8, "name": "6 - A", "class_id": 8, "class_name": "6", "section_name": "A" },
   "rows": [
-    { "rank": 1, "student_id": 12, "full_name": "Janani Bala", "roll_no": 7, "total": 629, "max_total": 700, "percent": 89.9, "grade": "A2", "result": "pass", "class_rank": 2 },
-    { "rank": 6, "student_id": 8, "full_name": "Bharath Kumar", "roll_no": 2, "total": 465, "max_total": 700, "percent": 66.4, "grade": "B2", "result": "pass", "class_rank": 10 },
-    { "rank": 6, "student_id": 9, "full_name": "Dharshini Ravi", "roll_no": 4, "total": 465, "max_total": 700, "percent": 66.4, "grade": "B2", "result": "pass", "class_rank": 10 }
+    {
+      "rank": 1,
+      "student_id": 12,
+      "full_name": "Janani Bala",
+      "roll_no": 7,
+      "total": 629,
+      "max_total": 700,
+      "percent": 89.9,
+      "grade": "A2",
+      "result": "pass",
+      "class_rank": 2
+    },
+    {
+      "rank": 6,
+      "student_id": 8,
+      "full_name": "Bharath Kumar",
+      "roll_no": 2,
+      "total": 465,
+      "max_total": 700,
+      "percent": 66.4,
+      "grade": "B2",
+      "result": "pass",
+      "class_rank": 10
+    },
+    {
+      "rank": 6,
+      "student_id": 9,
+      "full_name": "Dharshini Ravi",
+      "roll_no": 4,
+      "total": 465,
+      "max_total": 700,
+      "percent": 66.4,
+      "grade": "B2",
+      "result": "pass",
+      "class_rank": 10
+    }
   ]
 }
 ```
@@ -933,13 +1019,13 @@ Grades (CBSE-like, on the percentage): A1 91+, A2 81+, B1 71+, B2 61+, C1 51+, C
 
 One marksheet for a student built from the **published** exams of an academic year.
 
-| Call | Who | Returns |
-|---|---|---|
-| `GET /admin/students/{id}/report-card` | `exams.view` | Report card JSON |
-| `GET /admin/students/{id}/report-card/pdf` | `exams.view` | A4 PDF (inline, for print) |
+| Call                                               | Who          | Returns                                                                                               |
+| -------------------------------------------------- | ------------ | ----------------------------------------------------------------------------------------------------- |
+| `GET /admin/students/{id}/report-card`             | `exams.view` | Report card JSON                                                                                      |
+| `GET /admin/students/{id}/report-card/pdf`         | `exams.view` | A4 PDF (inline, for print)                                                                            |
 | `GET /admin/report-cards/sections/{sectionId}/pdf` | `exams.view` | One PDF with a page per student, roll-number order; students without results in the scope are skipped |
-| `GET /mobile/parent/children/{id}/report-card` | Parent | Report card JSON |
-| `GET /mobile/parent/children/{id}/report-card/pdf` | Parent | A4 PDF (download) |
+| `GET /mobile/parent/children/{id}/report-card`     | Parent       | Report card JSON                                                                                      |
+| `GET /mobile/parent/children/{id}/report-card/pdf` | Parent       | A4 PDF (download)                                                                                     |
 
 Query (all optional): `academic_year_id` (default: the current year, else the latest enrollment), then **one** scope: nothing = the whole year with every term side by side, `term_id` = only that term, `exam_id` = only that exam (wins over `term_id`). The section PDF takes `term_id` / `exam_id` only (the section fixes the year).
 
@@ -956,11 +1042,11 @@ Errors: `404 STUDENT_NOT_FOUND`, `ENROLLMENT_NOT_FOUND`, `TERM_NOT_FOUND`, `EXAM
 
 The school office posts image banners (events, holidays, notices) in the admin web under Communication → App banners: image, title, short message, which app (`all`, `staff`, `parents`), first and last day, optional link and order. Only live banners (active and today between the dates) reach the apps, at most 5.
 
-| Call | Use |
-|---|---|
-| `GET /mobile/teacher/banner` | Alerts first, then the school banners with `code: "SCHOOL_BANNER"`, `image_url`, `thumbnail_url` and `action` (`link` with `params.url`, or `home`) |
-| `GET /mobile/parent/banner` | The school banners for parents, same item shape |
-| `/admin/app-banners` | List (filters `state` live/scheduled/ended/paused, `audience`, search), `insights`, add, edit (`is_active: false` pauses), delete. Upload the image first with `POST /files` (purpose `app_banner`) |
+| Call                         | Use                                                                                                                                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/teacher/banner` | Alerts first, then the school banners with `code: "SCHOOL_BANNER"`, `image_url`, `thumbnail_url` and `action` (`link` with `params.url`, or `home`)                                                 |
+| `GET /mobile/parent/banner`  | The school banners for parents, same item shape                                                                                                                                                     |
+| `/admin/app-banners`         | List (filters `state` live/scheduled/ended/paused, `audience`, search), `insights`, add, edit (`is_active: false` pauses), delete. Upload the image first with `POST /files` (purpose `app_banner`) |
 
 Image links are signed and expire in about an hour, so take them from a fresh call instead of caching them.
 
@@ -970,31 +1056,31 @@ Students are ranked by activities too, not only by marks. Every achievement has 
 
 Points = level (class 1, school 2, zone 3, district 5, state 8, national 12, international 15) × result (winner 4, runner-up 3, third 2, took part 1). A district winner scores 20.
 
-| Call | Use |
-|---|---|
-| `GET /admin/achievements/leaderboard?category=sports` | Students ranked by points (`non_academic` = every activity except academic). Filters `class_id`, `section_id`, `from`, `to` (default: current academic year). Equal points share a rank |
-| `GET /admin/achievements` | Every achievement in the school with filters: `category`, `level`, `result` (or `podium`), `event_scope`, `venue_type`, `participation`, `outside_school`, `district_or_above`, class and section, search |
-| `GET /admin/achievements/insights` | Counts: total, sports, wins, outside school, district and above, students |
-| `GET /mobile/teacher/sections/{id}/activity-ranking` | Same ranking for one of my sections |
+| Call                                                  | Use                                                                                                                                                                                                       |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/achievements/leaderboard?category=sports` | Students ranked by points (`non_academic` = every activity except academic). Filters `class_id`, `section_id`, `from`, `to` (default: current academic year). Equal points share a rank                   |
+| `GET /admin/achievements`                             | Every achievement in the school with filters: `category`, `level`, `result` (or `podium`), `event_scope`, `venue_type`, `participation`, `outside_school`, `district_or_above`, class and section, search |
+| `GET /admin/achievements/insights`                    | Counts: total, sports, wins, outside school, district and above, students                                                                                                                                 |
+| `GET /mobile/teacher/sections/{id}/activity-ranking`  | Same ranking for one of my sections                                                                                                                                                                       |
 
 ## Fees and payment status
 
 A student's fee `status` is one of:
 
-| `status` | Meaning |
-|---|---|
-| `paid` | Nothing left to pay (also when nothing is billed yet; `total` is then 0) |
-| `partly_paid` | Something is paid, a balance is left, nothing is past its due date |
-| `due` | A balance is left, nothing is paid, nothing is past its due date |
-| `overdue` | Some balance is past its due date (the due date itself is not overdue) |
+| `status`      | Meaning                                                                  |
+| ------------- | ------------------------------------------------------------------------ |
+| `paid`        | Nothing left to pay (also when nothing is billed yet; `total` is then 0) |
+| `partly_paid` | Something is paid, a balance is left, nothing is past its due date       |
+| `due`         | A balance is left, nothing is paid, nothing is past its due date         |
+| `overdue`     | Some balance is past its due date (the due date itself is not overdue)   |
 
 Every fee summary also has `total`, `paid`, `balance`, `overdue_amount`, `next_due_date` (the next unpaid due date, or the oldest overdue one) and `last_payment` `{ date, amount }` or `null`. Invoices have `status` `unpaid`, `partly_paid`, `paid` or `cancelled`, plus `is_overdue` and `days_overdue`. Amounts are rupees as numbers with up to 2 decimals.
 
 ### Staff app (class teacher, read-only)
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/teacher/sections/{id}/fees` | Section roster with each student's fee `status`, `balance`, `next_due_date`, `overdue_amount`, `last_payment`, plus `counts` per status. Only the class teacher of the section; others get `403 NOT_CLASS_TEACHER` |
+| Call                                     | Screen                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/teacher/sections/{id}/fees` | Section roster with each student's fee `status`, `balance`, `next_due_date`, `overdue_amount`, `last_payment`, plus `counts` per status. Only the class teacher of the section; others get `403 NOT_CLASS_TEACHER`                                                                                               |
 | `GET /mobile/teacher/students/{id}/fees` | One student's summary with invoices and payments (same shape as the parent call). Amounts, due dates and statuses only: `discount_reason`, `cancel_reason`, `benefits`, `refunds` and `pending_requests` are empty, and payments have no `reference`, `notes`, `received_by`, `reversed_by` or `reversal_reason` |
 
 ```json
@@ -1004,9 +1090,20 @@ Every fee summary also has `total`, `paid`, `balance`, `overdue_amount`, `next_d
   "counts": { "paid": 2, "partly_paid": 3, "due": 2, "overdue": 2 },
   "overdue_amount": 25440,
   "students": [
-    { "student_id": 10, "full_name": "Gowtham Raja", "admission_no": "TZMS-2026-0002", "roll_no": 5, "photo_file_id": null,
-      "status": "overdue", "total": 32400, "paid": 0, "balance": 32400, "overdue_amount": 18400,
-      "next_due_date": "2026-10-03", "last_payment": null }
+    {
+      "student_id": 10,
+      "full_name": "Gowtham Raja",
+      "admission_no": "TZMS-2026-0002",
+      "roll_no": 5,
+      "photo_file_id": null,
+      "status": "overdue",
+      "total": 32400,
+      "paid": 0,
+      "balance": 32400,
+      "overdue_amount": 18400,
+      "next_due_date": "2026-10-03",
+      "last_payment": null
+    }
   ]
 }
 ```
@@ -1028,16 +1125,16 @@ Invoice lines have `kind`: `plan`, `transport` (the bus fee) or `transport_adjus
 
 **Permissions.** Each fee action has its own permission, so a school can keep setup, collection and corrections apart:
 
-| Permission | Routes | Roles |
-|---|---|---|
-| `fees.view` | Every `GET` above | Admin, Principal, AO, Accountant |
-| `fees.configure` | Heads (`POST`, `PATCH`, `DELETE`), `PUT /admin/fees/plans/{classId}` | Admin, AO |
-| `fees.assign` | `POST /admin/fees/invoices/generate` | Admin, AO |
-| `fees.collect` | `POST /admin/fees/invoices/{id}/payments`, `POST /admin/fees/overdue-reminders` | Admin, AO, Accountant |
-| `fees.adjust` | Ask for: `PATCH .../discount`, `POST .../cancel`, `POST .../refunds`, `POST /admin/fees/payments/{id}/reverse`; `POST /admin/fees/requests/{id}/withdraw` | Admin, AO, Accountant |
-| `fees.audit` | `GET /admin/fees/audit-logs`, `GET /admin/fees/reconciliation` | Admin, Principal |
-| `fees.approve` | `POST /admin/fees/plans/{classId}/approve` and `/reject`, `POST /admin/fees/requests/{id}/approve` and `/reject`, `POST /admin/fees/fines/{id}/approve` and `/reject` | Admin, Principal, AO |
-| `fees.fine` | `POST /admin/fees/fines`, `POST /admin/fees/fines/{id}/withdraw` | Admin, Principal, AO, Accountant |
+| Permission       | Routes                                                                                                                                                                | Roles                            |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `fees.view`      | Every `GET` above                                                                                                                                                     | Admin, Principal, AO, Accountant |
+| `fees.configure` | Heads (`POST`, `PATCH`, `DELETE`), `PUT /admin/fees/plans/{classId}`                                                                                                  | Admin, AO                        |
+| `fees.assign`    | `POST /admin/fees/invoices/generate`                                                                                                                                  | Admin, AO                        |
+| `fees.collect`   | `POST /admin/fees/invoices/{id}/payments`, `POST /admin/fees/overdue-reminders`                                                                                       | Admin, AO, Accountant            |
+| `fees.adjust`    | Ask for: `PATCH .../discount`, `POST .../cancel`, `POST .../refunds`, `POST /admin/fees/payments/{id}/reverse`; `POST /admin/fees/requests/{id}/withdraw`             | Admin, AO, Accountant            |
+| `fees.audit`     | `GET /admin/fees/audit-logs`, `GET /admin/fees/reconciliation`                                                                                                        | Admin, Principal                 |
+| `fees.approve`   | `POST /admin/fees/plans/{classId}/approve` and `/reject`, `POST /admin/fees/requests/{id}/approve` and `/reject`, `POST /admin/fees/fines/{id}/approve` and `/reject` | Admin, Principal, AO             |
+| `fees.fine`      | `POST /admin/fees/fines`, `POST /admin/fees/fines/{id}/withdraw`                                                                                                      | Admin, Principal, AO, Accountant |
 
 The **Accountant** role (`ACCOUNTANT`, admin web) has `fees.view`, `fees.collect`, `fees.adjust` and `fees.fine`, plus `students.view`. An accountant can see fees, record payments, raise fines and ask for discounts, refunds, cancellations, reversals, write-offs and due date changes, but cannot approve them or change fee plans and settings. Demo user: `9000000010`.
 
@@ -1111,11 +1208,11 @@ Notifications are sent in-app and by push only, never SMS:
 - **Staff app** (Teacher, HOD, Principal; module 3): `GET /mobile/teacher/fine-types` (active ones), `POST /mobile/teacher/students/{id}/fines` `{ fine_type_id?, title?, amount?, incident_on?, details? }` for students of my sections (403 `NOT_YOUR_SECTION`), `GET /mobile/teacher/fines` (fines I raised, `status` filter) and `POST /mobile/teacher/fines/{id}/withdraw`.
 - **Parent app:** an approved fine shows in `GET /mobile/parent/children/{id}/fees` as an invoice with `kind: "fine"` and is paid online like any other.
 
-| Template | When | To |
-|---|---|---|
-| `FEE_FINE_APPROVAL_NEEDED` | A fine is raised | Everyone in the school with `fees.approve`, except the person who raised it |
-| `FEE_FINE_APPROVED`, `FEE_FINE_REJECTED` | A fine is decided | The person who raised it |
-| `FEE_FINE_CHARGED` | A fine is approved | The student's guardians who receive alerts |
+| Template                                 | When               | To                                                                          |
+| ---------------------------------------- | ------------------ | --------------------------------------------------------------------------- |
+| `FEE_FINE_APPROVAL_NEEDED`               | A fine is raised   | Everyone in the school with `fees.approve`, except the person who raised it |
+| `FEE_FINE_APPROVED`, `FEE_FINE_REJECTED` | A fine is decided  | The person who raised it                                                    |
+| `FEE_FINE_CHARGED`                       | A fine is approved | The student's guardians who receive alerts                                  |
 
 **One payment across invoices and advance credit.** `POST /admin/fees/students/{id}/payments` `{ amount, mode, reference?, paid_on?, notes? }` needs `fees.collect`. Send an `Idempotency-Key` header; a retry returns the first result with `replayed: true`.
 
@@ -1305,21 +1402,20 @@ The librarian (role `LIBRARIAN`, admin web) runs the catalogue, the issue desk, 
 
 ### Parent app (Module 9: Library & Books)
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/parent/children/{id}/library` | Books the child holds (`state`, `due_date`, `days_overdue`, `running_fine`), unpaid fines, last 20 returned, `visits_this_month`, `books_left`. `member` is null when the child is not a member yet |
-| `GET /mobile/parent/children/{id}/library/books` | Catalogue search with `available_copies` (`search`, `category_id`, `available_only`) |
+| Call                                             | Screen                                                                                                                                                                                              |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/parent/children/{id}/library`       | Books the child holds (`state`, `due_date`, `days_overdue`, `running_fine`), unpaid fines, last 20 returned, `visits_this_month`, `books_left`. `member` is null when the child is not a member yet |
+| `GET /mobile/parent/children/{id}/library/books` | Catalogue search with `available_copies` (`search`, `category_id`, `available_only`)                                                                                                                |
 
 ### Staff app (Module 11: Library)
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/teacher/library` | My books (including class sets), fines and history |
+| Call                                        | Screen                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /mobile/teacher/library`               | My books (including class sets), fines and history                                                                                                                                                                                                                                                                                                                                                                 |
 | `GET /mobile/teacher/sections/{id}/library` | **My class**: every student of my section with `books_held`, `overdue_books`, `max_days_overdue`, `running_fine`, `unpaid_fines` (dues), `parent_phone`, `status` (`overdue`, `dues`, `holding`, `clear`) and their `loans`, sorted overdue first; plus `counts` `{ students, members, holding, overdue, with_dues }`, `unpaid_fines`, `running_fines`. Only the class teacher; others get `403 NOT_CLASS_TEACHER` |
-| `GET /mobile/teacher/students/{id}/library` | One student of my class: books held, dues, history, visits (same shape as the parent call) |
-| `GET /mobile/teacher/library/class-overdue` | Overdue books of the students in my sections (class teacher); the section roster above shows more |
-| `GET /mobile/teacher/library/books` | Catalogue search |
-
+| `GET /mobile/teacher/students/{id}/library` | One student of my class: books held, dues, history, visits (same shape as the parent call)                                                                                                                                                                                                                                                                                                                         |
+| `GET /mobile/teacher/library/class-overdue` | Overdue books of the students in my sections (class teacher); the section roster above shows more                                                                                                                                                                                                                                                                                                                  |
+| `GET /mobile/teacher/library/books`         | Catalogue search                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ## Academic year
 
@@ -1327,21 +1423,21 @@ Meetings, diary posts, announcements and chats belong to the academic year they 
 
 **Viewing an earlier year (admin web only).** On `/admin/*` routes the web may send `X-Academic-Year-Id: <id>` to see an earlier year: attendance, students (only those enrolled that year, with their class that year), exams and results, fees, diary, leave, timetable and the dashboard then use that year instead of the current one. Leave the header out (or send the current year's id) for normal use.
 
-| Case | Answer |
-|---|---|
-| Earlier year, `GET` | 200, that year's data |
+| Case                                        | Answer                                             |
+| ------------------------------------------- | -------------------------------------------------- |
+| Earlier year, `GET`                         | 200, that year's data                              |
 | Earlier year, `POST`/`PUT`/`PATCH`/`DELETE` | 403 `YEAR_READ_ONLY` (earlier years are read only) |
-| Year of another school | 404 `ACADEMIC_YEAR_NOT_FOUND` |
-| Not a number | 400 `INVALID_ACADEMIC_YEAR` |
+| Year of another school                      | 404 `ACADEMIC_YEAR_NOT_FOUND`                      |
+| Not a number                                | 400 `INVALID_ACADEMIC_YEAR`                        |
 
 **Year status.** Every academic year has a `status`, with who and when for each step (`activated_at`/`activated_by`, `closed_at`/`closed_by`, `archived_at`/`archived_by`; the `_by` fields are names) and an optional `description`:
 
-| Status | Meaning | How it gets there |
-|---|---|---|
-| `draft` | Planned, not started | New year without `is_current` |
-| `active` | The current year (`is_current: true`); only one per school | `POST /admin/academic-years/{id}/activate` (or `PATCH` with `is_current: true`) |
-| `closed` | An earlier year: its dates and fee plans are locked, but dues can still be collected, discounted, cancelled and reversed | Automatically, when another year is activated; or restore from archived |
-| `archived` | Frozen: no fee changes at all, not even payments (409 `YEAR_ARCHIVED`) | `POST /admin/academic-years/{id}/archive`, only from `closed` |
+| Status     | Meaning                                                                                                                  | How it gets there                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `draft`    | Planned, not started                                                                                                     | New year without `is_current`                                                   |
+| `active`   | The current year (`is_current: true`); only one per school                                                               | `POST /admin/academic-years/{id}/activate` (or `PATCH` with `is_current: true`) |
+| `closed`   | An earlier year: its dates and fee plans are locked, but dues can still be collected, discounted, cancelled and reversed | Automatically, when another year is activated; or restore from archived         |
+| `archived` | Frozen: no fee changes at all, not even payments (409 `YEAR_ARCHIVED`)                                                   | `POST /admin/academic-years/{id}/archive`, only from `closed`                   |
 
 `POST /admin/academic-years/{id}/restore` takes an archived year back to `closed`. An archived year must be restored before it can be activated. The active year cannot be archived; activate another year first. Dates of a new or edited year may not overlap another year (409 `YEAR_OVERLAPS`). Permission `schools.manage`. Existing years were set on upgrade: the current year `active`, years that ended before it `closed`, the rest `draft`.
 
@@ -1353,17 +1449,17 @@ Meetings, diary posts, announcements and chats belong to the academic year they 
 
 Connect once after sign-in: `io('<server>/comm', { auth: { token: access_token } })`. The server puts you in your own room and sends:
 
-| Event | When |
-|---|---|
-| `chat.message` | A new message in one of my conversations (also my own, for my other devices) |
-| `chat.read` | `{ thread_id, reader_id, read_at, message_ids }`: the other person read my messages |
-| `chat.updated` | The school hid or restored a message |
-| `chat.typing` | `{ thread_id, user_id }`. Send `chat.typing { thread_id }` while typing |
-| `meeting.status` | `{ meeting_id, status, ends_at, extended_minutes, ended_at, end_reason, by }` on booking, start, extension, over time, end and cancel |
-| `meeting.reminder` | `{ meeting_id, kind: "start" }` 10 minutes before; `{ kind: "ending", minutes_left: 5, ends_at }` 5 minutes before the end: show it inside the call |
-| `meeting.participant` | `{ meeting_id, user_id, party, action: "joined" or "left" }` |
-| `meeting.message` | A message in the meeting chat (same shape as `POST .../messages` returns; `mine` is `false` here, compare `sender.id`) |
-| `meeting.note` | Parent only: `{ meeting_id, note_id }` when the teacher shares a note |
+| Event                 | When                                                                                                                                                |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chat.message`        | A new message in one of my conversations (also my own, for my other devices)                                                                        |
+| `chat.read`           | `{ thread_id, reader_id, read_at, message_ids }`: the other person read my messages                                                                 |
+| `chat.updated`        | The school hid or restored a message                                                                                                                |
+| `chat.typing`         | `{ thread_id, user_id }`. Send `chat.typing { thread_id }` while typing                                                                             |
+| `meeting.status`      | `{ meeting_id, status, ends_at, extended_minutes, ended_at, end_reason, by }` on booking, start, extension, over time, end and cancel               |
+| `meeting.reminder`    | `{ meeting_id, kind: "start" }` 10 minutes before; `{ kind: "ending", minutes_left: 5, ends_at }` 5 minutes before the end: show it inside the call |
+| `meeting.participant` | `{ meeting_id, user_id, party, action: "joined" or "left" }`                                                                                        |
+| `meeting.message`     | A message in the meeting chat (same shape as `POST .../messages` returns; `mine` is `false` here, compare `sender.id`)                              |
+| `meeting.note`        | Parent only: `{ meeting_id, note_id }` when the teacher shares a note                                                                               |
 
 ## Video meetings (Agora)
 
@@ -1384,18 +1480,18 @@ Every meeting has `from` (who booked), `to`, `teacher`, `parent`, `student`, `ho
 
 ### Staff app (Teacher, HOD, Principal)
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/teacher/meetings?scope=upcoming` | My meetings; `scope` is `upcoming` (default), `past` or `all` |
-| `GET /mobile/teacher/students/{id}/parents` | Parents of the student who have the app, primary first |
-| `POST /mobile/teacher/meetings` | `{ "student_id": 12, "parent_user_id": 31, "title": "Maths progress", "scheduled_at": "2026-11-11T10:00:00+05:30", "duration_minutes": 30 }` |
-| `GET /mobile/teacher/meetings/{id}` | One meeting with `call_log` |
-| `POST /mobile/teacher/meetings/{id}/join` | `{ "platform": "android" }` → `{ provider, app_id, channel_name, uid, token, expires_at, role: "host", meeting }` |
-| `POST /mobile/teacher/meetings/{id}/token` | Fresh token during the call |
-| `POST /mobile/teacher/meetings/{id}/leave` | I left; I can rejoin |
-| `POST /mobile/teacher/meetings/{id}/extend` | Host: `{ "minutes": 10 }` |
-| `POST /mobile/teacher/meetings/{id}/end` | Host: end for everyone |
-| `POST /mobile/teacher/meetings/{id}/cancel` | `{ "reason": "..." }` before it starts |
+| Call                                          | Screen                                                                                                                                       |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/teacher/meetings?scope=upcoming` | My meetings; `scope` is `upcoming` (default), `past` or `all`                                                                                |
+| `GET /mobile/teacher/students/{id}/parents`   | Parents of the student who have the app, primary first                                                                                       |
+| `POST /mobile/teacher/meetings`               | `{ "student_id": 12, "parent_user_id": 31, "title": "Maths progress", "scheduled_at": "2026-11-11T10:00:00+05:30", "duration_minutes": 30 }` |
+| `GET /mobile/teacher/meetings/{id}`           | One meeting with `call_log`                                                                                                                  |
+| `POST /mobile/teacher/meetings/{id}/join`     | `{ "platform": "android" }` → `{ provider, app_id, channel_name, uid, token, expires_at, role: "host", meeting }`                            |
+| `POST /mobile/teacher/meetings/{id}/token`    | Fresh token during the call                                                                                                                  |
+| `POST /mobile/teacher/meetings/{id}/leave`    | I left; I can rejoin                                                                                                                         |
+| `POST /mobile/teacher/meetings/{id}/extend`   | Host: `{ "minutes": 10 }`                                                                                                                    |
+| `POST /mobile/teacher/meetings/{id}/end`      | Host: end for everyone                                                                                                                       |
+| `POST /mobile/teacher/meetings/{id}/cancel`   | `{ "reason": "..." }` before it starts                                                                                                       |
 
 ### Parent app
 
@@ -1403,12 +1499,12 @@ Every meeting has `from` (who booked), `to`, `teacher`, `parent`, `student`, `ho
 
 ### When a meeting ends
 
-| Case | What happens |
-|---|---|
-| Teacher presses End | `completed`, `end_reason: host_ended`, straight away |
-| Everyone has left (cut the call) | `completed`, `end_reason: empty`, **5 minutes** after the last person left, even before the end time (rejoining within those 5 minutes keeps it open) |
-| Time is up | **10 minutes after the end time** (extensions included) it closes as `completed`, `end_reason: time_up`, the Agora channel is ended for everyone and Join returns `409 MEETING_ENDED` |
-| Nobody joined | `missed` 30 minutes after the end time |
+| Case                             | What happens                                                                                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Teacher presses End              | `completed`, `end_reason: host_ended`, straight away                                                                                                                                  |
+| Everyone has left (cut the call) | `completed`, `end_reason: empty`, **5 minutes** after the last person left, even before the end time (rejoining within those 5 minutes keeps it open)                                 |
+| Time is up                       | **10 minutes after the end time** (extensions included) it closes as `completed`, `end_reason: time_up`, the Agora channel is ended for everyone and Join returns `409 MEETING_ENDED` |
+| Nobody joined                    | `missed` 30 minutes after the end time                                                                                                                                                |
 
 `join_closes_at` on every meeting is the last moment Join works: show it as the link expiry. Extending (host, up to 120 minutes in total) moves the end time and so the expiry.
 
@@ -1420,10 +1516,10 @@ Every meeting has `from` (who booked), `to`, `teacher`, `parent`, `student`, `ho
 
 Whoever books a meeting, the **other side** gets it as an invite: `response` is `pending`, then `accepted` or `declined` (with an optional `response_note`).
 
-| Call | Who |
-|---|---|
+| Call                                                     | Who                                          |
+| -------------------------------------------------------- | -------------------------------------------- |
 | `POST /mobile/teacher/meetings/{id}/accept` · `/decline` | Teacher, for a meeting the **parent** booked |
-| `POST /mobile/parent/meetings/{id}/accept` · `/decline` | Parent, for a meeting the **teacher** booked |
+| `POST /mobile/parent/meetings/{id}/accept` · `/decline`  | Parent, for a meeting the **teacher** booked |
 
 Body (optional): `{ "note": "Busy with exam duty" }`. The side that booked gets a push (`MEETING_ACCEPTED` / `MEETING_DECLINED`, category `meeting`, with `meeting_id`) and the `meeting.status` socket event now carries `response`.
 
@@ -1459,18 +1555,18 @@ Ring and cancel arrive as a **data-only, high-priority push** (no title or body,
 
 `caller_role` is the role of the person calling (pick the join endpoint for the **other** role on Accept). A `cancel` has the same `call_id` and fields plus `reason`:
 
-| reason | When |
-|---|---|
-| `answered` | The rung side joined |
-| `declined` | The rung side tapped Decline (`POST .../reject-call`) |
-| `caller_left` | The caller left before it was answered |
-| `ended` | The host ended the meeting, or it closed (empty or time up) |
-| `timeout` | Nobody answered in 45 seconds |
+| reason        | When                                                        |
+| ------------- | ----------------------------------------------------------- |
+| `answered`    | The rung side joined                                        |
+| `declined`    | The rung side tapped Decline (`POST .../reject-call`)       |
+| `caller_left` | The caller left before it was answered                      |
+| `ended`       | The host ended the meeting, or it closed (empty or time up) |
+| `timeout`     | Nobody answered in 45 seconds                               |
 
-| Endpoint | Who |
-|---|---|
+| Endpoint                                         | Who                                             |
+| ------------------------------------------------ | ----------------------------------------------- |
 | `POST /mobile/teacher/meetings/{id}/reject-call` | Teacher declines a ringing call from the parent |
-| `POST /mobile/parent/meetings/{id}/reject-call` | Parent declines a ringing call from the teacher |
+| `POST /mobile/parent/meetings/{id}/reject-call`  | Parent declines a ringing call from the teacher |
 
 - Accept = `POST .../join` as usual (it also sends `cancel` with `answered` to the caller's other devices).
 - `reject-call` is safe to repeat; if the ring already stopped nothing happens. No body.
@@ -1483,15 +1579,15 @@ Ring and cancel arrive as a **data-only, high-priority push** (no title or body,
 
 Both apps use the same paths under `/mobile/teacher/meetings/{id}` and `/mobile/parent/meetings/{id}`. Everything is current academic year only, like the meetings themselves.
 
-| Call | What it does |
-|---|---|
-| `GET .../notes` | My notes plus the teacher's shared notes, oldest first. Each note has `author`, `author_party`, `body`, `shared`, `shared_at` and `mine` |
-| `POST .../notes` | Teacher: `{ "body": "...", "shared": true }`; `shared: true` shows it to the parent and sends `MEETING_NOTES_SHARED`. Parent: `{ "body": "..." }`, always private |
-| `PATCH .../notes/{noteId}` | Edit my note. Teacher can also send `shared` (sharing tells the parent once; `false` hides it again) |
-| `DELETE .../notes/{noteId}` | Delete my note |
-| `GET .../messages?before_id=&limit=50` | Meeting chat, newest first, `{ items, has_more }` |
-| `POST .../messages` | `{ "body": "...", "file_id": null }` (file from `POST /files`). Open from 10 minutes before the start until the meeting ends; the other person gets `meeting.message` on `/comm` |
-| `GET .../recap` | After a `completed` or `missed` meeting: `{ meeting, call_minutes, attendance, notes, message_count, messages }`. `attendance` has the teacher then the parent with `attended`, `minutes`, `sessions` (reconnects), `first_joined_at`, `last_left_at`, `platforms`; overlapping app and Agora records count once. `messages` is the whole chat, oldest first (up to 500) |
+| Call                                   | What it does                                                                                                                                                                                                                                                                                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET .../notes`                        | My notes plus the teacher's shared notes, oldest first. Each note has `author`, `author_party`, `body`, `shared`, `shared_at` and `mine`                                                                                                                                                                                                                                 |
+| `POST .../notes`                       | Teacher: `{ "body": "...", "shared": true }`; `shared: true` shows it to the parent and sends `MEETING_NOTES_SHARED`. Parent: `{ "body": "..." }`, always private                                                                                                                                                                                                        |
+| `PATCH .../notes/{noteId}`             | Edit my note. Teacher can also send `shared` (sharing tells the parent once; `false` hides it again)                                                                                                                                                                                                                                                                     |
+| `DELETE .../notes/{noteId}`            | Delete my note                                                                                                                                                                                                                                                                                                                                                           |
+| `GET .../messages?before_id=&limit=50` | Meeting chat, newest first, `{ items, has_more }`                                                                                                                                                                                                                                                                                                                        |
+| `POST .../messages`                    | `{ "body": "...", "file_id": null }` (file from `POST /files`). Open from 10 minutes before the start until the meeting ends; the other person gets `meeting.message` on `/comm`                                                                                                                                                                                         |
+| `GET .../recap`                        | After a `completed` or `missed` meeting: `{ meeting, call_minutes, attendance, notes, message_count, messages }`. `attendance` has the teacher then the parent with `attended`, `minutes`, `sessions` (reconnects), `first_joined_at`, `last_left_at`, `platforms`; overlapping app and Agora records count once. `messages` is the whole chat, oldest first (up to 500) |
 
 Notes are allowed before, during and after a meeting, but not on a cancelled one (`409 MEETING_CANCELLED`). Someone else's note returns `404 NOTE_NOT_FOUND`. The chat answers `409 MEETING_NOT_OPEN` before the join window, `409 MEETING_CHAT_CLOSED` once the meeting has ended (history stays readable) and `409 MEETING_CANCELLED`. The recap answers `409 MEETING_NOT_OVER` while the meeting is still scheduled or running. The video itself is not recorded.
 
@@ -1505,32 +1601,50 @@ Server settings: `AGORA_APP_ID` and `AGORA_APP_CERTIFICATE` (tokens), `AGORA_TOK
 
 Teachers post **homework**, **remarks**, **feedback** or **notes** to a whole class (only if they teach every section), a section, or chosen students (up to 60), with up to 5 files and, for homework, a due date. There is no office review: every post reaches parents at once (`diary_review_mode` is always `none` and can no longer be changed). The office can still hide a post. Shown as **Homework** in the admin web; the API routes keep the `diary` name. Published posts reach parents with a `DIARY_POSTED` push.
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/teacher/diary?status=&type=&section_id=` | My posts this year with `seen_count` of `recipient_count` |
-| `POST /mobile/teacher/diary` | `{ "type": "homework", "scope": "section", "section_id": 4, "title": "Exercise 4.2", "body": "...", "subject_id": 7, "due_date": "2026-11-12", "file_ids": [41] }`; `scope: "students"` with `student_ids`, or `"class"` with `class_id` |
-| `GET /mobile/teacher/diary/{id}` | With every student and when their parent saw it |
-| `PATCH /mobile/teacher/diary/{id}` | Edit a post the office sent back earlier (`rejected`); new posts are published at once, so delete and post again to change one |
-| `DELETE /mobile/teacher/diary/{id}` | Removes it from the feed |
-| `GET /mobile/parent/children/{id}/diary?type=` | Parent feed (published only) with `seen` |
-| `POST /mobile/parent/children/{id}/diary/{entryId}/seen` | Mark as seen |
+| Call                                                     | Screen                                                                                                                                                                                                                                   |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/teacher/diary?status=&type=&section_id=`    | My posts this year with `seen_count` of `recipient_count`                                                                                                                                                                                |
+| `POST /mobile/teacher/diary`                             | `{ "type": "homework", "scope": "section", "section_id": 4, "title": "Exercise 4.2", "body": "...", "subject_id": 7, "due_date": "2026-11-12", "file_ids": [41] }`; `scope: "students"` with `student_ids`, or `"class"` with `class_id` |
+| `GET /mobile/teacher/diary/{id}`                         | With every student and when their parent saw it                                                                                                                                                                                          |
+| `PATCH /mobile/teacher/diary/{id}`                       | Edit a post the office sent back earlier (`rejected`); new posts are published at once, so delete and post again to change one                                                                                                           |
+| `DELETE /mobile/teacher/diary/{id}`                      | Removes it from the feed                                                                                                                                                                                                                 |
+| `GET /mobile/parent/children/{id}/diary?type=`           | Parent feed (published only) with `seen`                                                                                                                                                                                                 |
+| `POST /mobile/parent/children/{id}/diary/{entryId}/seen` | Mark as seen                                                                                                                                                                                                                             |
 
 Office: `GET /admin/diary` (+ `/insights`, `/{id}`), `POST /admin/diary/{id}/approve`, `/reject { "note" }` (the teacher gets `DIARY_REJECTED`), `/hide { "note" }` and `/restore`. Permissions `diary.view` and `diary.moderate`.
 
 ## Announcements
 
-The office writes announcements for `everyone`, `parents`, `staff`, or `classes` (parents of chosen `class_ids` / `section_ids`), as a draft, scheduled (`publish_at`), or sent now (`publish_now: true`), with an optional `expires_at`. Urgent ones (`priority: urgent`) also go by SMS when the push does not arrive.
+The office writes announcements (circulars) for `everyone`, `parents`, `staff`, `classes` (parents of chosen `class_ids` / `section_ids`) or `individuals` (parents of chosen `student_ids` and chosen staff `staff_user_ids`). Each can be a draft, scheduled (`publish_at`), or sent now (`publish_now: true`), with an optional `expires_at` and up to 5 attachments (`file_ids` from `POST /files` with purpose `announcement_attachment`; PDF, JPG, PNG or WEBP only). Urgent ones (`priority: urgent`) also go by SMS when the push does not arrive.
+
+A sent announcement can still change its title, message, urgency, expiry and files: it gets `edited_at`, readers keep their read state, and `notify_again: true` sends `ANNOUNCEMENT_UPDATED` to everyone again. Who receives it cannot change after sending (409 `ANNOUNCEMENT_AUDIENCE_LOCKED`). Delete works at any stage and removes it from every feed.
 
 Every app reads them the same way:
 
-| Call | Screen |
-|---|---|
-| `GET /me/announcements?unread=true` | Announcements sent to me this year, newest first, with `is_read` |
-| `GET /me/announcements/unread-count` | Badge |
-| `GET /me/announcements/{id}` | One |
-| `POST /me/announcements/{id}/read` | Mark read |
+| Call                                 | Screen                                                                                                                                                                                                                                          |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /me/announcements`              | Announcements sent to me this year, newest first, with `is_read`, `attachments` and `edited_at`. Filters: `unread`, `search` (title and message), `priority`, `from` / `to` (sent date), `student_id` (parents: only those sent for that child) |
+| `GET /me/announcements/unread-count` | Badge                                                                                                                                                                                                                                           |
+| `GET /me/announcements/{id}`         | One                                                                                                                                                                                                                                             |
+| `POST /me/announcements/{id}/read`   | Mark read                                                                                                                                                                                                                                       |
 
-Office: `GET`/`POST /admin/announcements`, `GET`/`PATCH`/`DELETE /admin/announcements/{id}` (edit and delete only drafts and scheduled ones), `POST .../publish`, `POST .../archive`, `GET .../readers?state=read|unread` and `GET /admin/announcements/insights`. Permissions `announcements.view` and `announcements.manage`.
+Office: `GET`/`POST /admin/announcements`, `GET`/`PATCH`/`DELETE /admin/announcements/{id}`, `POST .../publish`, `POST .../archive`, `GET /admin/announcements/insights` and `GET .../readers` (paged; `state=read|unread`, `segment=parent|staff`, `class_id`, `search`; parent rows list the children they received it for as `students`). Permissions `announcements.view` and `announcements.manage`.
+
+## Events and RSVP
+
+The office creates school events with a title, description, `event_date`, `start_time` / `end_time` (24-hour; both empty = all day), `venue` and audience `school` or `classes` (`class_ids` / `section_ids`). `rsvp_required` asks parents to reply until `rsvp_deadline` (empty = until the event starts). Invited students are the current year's active students of the audience, so new admissions are included.
+
+Parent app (Module 8, Academic Calendar & Holidays):
+
+| Call                                  | Screen                                                                                                                                                                                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/parent/events?from=&to=` | Calendar or list: events my children are invited to, newest date first. `search`, `student_id`. Each has `my_rsvps` (one per invited child, `response` null until replied), `rsvp_open`, and `status` `published` or `cancelled` with `cancel_reason` |
+| `GET /mobile/parent/events/{id}`      | One event                                                                                                                                                                                                                                             |
+| `PUT /mobile/parent/events/{id}/rsvp` | `{ "student_id": 12, "response": "attending" }` (`attending`, `not_attending`, `maybe`). Change it any time until the deadline; after it, 409 `EVENT_RSVP_CLOSED`                                                                                     |
+
+Notifications (push, category `announcement`, data `event_id`): `EVENT_PUBLISHED` when published, `EVENT_UPDATED` when the date, time or venue changes, `EVENT_CANCELLED`, `EVENT_REMINDER` the day before at 18:00 (not to children marked Not attending) and 2 hours before the start (to Attending and Maybe; to everyone invited when no reply is asked), and `EVENT_RSVP_REMINDER` in the last day before the reply deadline to parents who have not replied. The `event-reminders` job runs every 10 minutes and sends each reminder once.
+
+Office: `GET /admin/events` (month view with `from` / `to`; `status`, `class_id`, `upcoming`, search; sort `event_date`, `title`), `GET /admin/events/insights`, `POST /admin/events` (`publish: true` to tell parents now), `GET`/`PATCH`/`DELETE /admin/events/{id}`, `POST .../publish`, `POST .../cancel` `{ reason }`, and `GET .../responses` (every invited student with `response` or `no_response`, who replied and when, parent mobile; filters `response`, `class_id`, search). Each event has `counts` (`invited`, `attending`, `not_attending`, `maybe`, `no_response`). Permissions `events.view` and `events.manage` (Principal, AO; school admin has all).
 
 ## Chat (teacher and parent)
 
@@ -1542,30 +1656,29 @@ One conversation per teacher, parent and child per academic year. Messages are s
 
 Office hours (School setup, default 08:00–17:00, Monday to Saturday, not on holidays): a parent message sent outside them is saved and shown to the teacher, but the teacher's push waits until office hours start (`held_for_office_hours: true`; the thread's `office_hours.next_open_at` says when). Teachers can write at any time.
 
-| Call | Screen |
-|---|---|
+| Call                                                                  | Screen                                                                             |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | `GET /mobile/teacher/chat/threads`, `GET /mobile/parent/chat/threads` | My conversations with `other`, `unread`, `last_message_preview` and `office_hours` |
-| `POST /mobile/teacher/chat/threads` | `{ "student_id": 12, "parent_user_id": 31 }` opens or reuses |
-| `POST /mobile/parent/children/{id}/chat/threads` | `{ "teacher_user_id": 9 }` opens or reuses |
-| `GET .../chat/threads/{id}/messages?before_id=` | Newest first, 30 at a time, `has_more` |
-| `POST .../chat/threads/{id}/messages` | `{ "body": "...", "file_id": null }` (text or a file) |
-| `POST .../chat/threads/{id}/read` | Read receipts for the other person's messages |
-| `POST .../chat/threads/{id}/messages/{messageId}/flag` | `{ "reason": "..." }` reports it to the office |
+| `POST /mobile/teacher/chat/threads`                                   | `{ "student_id": 12, "parent_user_id": 31 }` opens or reuses                       |
+| `POST /mobile/parent/children/{id}/chat/threads`                      | `{ "teacher_user_id": 9 }` opens or reuses                                         |
+| `GET .../chat/threads/{id}/messages?before_id=`                       | Newest first, 30 at a time, `has_more`                                             |
+| `POST .../chat/threads/{id}/messages`                                 | `{ "body": "...", "file_id": null }` (text or a file)                              |
+| `POST .../chat/threads/{id}/read`                                     | Read receipts for the other person's messages                                      |
+| `POST .../chat/threads/{id}/messages/{messageId}/flag`                | `{ "reason": "..." }` reports it to the office                                     |
 
 A message the school hides comes back with `hidden: true` and `body: null`. Office audit: `GET /admin/chat/threads?flagged=true`, `/insights`, `/flagged`, `GET /admin/chat/threads/{id}` (whole transcript; the visit is logged), `POST /admin/chat/messages/{id}/hide { "reason" }`, `/unhide` and `/dismiss-flag`. Permission `chat.audit`.
-
 
 ### Deleting, editing, clearing, voice and video
 
 Same paths for both apps: teacher under `/mobile/teacher/chat/threads/{id}/…`, parent under `/mobile/parent/chat/threads/{id}/…`.
 
-| Call | What it does |
-|---|---|
-| `POST …/messages/{messageId}/delete` `{ "for": "me" }` | Removes the message from my chat only; the other person still sees it |
-| `POST …/messages/{messageId}/delete` `{ "for": "everyone" }` | My own message, within 24 hours (`400 DELETE_WINDOW_PASSED` after, `403 NOT_YOUR_MESSAGE`, `409 ALREADY_DELETED`). Both sides get `deleted: true` with `body` and `file` null: show "This message was deleted". `undo_until` = 10 seconds |
-| `POST …/messages/{messageId}/undo-delete` | Brings it back for both within 10 seconds (`400 UNDO_EXPIRED`, `409 NOTHING_TO_UNDO`) |
-| `POST …/clear` | Clears the chat for me: older messages disappear from my list and preview; the other person keeps them |
-| `POST …/messages/{messageId}/edit` `{ "body": "..." }` | Changes the text of my own message within 24 hours (`400 EDIT_WINDOW_PASSED`, `403 NOT_YOUR_MESSAGE`, `409 ALREADY_DELETED`, `409 MESSAGE_HIDDEN`). Both sides get `edited: true` and `edited_at`: show "edited" next to the time. Sending the same text changes nothing |
+| Call                                                         | What it does                                                                                                                                                                                                                                                             |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST …/messages/{messageId}/delete` `{ "for": "me" }`       | Removes the message from my chat only; the other person still sees it                                                                                                                                                                                                    |
+| `POST …/messages/{messageId}/delete` `{ "for": "everyone" }` | My own message, within 24 hours (`400 DELETE_WINDOW_PASSED` after, `403 NOT_YOUR_MESSAGE`, `409 ALREADY_DELETED`). Both sides get `deleted: true` with `body` and `file` null: show "This message was deleted". `undo_until` = 10 seconds                                |
+| `POST …/messages/{messageId}/undo-delete`                    | Brings it back for both within 10 seconds (`400 UNDO_EXPIRED`, `409 NOTHING_TO_UNDO`)                                                                                                                                                                                    |
+| `POST …/clear`                                               | Clears the chat for me: older messages disappear from my list and preview; the other person keeps them                                                                                                                                                                   |
+| `POST …/messages/{messageId}/edit` `{ "body": "..." }`       | Changes the text of my own message within 24 hours (`400 EDIT_WINDOW_PASSED`, `403 NOT_YOUR_MESSAGE`, `409 ALREADY_DELETED`, `409 MESSAGE_HIDDEN`). Both sides get `edited: true` and `edited_at`: show "edited" next to the time. Sending the same text changes nothing |
 
 Socket events: `chat.deleted { thread_id, message_id, deleted_at }`, `chat.restored` (the message), `chat.edited` (the message). Every message now has `kind` (text, image, file, voice, video), `duration_seconds`, `deleted`, `deleted_at`, `can_delete_for_everyone`, `undo_until`. The office always sees the original in Chat audit with `deleted_by` and `deleted_for_me_by`, and every text an edit replaced in `earlier_versions` (`body`, `replaced_at`, `edited_by`, oldest first); teacher and parent see only the latest text. Clears and edits appear in the audit log.
 
@@ -1573,11 +1686,11 @@ Socket events: `chat.deleted { thread_id, message_id, deleted_at }`, `chat.resto
 
 ### Group chats
 
-| Who | Create | Add members | Members | Delete |
-|---|---|---|---|---|
-| Teacher | `POST /mobile/teacher/chat/groups` `{ name, member_user_ids }` | `POST /mobile/teacher/chat/groups/{id}/members` `{ user_ids }` | `GET …/groups/{id}/members` | `DELETE /mobile/teacher/chat/groups/{id}` |
-| Parent | `POST /mobile/parent/chat/groups` | `POST /mobile/parent/chat/groups/{id}/members` | `GET …/groups/{id}/members` | `DELETE /mobile/parent/chat/groups/{id}` |
-| Office (Chat audit) | `POST /admin/chat/groups` | `POST /admin/chat/groups/{id}/members` | `GET /admin/chat/groups/{id}/members` | `DELETE /admin/chat/groups/{id}` |
+| Who                 | Create                                                         | Add members                                                    | Members                               | Delete                                    |
+| ------------------- | -------------------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------- | ----------------------------------------- |
+| Teacher             | `POST /mobile/teacher/chat/groups` `{ name, member_user_ids }` | `POST /mobile/teacher/chat/groups/{id}/members` `{ user_ids }` | `GET …/groups/{id}/members`           | `DELETE /mobile/teacher/chat/groups/{id}` |
+| Parent              | `POST /mobile/parent/chat/groups`                              | `POST /mobile/parent/chat/groups/{id}/members`                 | `GET …/groups/{id}/members`           | `DELETE /mobile/parent/chat/groups/{id}`  |
+| Office (Chat audit) | `POST /admin/chat/groups`                                      | `POST /admin/chat/groups/{id}/members`                         | `GET /admin/chat/groups/{id}/members` | `DELETE /admin/chat/groups/{id}`          |
 
 Messages in a group use the normal thread routes (`…/chat/threads/{id}/messages`). **Delete:** in the apps only the person who created the group can delete it (`403 NOT_GROUP_CREATOR`); the office can delete any group in its school. The group disappears from every member's list at once (socket event `chat.group_deleted { thread_id, title }`: remove it from the screen); its messages are kept for the office and the deletion is in the audit log. Deleting again gives `404 GROUP_NOT_FOUND`.
 
@@ -1589,20 +1702,20 @@ Messages in a group use the normal thread routes (`…/chat/threads/{id}/message
 
 **Group notices.** Adding, removing, leaving and a new admin each post a message with `kind: "system"`, `event` (`member_added`, `member_removed`, `member_left`, `admin_changed`) and `event_user`. `body` is already worded for whoever reads it; show it centred, not as a bubble. Notices cannot be edited, deleted or reported (`400 SYSTEM_MESSAGE`).
 
-| Event | The person it is about | The person who did it | Everyone else |
-|---|---|---|---|
-| Removed | "Priya removed you from this group. You are no longer a member of this group, so you cannot send or receive messages here." | "You removed Lakshmi" | "Priya removed Lakshmi" |
-| Left | "You left this group. You are no longer a member of this group, so you cannot send or receive messages here." | | "Arun left the group" |
-| Added | "Priya added you" | "You added Lakshmi" | "Priya added Lakshmi" |
-| New admin | "You are now the group admin" | | "Lakshmi is now the group admin" |
+| Event     | The person it is about                                                                                                      | The person who did it | Everyone else                    |
+| --------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------- | -------------------------------- |
+| Removed   | "Priya removed you from this group. You are no longer a member of this group, so you cannot send or receive messages here." | "You removed Lakshmi" | "Priya removed Lakshmi"          |
+| Left      | "You left this group. You are no longer a member of this group, so you cannot send or receive messages here."               |                       | "Arun left the group"            |
+| Added     | "Priya added you"                                                                                                           | "You added Lakshmi"   | "Priya added Lakshmi"            |
+| New admin | "You are now the group admin"                                                                                               |                       | "Lakshmi is now the group admin" |
 
 **After leaving or being removed** the group stays in your list with `is_member: false`, `can_send: false`, `left_reason` (`left`/`removed`) and `left_at`; the list preview is your own notice. You see the messages up to that moment and nothing after; sending gives `403 NOT_GROUP_MEMBER` with the same "You are no longer a member" text. Hide the message box when `can_send` is false. If someone adds you back you see "… added you" and only messages from then on. Members lists show current members only. Socket events: `chat.message` (each person gets the notice in their own wording) and `chat.members_changed { thread_id, by_user_id, added_user_ids, gone_user_id }`.
+
 ## Push notification data (tap routing)
 
 **Automatic pushes can be switched off.** With `PUSH_AUTO=false` the API sends no push on its own: every notification is still saved in the app's notification list (`GET /me/notifications`), and its push row is marked `skipped` ("Automatic push is off"), with no SMS fallback because of it. Pushes only go out when the app asks for one:
 
 `POST /me/notifications/test-push` `{ "title"?: "...", "body"?: "...", "data"?: { "category": "chat", "thread_id": "8" } }` sends a push to my own phone now, through the configured channel, even when `PUSH_AUTO=false`. The reply says what happened: `status` (`sent`, `failed` or `skipped`), `provider`, `error`, `devices` (registered with `POST /me/devices`) and `external_id`, the id `OneSignal.login` must use. One every 5 seconds (`429 TEST_PUSH_TOO_SOON`). `sent` means the push left our API; if the phone shows nothing, check the External ID in OneSignal.
-
 
 Register the phone with `POST /me/devices` `{ "push_token": "<OneSignal subscription id>", "platform": "android" }` (`fcm_token` is the old name and still works); remove with `DELETE /me/devices?push_token=…`.
 
@@ -1624,6 +1737,28 @@ Every push (OneSignal `additionalData`) has `category`, `template` and `notifica
 | `system` | STUDENT_FEEDBACK (`feedback_id`) to the parents | `student_id` | the child's feedback |
 | `system` | TEACHER_RATED (`rating_id`, `teacher_user_id`) to the school admin | `student_id` | admin web, Teacher feedback |
 | `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips | `trip_id`, `alert_id`, `announcement_id` where present | the matching screen |
+
+## Inventory and assets (admin web)
+
+Everything is under `/admin/inventory/*` (Swagger tag `Admin · Inventory`). Permissions: `inventory.view`, `inventory.manage` (assets, allocations, masters), `inventory.stock` (receipts, issues, adjustments, stock items), `inventory.approve` (transfers, disposals, requisitions) and `inventory.audit`. The new **Store Keeper** role (demo `9000000012`) has view, manage, stock and audit; Principal and AO approve.
+
+**Assets.** `POST assets` registers one or more identical assets (`quantity`, `serial_nos`), each with its own tag `TZMS-AST-000001`. `status` is `in_store`, `allocated`, `in_maintenance`, `lost` or `disposed`; `GET assets?status=in_store,in_maintenance` takes several values separated by commas. Each asset carries `book_value` (straight-line or written-down depreciation, set in `settings`), `warranty_state` and `current_allocation`. `PATCH assets/{id}` can clear `purchase_date`, `warranty_until` and `amc_until` with `null`. `GET assets/{id}/history` is the full event trail. `GET assets/lookup?code=` finds an asset by tag or serial number (for scanners), `GET assets/labels` returns a PDF of Code 128 tag labels, and `POST assets/import` (multipart `file`, `mode=validate|import`) reads the Excel template from `GET assets/import/template`; each report row has `asset_tags` and `asset_ids`. Dates must be real calendar dates (`YYYY-MM-DD` or `DD-MM-YYYY`); anything else is reported on that row.
+
+**Allocation.** `POST allocations` assigns assets to a staff member (`user_id`), a department or a location, with an optional `expected_return_on`. `POST allocations/return` takes them back, optionally straight to maintenance. Staff see what they hold at `GET /me/assets` and confirm receipt with `POST /me/assets/{allocationId}/acknowledge`. A staff member who still holds assets cannot be marked resigned or deleted (409 `ASSETS_PENDING`).
+
+**Transfers and disposals.** `POST transfers` and `POST disposals` create requests; when approvals are on in `settings`, someone with `inventory.approve` calls `.../approve` or `.../reject`. An allocated asset must be returned before it is disposed of (`ASSET_ALLOCATED`). While a transfer is open, the asset cannot be allocated, marked lost or sent for disposal (`ASSET_IN_TRANSFER`); approve, reject or cancel the transfer first.
+
+**Maintenance.** Tickets (`maintenance`) move `open` → `in_progress` → `resolved`/`cancelled`; the asset is `in_maintenance` while one is open. `schedules` hold preventive work with `next_due_on`.
+
+**Stock.** Consumables are valued at weighted average cost. `stock/receipts` (goods received; sort `received_on`, `receipt_no`, `total`, `vendor`), `stock/issues`, `stock/adjustments` and `stock/movements` (the ledger). `requisitions` go `pending` → `approved` → `issued`/`partly_issued`. Issuing more than the store holds is refused with `NOT_ENOUGH_STOCK`.
+
+**Audits.** Asset verification by scanning tags (`audits/{id}/scan`: `found`, `misplaced`, `not_available`, `unknown`) or a stock count (`audits/{id}/count`); closing can mark missing assets lost or post count differences as adjustments.
+
+**Reports.** `reports/assets?group_by=category|location|department|custodian|status`, `reports/depreciation`, `reports/maintenance`, `reports/consumption`, `reports/stock-valuation`. `reports/register/export` (CSV) takes the same filters as `GET assets`; `reports/movements/export` exports the stock ledger.
+
+**Masters.** `categories` (asset or stock, depreciation rate or useful life, maintenance interval), `locations` (`locations/sync-rooms` creates them from timetable rooms), `departments` (`departments/sync` creates them from staff departments), `vendors`, `stores`. Deleting something in use returns `*_IN_USE`; a duplicate code returns `*_EXISTS`.
+
+**Alerts.** A daily job at 08:15 sends overdue-return reminders to staff and maintenance-due, warranty/AMC-ending and (on Mondays) low-stock summaries to the store office. `POST alerts/run` runs it now.
 
 ## Payslips (every staff app)
 

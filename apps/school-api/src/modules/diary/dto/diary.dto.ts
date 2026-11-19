@@ -6,6 +6,7 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
@@ -25,6 +26,7 @@ import {
   DiaryStatus,
   DiaryType,
 } from '../entities/diary-entry.entity';
+import { SUBMISSION_STATUSES, SubmissionStatus } from '../entities/diary-submission.entity';
 import { MAX_ATTACHMENTS, MAX_STUDENTS } from '../diary.logic';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -245,6 +247,12 @@ export class DiaryEntryDto {
   @ApiProperty({ example: 21, description: 'Children whose parent has opened it' })
   seen_count: number;
 
+  @ApiPropertyOptional({ example: 25, description: 'How many students submitted homework' })
+  submission_count?: number;
+
+  @ApiPropertyOptional({ example: 20, description: 'How many submissions graded' })
+  graded_count?: number;
+
   @ApiProperty({ type: RefDto })
   academic_year: RefDto;
 
@@ -304,6 +312,112 @@ export class DiaryFeedItemDto {
 
   @ApiProperty({ nullable: true, type: Date })
   seen_at: Date | null;
+
+  @ApiPropertyOptional({ type: () => DiarySubmissionDto, nullable: true })
+  submission?: DiarySubmissionDto | null;
+}
+
+export class SubmitHomeworkDto {
+  @ApiPropertyOptional({
+    example: [52, 53],
+    type: Number,
+    isArray: true,
+    description: `Up to ${MAX_ATTACHMENTS} uploaded notebook photos or files`,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ATTACHMENTS, { message: `Attach up to ${MAX_ATTACHMENTS} files` })
+  @IsInt({ each: true })
+  file_ids?: number[];
+
+  @ApiPropertyOptional({ example: 'Completed exercises 1 to 5.', maxLength: 1000 })
+  @IsOptional()
+  @Transform(trimToNull)
+  @MaxLength(1000)
+  @IsString()
+  student_notes?: string | null;
+}
+
+export class GradeHomeworkDto {
+  @ApiProperty({ enum: ['graded', 'resubmit_requested'], example: 'graded' })
+  @IsIn(['graded', 'resubmit_requested'], { message: 'status must be graded or resubmit_requested' })
+  status: 'graded' | 'resubmit_requested';
+
+  @ApiPropertyOptional({ example: 'A+', maxLength: 10 })
+  @IsOptional()
+  @Transform(trimToNull)
+  @MaxLength(10)
+  @IsString()
+  grade?: string | null;
+
+  @ApiPropertyOptional({ example: 9.5 })
+  @IsOptional()
+  @Min(0)
+  @IsNumber()
+  marks?: number | null;
+
+  @ApiPropertyOptional({ example: 10 })
+  @IsOptional()
+  @Min(0)
+  @IsNumber()
+  max_marks?: number | null;
+
+  @ApiPropertyOptional({ example: 'Very good handwriting. Check question 4 calculation again.', maxLength: 1000 })
+  @IsOptional()
+  @Transform(trimToNull)
+  @MaxLength(1000)
+  @IsString()
+  teacher_feedback?: string | null;
+}
+
+export class DiarySubmissionDto {
+  @ApiProperty({ example: 1 })
+  id: number;
+
+  @ApiProperty({ example: 21 })
+  entry_id: number;
+
+  @ApiProperty({ example: 101 })
+  student_id: number;
+
+  @ApiProperty({ example: 'Aadhavan Senthil' })
+  student_name: string;
+
+  @ApiProperty({ example: '6 - A', nullable: true })
+  class_section: string | null;
+
+  @ApiProperty({ example: '2026-11-12T14:30:00.000Z' })
+  submitted_at: Date;
+
+  @ApiProperty({ example: false })
+  is_late: boolean;
+
+  @ApiProperty({ example: 'Finished all sums', nullable: true })
+  student_notes: string | null;
+
+  @ApiProperty({ enum: SUBMISSION_STATUSES, example: 'graded' })
+  status: SubmissionStatus;
+
+  @ApiProperty({ example: 'A', nullable: true })
+  grade: string | null;
+
+  @ApiProperty({ example: 9, nullable: true })
+  marks: number | null;
+
+  @ApiProperty({ example: 10, nullable: true })
+  max_marks: number | null;
+
+  @ApiProperty({ example: 'Well done!', nullable: true })
+  teacher_feedback: string | null;
+
+  @ApiProperty({ type: RefDto, nullable: true })
+  graded_by: RefDto | null;
+
+  @ApiProperty({ nullable: true })
+  graded_at: Date | null;
+
+  @ApiProperty({ type: FileDto, isArray: true })
+  attachments: FileDto[];
 }
 
 export class DiaryInsightsDto {
