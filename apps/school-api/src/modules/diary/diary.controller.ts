@@ -10,6 +10,8 @@ import {
   DiaryOptionalNoteDto,
   DiaryQueryDto,
   DiaryReviewDto,
+  DiarySubmissionDto,
+  GradeHomeworkDto,
 } from './dto/diary.dto';
 import { DiaryService } from './diary.service';
 
@@ -102,5 +104,30 @@ export class DiaryController {
   @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
   restore(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @CurrentUser() actor: AuthUser) {
     return this.diary.restore(schoolId, id, actor);
+  }
+
+  @Get(':id/submissions')
+  @RequirePermissions(PERMISSIONS.DIARY_VIEW)
+  @ApiOperation({ summary: 'List all student submissions for this homework post' })
+  @ApiEnvelope(DiarySubmissionDto, { isArray: true })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  submissions(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @CurrentUser() actor: AuthUser) {
+    return this.diary.listSubmissions(schoolId, id, actor);
+  }
+
+  @Post(':id/submissions/:submissionId/grade')
+  @RequirePermissions(PERMISSIONS.DIARY_MODERATE)
+  @ResponseMessage('Submission graded')
+  @ApiOperation({ summary: 'Grade a student submission (marks/grade + feedback)' })
+  @ApiEnvelope(DiarySubmissionDto, { message: 'Submission graded' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  grade(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('submissionId', ParseIntPipe) submissionId: number,
+    @Body() dto: GradeHomeworkDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.diary.gradeSubmission(schoolId, id, submissionId, actor, dto);
   }
 }

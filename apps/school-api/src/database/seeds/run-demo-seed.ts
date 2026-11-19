@@ -6,6 +6,7 @@ import { seedDemoAchievements } from './demo-achievements';
 import { seedDemoBusPasses, seedDemoRouteFees } from './demo-bus-passes';
 import { seedDemoDay4 } from './demo-day4';
 import { seedDemoDay5 } from './demo-day5';
+import { seedDemoDiary } from './demo-diary';
 import { seedDemoExams } from './demo-exams';
 import { seedDemoFeedback } from './demo-feedback';
 import { seedDemoFees } from './demo-fees';
@@ -63,4 +64,5 @@ runSeed('Demo seed', async (manager) => {
   await seedDemoBusPasses(manager, school);
   await seedDemoLibrary(manager, school);
   await seedDemoMaintenance(manager, school);
+  await seedDemoDiary(manager, school);
 });
