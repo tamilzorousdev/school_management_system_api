@@ -283,3 +283,37 @@ export function lateFeeAmount(
   if (settings.late_fee_type === 'percent') return round2((balance * Number(settings.late_fee_value)) / 100);
   return 0;
 }
+
+export function invoiceAmounts(lineAmounts: number[], benefit: number, discount: number, paid: number) {
+  const gross = sumAmounts(lineAmounts);
+  const keptBenefit = round2(Math.min(Number(benefit), gross));
+  const keptDiscount = round2(Math.min(Number(discount), gross - keptBenefit));
+  const total = round2(gross - keptBenefit - keptDiscount);
+  const balance = round2(Math.max(total - Number(paid), 0));
+  return {
+    gross,
+    benefit: keptBenefit,
+    discount: keptDiscount,
+    total,
+    balance,
+    status: invoiceStatus(total, Number(paid)),
+  };
+}
+
+export function transportAdjustment(newAmount: number, billed: number, adjustedSoFar: number): number {
+  return round2(Number(newAmount) - Number(billed) - Number(adjustedSoFar));
+}
+
+export function paidShare(lineAmount: number, invoicePaid: number, invoiceGross: number): number {
+  return Number(invoiceGross) > 0 ? round2((Number(lineAmount) * Number(invoicePaid)) / Number(invoiceGross)) : 0;
+}
+
+export function transportFeeStatus(
+  billed: number,
+  pending: number,
+  overdue: number,
+): 'paid' | 'pending' | 'overdue' | 'not_billed' {
+  if (Number(billed) <= 0) return 'not_billed';
+  if (Number(overdue) > 0) return 'overdue';
+  return Number(pending) > 0 ? 'pending' : 'paid';
+}

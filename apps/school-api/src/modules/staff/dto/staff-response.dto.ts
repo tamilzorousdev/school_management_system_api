@@ -324,6 +324,61 @@ export class MatrixRowDto {
 
   @ApiProperty({ type: [MatrixCellDto] })
   cells: MatrixCellDto[];
+
+  @ApiProperty({ example: 30, description: 'Periods a week of all its subjects' })
+  periods_total: number;
+}
+
+export class AssignmentWeekDto {
+  @ApiProperty({ example: '2026-11-17', description: 'Monday of the week shown' })
+  start: string;
+
+  @ApiProperty({ example: '2026-11-23' })
+  end: string;
+
+  @ApiProperty({ example: true })
+  is_current: boolean;
+
+  @ApiProperty({ example: false, description: 'Past weeks are shown as they were and cannot be changed' })
+  read_only: boolean;
+
+  @ApiProperty({ example: 3, description: 'Changes made in this week' })
+  changes: number;
+}
+
+export class AssignmentChangeDto {
+  @ApiProperty({ example: 41 })
+  id: number;
+
+  @ApiProperty({ example: '2026-11-17', description: 'Monday of the week it took effect' })
+  week_start: string;
+
+  @ApiProperty({ type: RefDto, description: 'Section, named like "1 - A"' })
+  section: RefDto;
+
+  @ApiProperty({ type: RefDto })
+  subject: RefDto;
+
+  @ApiProperty({ type: RefDto, nullable: true })
+  from_teacher: RefDto | null;
+
+  @ApiProperty({ type: RefDto, nullable: true })
+  to_teacher: RefDto | null;
+
+  @ApiProperty({ nullable: true, type: Number })
+  from_periods: number | null;
+
+  @ApiProperty({ nullable: true, type: Number })
+  to_periods: number | null;
+
+  @ApiProperty({ type: RefDto, nullable: true })
+  changed_by: RefDto | null;
+
+  @ApiProperty()
+  at: Date;
+
+  @ApiProperty({ example: 'Mathematics 1 - A: Gomathi Sekar → Anitha Ramasamy' })
+  summary: string;
 }
 
 export class AssignmentMatrixDto {
@@ -338,6 +393,12 @@ export class AssignmentMatrixDto {
 
   @ApiProperty({ example: 6, description: 'Subject slots with no teacher' })
   unassigned: number;
+
+  @ApiProperty({ example: 30, description: 'Most periods a week one class can have (school setting)' })
+  class_periods_per_week: number;
+
+  @ApiProperty({ type: AssignmentWeekDto })
+  week: AssignmentWeekDto;
 }
 
 export class TeacherClassDto {

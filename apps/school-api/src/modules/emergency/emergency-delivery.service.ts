@@ -78,6 +78,9 @@ export class EmergencyDeliveryService {
        WHERE id IN (
          SELECT id FROM emergency_recipients
          WHERE ${channel}_status = 'pending' AND (${channel}_next_at IS NULL OR ${channel}_next_at <= now())
+           AND broadcast_id NOT IN (
+             SELECT id FROM emergency_broadcasts
+             WHERE ended_at IS NOT NULL OR (expires_at IS NOT NULL AND expires_at <= now()))
          ORDER BY id LIMIT ${BATCH} FOR UPDATE SKIP LOCKED)
        RETURNING id, broadcast_id, user_id, name, mobile, language, ${channel}_attempts AS attempts`,
     );
@@ -114,6 +117,9 @@ export class EmergencyDeliveryService {
     const { broadcast, school } = entry;
     const title = textFor(row.language, broadcast.title, broadcast.title_ta);
     const message = textFor(row.language, broadcast.message, broadcast.message_ta);
+    const ttlSeconds = broadcast.expires_at
+      ? Math.max(1, Math.floor((broadcast.expires_at.getTime() - Date.now()) / 1000))
+      : undefined;
     let outcome: Outcome;
     try {
       outcome =
@@ -128,6 +134,7 @@ export class EmergencyDeliveryService {
                 broadcast_id: String(broadcast.id),
                 severity: broadcast.severity,
               },
+              ttlSeconds,
             })
           : await this.notifications.smsNow({
               mobile: row.mobile!,

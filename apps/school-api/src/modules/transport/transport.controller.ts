@@ -36,6 +36,12 @@ import {
   DeviceOptionDto,
   DriverDto,
   DriverDutyDto,
+  DriverStudentDto,
+  DriverStudentQueryDto,
+  PassInputDto,
+  RouteChangeDto,
+  RouteInsightsDto,
+  RouteQueryDto,
   ExpiryDto,
   ExpiryQueryDto,
   ExpiryRunDto,
@@ -56,7 +62,12 @@ import {
   VehicleInputDto,
   VehicleInsightsDto,
   VehicleQueryDto,
+  BusSwapDto,
+  BusSwapInputDto,
+  BusSwapQueryDto,
 } from './dto/transport.dto';
+import { BusPassService } from './bus-pass.service';
+import { CrewHeldPassDto } from './dto/bus-pass.dto';
 import { RoutesService } from './routes.service';
 import { VehicleDocumentsService } from './vehicle-documents.service';
 import { VehiclesService } from './vehicles.service';
@@ -278,15 +289,42 @@ export class TransportController {
 
   @Get('routes')
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
-  @ApiOperation({ summary: 'Routes with bus, stop count, students and first pickup' })
+  @ApiOperation({
+    summary: 'Routes with bus, stop count, students, timings and the number of stop time errors',
+    description: 'flag: no_bus, inactive or has_problems.',
+  })
   @ApiEnvelope(RouteDto, { isArray: true })
-  listRoutes(@SchoolId() schoolId: number) {
-    return this.routes.list(schoolId);
+  listRoutes(@SchoolId() schoolId: number, @Query() query: RouteQueryDto) {
+    return this.routes.list(schoolId, query);
+  }
+
+  @Get('routes/insights')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary: 'Route cards: routes, active, stops, students, active routes without a bus, routes with time errors',
+  })
+  @ApiEnvelope(RouteInsightsDto)
+  routeInsights(@SchoolId() schoolId: number) {
+    return this.routes.insights(schoolId);
+  }
+
+  @Get('routes/:id/history')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary:
+      'What changed on this route and when: stop times, stops moved, added or removed, bus and bus passes (student moves: GET /admin/students/{id}/transport/history)',
+  })
+  @ApiEnvelope(RouteChangeDto, { isArray: true })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  routeHistory(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.routes.routeHistory(schoolId, id);
   }
 
   @Get('routes/:id')
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
-  @ApiOperation({ summary: 'Route with its stops in order and the school location, for the map' })
+  @ApiOperation({
+    summary: 'Route with its stops in order, the school location, timings, stop time problems and bus warnings',
+  })
   @ApiEnvelope(RouteDetailDto)
   @ApiErrors(HttpStatus.NOT_FOUND)
   route(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
@@ -306,6 +344,51 @@ export class TransportController {
     return this.routes.roster(schoolId, id);
   }
 
+  @Get('bus-swaps')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({ summary: 'Routes run by a different bus for a day: today and later, or one date' })
+  @ApiEnvelope(BusSwapDto, { isArray: true })
+  swaps(@SchoolId() schoolId: number, @Query() query: BusSwapQueryDto) {
+    return this.routes.listSwaps(schoolId, query.date);
+  }
+
+  @Put('routes/:id/swap')
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Bus changed for the day')
+  @ApiOperation({
+    summary: 'Run this route with another bus for one day (breakdown), then it goes back to its usual bus',
+    description:
+      'date defaults to today, up to 30 days ahead; sending again for the same day replaces it. The other bus must be free at the route times (409 BUS_TIME_CLASH / CREW_TIME_CLASH). Parents of the route and the driver and attendant of both buses get a push with the reason. 400 SAME_BUS, ROUTE_INACTIVE.',
+  })
+  @ApiEnvelope(BusSwapDto, { message: 'Bus changed for the day' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  swapBus(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: BusSwapInputDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.routes.swapBus(schoolId, id, dto, actor);
+  }
+
+  @Delete('routes/:id/swap')
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Back to the usual bus')
+  @ApiOperation({
+    summary: 'Undo the bus change for a day (date defaults to today); parents are told',
+    description: '404 SWAP_NOT_FOUND.',
+  })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  async clearSwap(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: BusSwapQueryDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    await this.routes.clearSwap(schoolId, id, query.date, actor);
+    return null;
+  }
+
   @Post('routes')
   @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
   @ResponseMessage('Route created')
@@ -322,8 +405,13 @@ export class TransportController {
   @ApiOperation({ summary: 'Rename a route, change its bus or switch it off' })
   @ApiEnvelope(RouteDetailDto, { message: 'Route updated' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
-  updateRoute(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRouteDto) {
-    return this.routes.update(schoolId, id, dto);
+  updateRoute(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateRouteDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.routes.update(schoolId, id, dto, actor);
   }
 
   @Delete('routes/:id')
@@ -342,12 +430,17 @@ export class TransportController {
   @ApiOperation({
     summary: 'Save every stop in travel order (the route builder sends the whole list)',
     description:
-      'Send id to keep a stop and its students. A removed stop that still has students returns 409 STOP_IN_USE.',
+      'Send id to keep a stop and its students. Stop times are checked before saving: pickup times go up stop by stop and end before school starts; drop times go up from the last stop outwards and start after school ends; at least 2 minutes between stops; once one stop has a pickup (or drop) time every stop needs one. Errors come back as 400 VALIDATION_FAILED with field items.N.pickup_time / items.N.drop_time and a message naming the stop. 409 BUS_TIME_CLASH / CREW_TIME_CLASH when the bus or its crew runs another route at the same time; 409 STOP_IN_USE when a removed stop still has students; 400 when a stop loses the time its students need. Parents of students at a stop whose time moves by 5 minutes or more, or whose place moves by 100 m or more, get an in-app note.',
   })
   @ApiEnvelope(RouteDetailDto, { message: 'Stops saved' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
-  setStops(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: StopsInputDto) {
-    return this.routes.setStops(schoolId, id, dto);
+  setStops(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: StopsInputDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.routes.setStops(schoolId, id, dto, actor);
   }
 
   @Post('routes/:id/auto-sequence')
@@ -369,7 +462,8 @@ export class TransportController {
   @ResponseMessage('Students assigned')
   @ApiOperation({
     summary: 'Put students on this stop. Students on another stop are moved here.',
-    description: '409 BUS_FULL when the bus would carry more than its seats.',
+    description:
+      'Only stops of this route can be used. 400 ROUTE_HAS_NO_BUS, ROUTE_INACTIVE, STOP_TIME_MISSING (the stop has no pickup time for morning riders or no drop time for evening riders); 409 BUS_FULL when the morning or evening trip has no seat left. Parents and the crew get a push.',
   })
   @ApiEnvelope(AssignResultDto, { message: 'Students assigned' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
@@ -385,9 +479,9 @@ export class TransportController {
   @Get('students')
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
   @ApiOperation({
-    summary: 'Students who use the bus, with route, pickup and drop stops, mode and fee',
+    summary: 'Students who use the bus, with route, pickup and drop stops, mode, fee and bus pass',
     description:
-      'search matches student name and admission number. stop_id matches the pickup or drop stop. sort: name, admission_no, class, stop, created_at.',
+      'search matches student name and admission number. stop_id matches the pickup or drop stop. Filters: route_id, stop_id, class_id, section_id, mode, pass_status. sort: name, admission_no, class, stop, created_at.',
   })
   @ApiEnvelope(StudentTransportDto, { paginated: true })
   students(@SchoolId() schoolId: number, @Query() query: StudentTransportQueryDto) {
@@ -425,12 +519,31 @@ export class StudentTransportController {
   @ApiOperation({
     summary: 'Give the student a route, a pickup stop and optionally a different drop stop on the same route',
     description:
-      '409 BUS_FULL when the morning or evening trip of the bus has no seat left. Parents and the crew of the old and new bus get a push.',
+      '400 ROUTE_HAS_NO_BUS, ROUTE_INACTIVE, STOP_TIME_MISSING (the pickup stop has no pickup time for morning riders or the drop stop no drop time for evening riders); 409 BUS_FULL when the morning or evening trip of the bus has no seat left. Parents and the crew of the old and new bus get a push.',
   })
   @ApiEnvelope(StudentTransportDto, { message: 'Bus stop saved' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
   set(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: AssignTransportDto) {
     return this.routes.assignStudent(schoolId, id, dto);
+  }
+
+  @Put('pass')
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Bus pass saved')
+  @ApiOperation({
+    summary: 'Put the student’s bus pass on hold, or make it active again',
+    description:
+      'The driver sees only "Bus pass on hold – contact office", never fees. Parents get an in-app note with the office note. 404 TRANSPORT_NOT_FOUND when the student has no bus.',
+  })
+  @ApiEnvelope(StudentTransportDto, { message: 'Bus pass saved' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  setPass(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: PassInputDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.routes.setPass(schoolId, id, dto, actor);
   }
 
   @Delete()
@@ -444,18 +557,61 @@ export class StudentTransportController {
   }
 }
 
-@ApiTags(DRIVER_MODULE_TAGS.MODULE_1)
 @ApiBearerAuth()
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
 @RequireRoles(ROLES.DRIVER, ROLES.ATTENDANT)
 @Controller('mobile/driver')
 export class MobileDriverController {
-  constructor(private readonly routes: RoutesService) {}
+  constructor(
+    private readonly routes: RoutesService,
+    private readonly busPasses: BusPassService,
+  ) {}
+
+  @Get('passes-on-hold')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_3)
+  @ApiOperation({
+    summary: 'Students on my bus today whose bus pass is on hold',
+    description:
+      'label: "Pass on hold – fee pending, contact office" or "Pass on hold – contact office". Only for the crew to know: still take the child; the office talks to the parent. No fee amounts.',
+  })
+  @ApiEnvelope(CrewHeldPassDto, { isArray: true })
+  async passesOnHold(@CurrentUser() user: AuthUser) {
+    const busId = await this.routes.crewBusId(user.school_id ?? 0, user.id);
+    return busId ? this.busPasses.crewHeld(user.school_id ?? 0, busId) : [];
+  }
 
   @Get('duty')
-  @ApiOperation({ summary: 'My bus, its routes and stops in order, with the students at each stop' })
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_1)
+  @ApiOperation({
+    summary: 'My bus, its routes (from → to, timings) and stops in order, with the students at each stop',
+    description:
+      'Each student has photo, class and section, parents with mobile, morning/evening mode, journey ("Boards at Kilpauk 07:25 · Drops at Kilpauk 16:30") and pass_status. on_hold: show "Bus pass on hold – contact office" and never leave the child behind.',
+  })
   @ApiEnvelope(DriverDutyDto)
   duty(@CurrentUser() user: AuthUser) {
     return this.routes.forDriver(user.school_id ?? 0, user.id);
+  }
+
+  @Get('students')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_1)
+  @ApiOperation({
+    summary: 'Every student on my bus, with stop, parents, journey and bus pass',
+    description: 'search: name, admission number or parent mobile. ride: morning or evening.',
+  })
+  @ApiEnvelope(DriverStudentDto, { isArray: true })
+  students(@CurrentUser() user: AuthUser, @Query() query: DriverStudentQueryDto) {
+    return this.routes.driverStudents(user.school_id ?? 0, user.id, query);
+  }
+
+  @Get('roster')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_3)
+  @ApiOperation({
+    summary: 'Stop-by-stop list for each of my routes: who gets on in the morning and who gets off in the evening',
+    description:
+      'One entry per active route on my bus, stops in route order. A student with a different evening stop is under pickup_students at the morning stop and under drop_students at the evening stop. pass_status on_hold: show "Bus pass on hold – contact office" and never leave the child behind. Empty list when I have no bus.',
+  })
+  @ApiEnvelope(RouteRosterDto, { isArray: true })
+  roster(@CurrentUser() user: AuthUser) {
+    return this.routes.driverRoster(user.school_id ?? 0, user.id);
   }
 }

@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { In, IsNull, MoreThan, Repository, SelectQueryBuilder } from 'typeorm';
+import { In, IsNull, MoreThan, Not, Repository, SelectQueryBuilder } from 'typeorm';
 import { AppException, AuthUser, listQuery, offset, paginate, Paginated } from '@app/common';
 import { pushConfig, PushConfig } from '../../config/configuration';
 import { ROLES } from '../access/access.catalog';
@@ -108,6 +108,7 @@ export class NotificationsService implements OnModuleInit {
     const where = {
       user_id: userId,
       channel: 'in_app' as const,
+      status: Not('expired' as const),
       ...(query.unread ? { read_at: IsNull() } : {}),
       ...(query.category ? { category: query.category } : {}),
     };
@@ -336,6 +337,7 @@ export class NotificationsService implements OnModuleInit {
     title: string;
     body: string;
     data: Record<string, string>;
+    ttlSeconds?: number;
   }): Promise<PushResult> {
     if (!this.pushSettings.auto) {
       return {
@@ -354,6 +356,7 @@ export class NotificationsService implements OnModuleInit {
       data: input.data,
       userId: input.userId,
       variables: { ...input.data, title: input.title, body: input.body },
+      ttlSeconds: input.ttlSeconds,
     });
     await this.devices.removeTokens(result.invalidTokens);
     return result;

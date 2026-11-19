@@ -44,6 +44,9 @@ export type RiderStatus = (typeof RIDER_STATUSES)[number];
 export const TRIP_FLAGS = ['not_boarded', 'not_alighted'] as const;
 export type TripFlag = (typeof TRIP_FLAGS)[number];
 
+export const TRIP_FLAG_FILTERS = ['any', ...TRIP_FLAGS] as const;
+export type TripFlagFilter = (typeof TRIP_FLAG_FILTERS)[number];
+
 export interface RiderMarks {
   boarded: boolean;
   alighted: boolean;
@@ -72,6 +75,11 @@ export function tripFlag(rider: RiderMarks, tripEnded: boolean): TripFlag | null
   if (status === 'waiting') return 'not_boarded';
   if (status === 'on_bus') return 'not_alighted';
   return null;
+}
+
+export function missedTheBus<T extends RiderMarks>(riders: T[]): T[] {
+  if (!riders.some((rider) => rider.boarded || rider.alighted)) return [];
+  return riders.filter((rider) => !rider.boarded && !rider.alighted && !rider.away_today);
 }
 
 export function checklistSummary(riders: RiderMarks[], tripEnded: boolean): ChecklistSummary {

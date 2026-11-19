@@ -30,9 +30,12 @@ import { OnlinePaymentsController, RazorpayWebhookController } from './online-pa
 import { OnlinePaymentsService } from './online-payments.service';
 import { RazorpayClient } from './razorpay.client';
 import { FeeReportsService } from './fee-reports.service';
+import { TransportFeeAdjustment } from './entities/transport-fee-adjustment.entity';
 import { MobileParentFeesController, MobileTeacherFeesController } from './fees-mobile.controller';
 import { FeesController, StudentFeesController } from './fees.controller';
 import { FeesService } from './fees.service';
+import { TransportFeeSyncService } from './transport-fee-sync.service';
+import { TransportFeesReportService } from './transport-fees-report.service';
 
 @Module({
   imports: [
@@ -55,6 +58,7 @@ import { FeesService } from './fees.service';
       FeePaymentOrder,
       FeeFine,
       FeeFineType,
+      TransportFeeAdjustment,
     ]),
   ],
   controllers: [
@@ -78,7 +82,9 @@ import { FeesService } from './fees.service';
     FeeSettingsService,
     OnlinePaymentsService,
     RazorpayClient,
+    TransportFeeSyncService,
+    TransportFeesReportService,
   ],
-  exports: [FeesService, FeeFinesService],
+  exports: [FeesService, FeeFinesService, TransportFeeSyncService, TransportFeesReportService],
 })
 export class FeesModule {}

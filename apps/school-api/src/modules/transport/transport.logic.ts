@@ -91,9 +91,62 @@ export function seatCheck(capacity: number, riders: { pickup: number; drop: numb
   return over.length ? `${capacity} seats, but ${over.join(' and ')}` : null;
 }
 
+export function stopFee(stopOverride: number | null | undefined, routeFee: number): number {
+  return stopOverride === null || stopOverride === undefined ? Number(routeFee) : Number(stopOverride);
+}
+
+export function riderFee(routeFee: number, pickupOverride: number | null, dropOverride?: number | null): number {
+  const pickup = stopFee(pickupOverride, routeFee);
+  return dropOverride === undefined ? pickup : Math.max(pickup, stopFee(dropOverride, routeFee));
+}
+
+export const STOP_FEE_SQL = (stopAlias: string, routeAlias: string) =>
+  `COALESCE(${stopAlias}.monthly_fee, ${routeAlias}.monthly_fee)`;
+
+export const RIDER_FEE_SQL = (stopAlias: string, dropAlias: string, routeAlias: string) =>
+  `(CASE WHEN ${dropAlias}.id IS NULL THEN ${STOP_FEE_SQL(stopAlias, routeAlias)} ELSE GREATEST(${STOP_FEE_SQL(stopAlias, routeAlias)}, ${STOP_FEE_SQL(dropAlias, routeAlias)}) END)`;
+
 export interface Point {
   lat: number;
   lng: number;
+}
+
+interface ChangeRef {
+  id: number;
+  name: string;
+}
+
+export interface ChangePlace {
+  route: ChangeRef;
+  stop: ChangeRef;
+  drop_stop: ChangeRef | null;
+}
+
+export const RIDE_LABELS: Record<RiderMode, string> = {
+  both: 'morning and evening',
+  pickup: 'morning only',
+  drop: 'evening only',
+};
+
+export function transportChangeSummary(change: {
+  action: 'assigned' | 'moved' | 'removed';
+  from: ChangePlace | null;
+  to: ChangePlace | null;
+  mode: RiderMode | null;
+}): string {
+  const { from, to } = change;
+  if (change.action === 'removed' || !to) return 'Removed from the school bus';
+  const dropOf = (place: ChangePlace) => place.drop_stop ?? place.stop;
+  const ride = change.mode ? ` (${RIDE_LABELS[change.mode]})` : '';
+  const evening = to.drop_stop && to.drop_stop.id !== to.stop.id ? `, gets off at ${to.drop_stop.name}` : '';
+  if (change.action === 'assigned' || !from)
+    return `Bus given on ${to.route.name}: boards at ${to.stop.name}${evening}${ride}`;
+  if (from.route.id !== to.route.id) return `Moved to ${to.route.name}: boards at ${to.stop.name}${evening}${ride}`;
+  const parts: string[] = [];
+  if (from.stop.id !== to.stop.id) parts.push(`Pickup stop changed from ${from.stop.name} to ${to.stop.name}`);
+  if (dropOf(from).id !== dropOf(to).id)
+    parts.push(`Evening stop changed from ${dropOf(from).name} to ${dropOf(to).name}`);
+  return parts.length ? parts.join('; ') : `Bus details updated${ride}`;
 }
 
 export function daysBetween(from: string, to: string): number {

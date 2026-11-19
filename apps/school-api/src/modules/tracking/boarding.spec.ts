@@ -3,6 +3,7 @@ import {
   boardingStopId,
   checklistSummary,
   clockIn,
+  missedTheBus,
   riderStatus,
   routeRefusal,
   tripFlag,
@@ -107,5 +108,29 @@ describe('undoRefusal', () => {
     expect(undoRefusal(['boarded', 'alighted'], 'boarded')?.code).toBe('UNDO_ALIGHTED_FIRST');
     expect(undoRefusal(['boarded', 'alighted'], 'alighted')).toBeNull();
     expect(undoRefusal(['boarded'], 'boarded')).toBeNull();
+  });
+});
+
+describe('missedTheBus', () => {
+  const rider = (id: number, patch: Partial<{ boarded: boolean; alighted: boolean; away_today: boolean }> = {}) => ({
+    id,
+    boarded: false,
+    alighted: false,
+    away_today: false,
+    ...patch,
+  });
+
+  it('lists riders who were expected and never marked', () => {
+    const riders = [
+      rider(1, { boarded: true }),
+      rider(2),
+      rider(3, { away_today: true }),
+      rider(4, { alighted: true }),
+    ];
+    expect(missedTheBus(riders).map((item) => item.id)).toEqual([2]);
+  });
+
+  it('sends nothing when the attendant marked nobody on the trip', () => {
+    expect(missedTheBus([rider(1), rider(2)])).toEqual([]);
   });
 });

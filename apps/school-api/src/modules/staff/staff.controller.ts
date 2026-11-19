@@ -19,6 +19,7 @@ import { VerifyDocumentDto } from '../../shared/verification';
 import { PERMISSIONS } from '../access/access.catalog';
 import { AssignmentsService } from './assignments.service';
 import {
+  AssignmentChangesQueryDto,
   AssignmentsQueryDto,
   BankDetailsInputDto,
   CreateStaffDto,
@@ -30,6 +31,7 @@ import {
   UpdateStaffDto,
 } from './dto/staff-input.dto';
 import {
+  AssignmentChangeDto,
   AssignmentMatrixDto,
   BankDetailsDto,
   StaffDetailDto,
@@ -233,7 +235,11 @@ export class TeacherAssignmentsController {
 
   @Get()
   @RequirePermissions(PERMISSIONS.STAFF_VIEW)
-  @ApiOperation({ summary: 'Assignment matrix: each section’s subjects with their teacher, plus each teacher’s load' })
+  @ApiOperation({
+    summary: 'Assignment matrix: each section’s subjects with their teacher, plus each teacher’s load',
+    description:
+      'week (any day of it) shows the assignments as they were that week; past weeks are read only. Each row has periods_total against class_periods_per_week (the school setting).',
+  })
   @ApiEnvelope(AssignmentMatrixDto)
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   matrix(@SchoolId() schoolId: number, @Query() query: AssignmentsQueryDto) {
@@ -244,12 +250,24 @@ export class TeacherAssignmentsController {
   @RequirePermissions(PERMISSIONS.STAFF_MANAGE)
   @ResponseMessage('Assignments saved')
   @ApiOperation({
-    summary: 'Set or clear teachers for section and subject pairs',
-    description: 'teacher_user_id null removes the teacher. Returns the updated matrix.',
+    summary: 'Set or clear teachers for section and subject pairs, from this week on',
+    description:
+      'teacher_user_id null removes the teacher. Every change is kept with this week, so earlier weeks still show what they had. 409 CLASS_OVER_LIMIT when a class would go above the periods a week in School setup (default 30), TEACHER_OVER_LIMIT when a teacher would go above their limit. Returns the updated matrix.',
   })
   @ApiEnvelope(AssignmentMatrixDto, { message: 'Assignments saved' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
-  save(@SchoolId() schoolId: number, @Body() dto: SaveAssignmentsDto) {
-    return this.assignments.save(schoolId, dto);
+  save(@SchoolId() schoolId: number, @Body() dto: SaveAssignmentsDto, @CurrentUser() actor: AuthUser) {
+    return this.assignments.save(schoolId, dto, actor);
+  }
+
+  @Get('changes')
+  @RequirePermissions(PERMISSIONS.STAFF_VIEW)
+  @ApiOperation({
+    summary: 'What changed in Teacher assignments, newest first: who, which class and subject, from which week',
+    description: 'week (any day of it) limits to one week; section_id to one class. Up to 200 changes.',
+  })
+  @ApiEnvelope(AssignmentChangeDto, { isArray: true })
+  changes(@SchoolId() schoolId: number, @Query() query: AssignmentChangesQueryDto) {
+    return this.assignments.changesList(schoolId, query);
   }
 }

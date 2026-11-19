@@ -20,6 +20,10 @@ import {
   studentStatus,
   sumAmounts,
   transportCharge,
+  invoiceAmounts,
+  paidShare,
+  transportAdjustment,
+  transportFeeStatus,
 } from './fees.logic';
 
 const TODAY = '2026-11-03';
@@ -365,5 +369,53 @@ describe('late fee', () => {
 
   it('is nothing when switched off', () => {
     expect(lateFeeAmount({ late_fee_type: 'none', late_fee_value: 100 }, 9000)).toBe(0);
+  });
+});
+
+describe('bus fee changes on invoices', () => {
+  it('recalculates an invoice after its bus line changes', () => {
+    expect(invoiceAmounts([5000, 3600], 0, 600, 0)).toEqual({
+      gross: 8600,
+      benefit: 0,
+      discount: 600,
+      total: 8000,
+      balance: 8000,
+      status: 'unpaid',
+    });
+    expect(invoiceAmounts([5000, 3600], 0, 0, 8600)).toMatchObject({ balance: 0, status: 'paid' });
+  });
+
+  it('keeps concessions and the discount when the bus line changes, never above the new gross', () => {
+    expect(invoiceAmounts([5000, 3600], 1000, 500, 0)).toMatchObject({ gross: 8600, total: 7100 });
+    expect(invoiceAmounts([5000], 4800, 500, 0)).toMatchObject({
+      gross: 5000,
+      benefit: 4800,
+      discount: 200,
+      total: 0,
+    });
+  });
+
+  it('charges the difference on the next invoice when the paid one is out of date', () => {
+    expect(transportAdjustment(4200, 3600, 0)).toBe(600);
+    expect(transportAdjustment(3000, 3600, 0)).toBe(-600);
+    expect(transportAdjustment(0, 3600, 0)).toBe(-3600);
+  });
+
+  it('counts adjustments already raised for that invoice', () => {
+    expect(transportAdjustment(4200, 3600, 600)).toBe(0);
+    expect(transportAdjustment(3000, 3600, 600)).toBe(-1200);
+  });
+
+  it('splits a payment across lines by amount', () => {
+    expect(paidShare(3600, 4300, 8600)).toBe(1800);
+    expect(paidShare(3600, 0, 8600)).toBe(0);
+    expect(paidShare(3600, 100, 0)).toBe(0);
+  });
+
+  it('gives the bus fee status', () => {
+    expect(transportFeeStatus(0, 0, 0)).toBe('not_billed');
+    expect(transportFeeStatus(3600, 0, 0)).toBe('paid');
+    expect(transportFeeStatus(3600, 1200, 0)).toBe('pending');
+    expect(transportFeeStatus(3600, 1200, 1200)).toBe('overdue');
   });
 });

@@ -1,6 +1,5 @@
-import { EntityManager } from 'typeorm';
+import { EntityManager, In, IsNull } from 'typeorm';
 import { AppException } from '@app/common';
-import { rupees } from '../payroll/payroll.calc';
 import { SequencesService } from '../schools/sequences.service';
 import { FeeCredit } from './entities/fee-credit.entity';
 import { FeeHead } from './entities/fee-head.entity';
@@ -23,6 +22,8 @@ import {
   sumAmounts,
   transportCharge,
 } from './fees.logic';
+import { TransportFeeAdjustment } from './entities/transport-fee-adjustment.entity';
+import { RiderFee, ridersWithFee, transportDescription } from './transport-fee-sync.service';
 
 export interface FeeYear {
   id: number;
@@ -157,23 +158,27 @@ export async function generateInvoices(manager: EntityManager, input: GenerateIn
 
   const pending = students.filter((student) => !invoiced.has(student.id));
   const latestDue = [...dueByClass.values()].sort().pop()!;
-  const riders = new Map<number, { stop: string; monthly_fee: number }>();
+  const riders = new Map<number, RiderFee>();
+  const adjustments = new Map<number, TransportFeeAdjustment[]>();
   if (transportHead && pending.length) {
-    const rows: { student_id: number; stop: string; monthly_fee: string; start_date: string }[] = await manager.query(
-      `SELECT st.student_id,
-              CASE WHEN ds.id IS NOT NULL AND ds.id <> rs.id THEN rs.name || ' / ' || ds.name ELSE rs.name END AS stop,
-              GREATEST(rs.monthly_fee, COALESCE(ds.monthly_fee, 0)) AS monthly_fee,
-              to_char(st.start_date, 'YYYY-MM-DD') AS start_date
-       FROM student_transport st JOIN route_stops rs ON rs.id = st.stop_id AND rs.deleted_at IS NULL
-       LEFT JOIN route_stops ds ON ds.id = st.drop_stop_id AND ds.deleted_at IS NULL
-       WHERE st.school_id = $1 AND st.deleted_at IS NULL AND st.student_id = ANY($2) AND st.start_date <= $3`,
-      [schoolId, pending.map((student) => student.id), latestDue],
+    const found = await ridersWithFee(
+      manager,
+      schoolId,
+      pending.map((student) => student.id),
+      latestDue,
     );
-    for (const row of rows) {
-      if (Number(row.monthly_fee) > 0) {
-        riders.set(Number(row.student_id), { stop: row.stop, monthly_fee: Number(row.monthly_fee) });
-      }
+    for (const rider of found.values()) {
+      if (rider.monthly_fee > 0) riders.set(rider.student_id, rider);
     }
+    const open = await manager.find(TransportFeeAdjustment, {
+      where: {
+        school_id: schoolId,
+        student_id: In(pending.map((student) => student.id)),
+        applied_invoice_id: IsNull(),
+      },
+      order: { id: 'ASC' },
+    });
+    for (const row of open) adjustments.set(row.student_id, [...(adjustments.get(row.student_id) ?? []), row]);
   }
 
   const rulesByStudent = await benefitRules(manager, schoolId, year.id, pending);
@@ -198,10 +203,26 @@ export async function generateInvoices(manager: EntityManager, input: GenerateIn
       lines.push({
         fee_head_id: transportHead.id,
         head_name: transportHead.name,
-        description: `${rider.stop} · ${rupees(rider.monthly_fee)} × ${charge.months} ${charge.months === 1 ? 'month' : 'months'}`,
+        description: transportDescription(rider.stop, rider.monthly_fee, charge.months),
         amount: charge.amount,
+        kind: 'transport',
+        route_id: rider.route_id,
+        stop_id: rider.stop_id,
+        drop_stop_id: rider.drop_stop_id,
+        monthly_rate: rider.monthly_fee,
+        months: charge.months,
       });
       withTransport += 1;
+    }
+    const owed = transportHead ? (adjustments.get(student.id) ?? []) : [];
+    for (const adjustment of owed) {
+      lines.push({
+        fee_head_id: transportHead!.id,
+        head_name: transportHead!.name,
+        description: adjustment.reason,
+        amount: Number(adjustment.amount),
+        kind: 'transport_adjustment',
+      });
     }
     const gross = sumAmounts(lines.map((line) => line.amount ?? 0));
     if (gross <= 0) continue;
@@ -262,6 +283,13 @@ export async function generateInvoices(manager: EntityManager, input: GenerateIn
       );
       withBenefits += 1;
       benefitAmount = sumAmounts([benefitAmount, benefit]);
+    }
+    if (owed.length) {
+      await manager.update(
+        TransportFeeAdjustment,
+        { id: In(owed.map((adjustment) => adjustment.id)) },
+        { applied_invoice_id: invoice.id },
+      );
     }
     created.push(invoice);
   }

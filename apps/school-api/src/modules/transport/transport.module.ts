@@ -3,7 +3,9 @@ import { VehicleDocumentsService } from './vehicle-documents.service';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CrewModule } from '../crew/crew.module';
+import { FeesModule } from '../fees/fees.module';
 import { ExpiryAlert } from './entities/expiry-alert.entity';
+import { RouteChange } from './entities/route-change.entity';
 import { RouteStop } from './entities/route-stop.entity';
 import { StudentTransportChange } from './entities/student-transport-change.entity';
 import { StudentTransport } from './entities/student-transport.entity';
@@ -13,6 +15,13 @@ import { RoutesService } from './routes.service';
 import { MobileDriverController, StudentTransportController, TransportController } from './transport.controller';
 import { VehiclesService } from './vehicles.service';
 import { DriverProfileService } from './driver-profile.service';
+import { DriverRatingsController } from './driver-ratings.controller';
+import { DriverRatingsService } from './driver-ratings.service';
+import { DriverRating } from './entities/driver-rating.entity';
+import { RouteBusSwap } from './entities/route-bus-swap.entity';
+import { BusFeeReminder, BusPass, BusPassSettings } from './entities/bus-pass.entity';
+import { BusPassController } from './bus-pass.controller';
+import { BusPassService } from './bus-pass.service';
 import { MobileDriverProfileController } from './mobile-driver-profile.controller';
 
 @Module({
@@ -25,11 +34,32 @@ import { MobileDriverProfileController } from './mobile-driver-profile.controlle
       StudentTransportChange,
       ExpiryAlert,
       VehicleDocument,
+      RouteChange,
+      DriverRating,
+      RouteBusSwap,
+      BusPass,
+      BusPassSettings,
+      BusFeeReminder,
     ]),
     CrewModule,
+    FeesModule,
   ],
-  controllers: [TransportController, StudentTransportController, MobileDriverController, MobileDriverProfileController],
-  providers: [VehicleDocumentsService, VehiclesService, RoutesService, DriverProfileService],
-  exports: [VehiclesService, RoutesService],
+  controllers: [
+    TransportController,
+    StudentTransportController,
+    MobileDriverController,
+    MobileDriverProfileController,
+    DriverRatingsController,
+    BusPassController,
+  ],
+  providers: [
+    VehicleDocumentsService,
+    VehiclesService,
+    RoutesService,
+    DriverProfileService,
+    DriverRatingsService,
+    BusPassService,
+  ],
+  exports: [VehiclesService, RoutesService, DriverRatingsService, BusPassService],
 })
 export class TransportModule {}

@@ -142,6 +142,18 @@ export class SchoolProfileDto {
   attendance_grace_minutes?: number;
 
   @ApiPropertyOptional({
+    example: 30,
+    minimum: 5,
+    maximum: 80,
+    description: 'Most periods a week one class (section) can have in Teacher assignments',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(5)
+  @Max(80)
+  class_periods_per_week?: number;
+
+  @ApiPropertyOptional({
     enum: ATTENDANCE_MODES,
     example: 'session',
     description:
@@ -353,6 +365,9 @@ export class SchoolDto {
 
   @ApiProperty({ example: 15, description: 'Extra minutes after the period ends to take attendance' })
   attendance_grace_minutes: number;
+
+  @ApiProperty({ example: 30, description: 'Most periods a week one class can have' })
+  class_periods_per_week: number;
 
   @ApiProperty({ enum: ATTENDANCE_MODES, example: 'session', description: 'session (morning and afternoon) or period' })
   attendance_mode: AttendanceMode;

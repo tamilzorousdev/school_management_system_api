@@ -1,9 +1,12 @@
 import { TripStop } from './entities/transport-trip.entity';
 import {
   alertMoveRefusal,
+  cancelNote,
   positionFrom,
   safetyTemplate,
+  sosDuplicateOf,
   sosLocation,
+  sosUpdateRefusal,
   telematicsAlert,
   TelematicsAlertEvent,
 } from './fleet-alerts.logic';
@@ -116,5 +119,47 @@ describe('positionFrom', () => {
     expect(positionFrom({ lat: 13, lng: 80 }, bus)).toEqual({ lat: 13, lng: 80, speed_kmh: null });
     expect(positionFrom({}, bus)).toEqual({ lat: 1, lng: 2, speed_kmh: 30 });
     expect(positionFrom({}, null)).toBeNull();
+  });
+});
+
+describe('sosDuplicateOf', () => {
+  const now = Date.parse('2026-11-18T08:00:00Z');
+  const alert = (id: number, raisedBy: number, vehicleId: number | null, secondsAgo: number, status = 'open') => ({
+    id,
+    raised_by: raisedBy,
+    vehicle_id: vehicleId,
+    raised_at: new Date(now - secondsAgo * 1000),
+    status: status as 'open' | 'acknowledged' | 'resolved',
+  });
+
+  it('treats a press by the other crew member of the same bus as the same SOS', () => {
+    expect(sosDuplicateOf([alert(1, 7, 3, 30)], { userId: 8, vehicleId: 3 }, now)?.id).toBe(1);
+  });
+
+  it('matches my own recent SOS even without a bus', () => {
+    expect(sosDuplicateOf([alert(1, 7, null, 30)], { userId: 7, vehicleId: null }, now)?.id).toBe(1);
+  });
+
+  it('raises a new SOS after two minutes, after it is resolved, or on another bus', () => {
+    expect(sosDuplicateOf([alert(1, 7, 3, 150)], { userId: 7, vehicleId: 3 }, now)).toBeNull();
+    expect(sosDuplicateOf([alert(1, 7, 3, 30, 'resolved')], { userId: 7, vehicleId: 3 }, now)).toBeNull();
+    expect(sosDuplicateOf([alert(1, 9, 4, 30)], { userId: 7, vehicleId: 3 }, now)).toBeNull();
+  });
+
+  it('returns the newest match', () => {
+    expect(sosDuplicateOf([alert(1, 7, 3, 90), alert(2, 8, 3, 10)], { userId: 7, vehicleId: 3 }, now)?.id).toBe(2);
+  });
+});
+
+describe('sosUpdateRefusal and cancelNote', () => {
+  it('only lets an open or acknowledged SOS change', () => {
+    expect(sosUpdateRefusal({ kind: 'sos', status: 'acknowledged' })).toBeNull();
+    expect(sosUpdateRefusal({ kind: 'sos', status: 'resolved' })?.code).toBe('SOS_CLOSED');
+    expect(sosUpdateRefusal({ kind: 'overspeed', status: 'open' })?.code).toBe('NOT_AN_SOS');
+  });
+
+  it('records who cancelled and why', () => {
+    expect(cancelNote('Ganesan')).toBe('Cancelled by Ganesan (false alarm)');
+    expect(cancelNote('Ganesan', 'Pressed by mistake')).toBe('Cancelled by Ganesan: Pressed by mistake');
   });
 });

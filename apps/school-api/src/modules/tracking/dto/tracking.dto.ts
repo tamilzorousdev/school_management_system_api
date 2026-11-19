@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { ListQueryDto } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
@@ -16,6 +16,7 @@ import {
 } from '../entities/transport-trip.entity';
 import { TRIP_EVENT_TYPES, TripEventType } from '../entities/trip-event.entity';
 import { CHILD_BUS_STATUSES, ChildBusStatus } from '../tracking.logic';
+import { TRIP_FLAG_FILTERS, TripFlagFilter } from '../boarding.logic';
 import { BOARDING_STATUSES, BoardingStatus, TIMELINE_SOURCES, TimelineSource } from '../bus-timeline.logic';
 
 export class StartTripDto {
@@ -88,6 +89,15 @@ export class TripQueryDto extends ListQueryDto {
   @Type(() => Number)
   @IsInt()
   vehicle_id?: number;
+
+  @ApiPropertyOptional({
+    enum: TRIP_FLAG_FILTERS,
+    description:
+      'Ended trips with a problem: not_alighted (a child marked on the bus and never off), not_boarded (a child who was not away and never got on) or any',
+  })
+  @IsOptional()
+  @IsIn(TRIP_FLAG_FILTERS)
+  flag?: TripFlagFilter;
 }
 
 export class TripPositionDto {
@@ -222,6 +232,104 @@ export class TripDto {
 
   @ApiProperty({ example: 4 })
   stops_total: number;
+
+  @ApiProperty({ type: () => TripDelayDto, nullable: true, description: 'Last delay the driver reported' })
+  delay: TripDelayDto | null;
+
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    example: null,
+    description: 'This trip took over from that trip (breakdown)',
+  })
+  handover_of: number | null;
+
+  @ApiProperty({ nullable: true, type: Number, example: null, description: 'This trip was handed over to that trip' })
+  replaced_by: number | null;
+}
+
+export class HandoverInputDto {
+  @ApiProperty({ example: 2, description: 'The bus that takes over' })
+  @Type(() => Number)
+  @IsInt()
+  vehicle_id: number;
+
+  @ApiPropertyOptional({ example: 'Puncture near Koyambedu', maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Also run this route with the new bus for the rest of today (the other trip of the day)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  keep_for_today?: boolean;
+}
+
+export class HandoverResultDto {
+  @ApiProperty({ type: () => TripDto, description: 'The broken-down trip, now ended with end_reason breakdown' })
+  old_trip: TripDto;
+
+  @ApiProperty({ type: () => TripDto, description: 'The new trip on the new bus for the stops that are left' })
+  new_trip: TripDto;
+
+  @ApiProperty({ example: 9, description: 'Children already on board, moved to the new trip' })
+  on_board: number;
+
+  @ApiProperty({ example: 14, description: 'Children still to be picked up or dropped' })
+  waiting: number;
+
+  @ApiProperty({ example: 30, description: 'Parents told' })
+  parents_told: number;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'Set when the new bus also runs its own route at that time',
+  })
+  warning: string | null;
+}
+
+export class TripDelayDto {
+  @ApiProperty({ example: 20 })
+  minutes: number;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Traffic jam at Koyambedu' })
+  reason: string | null;
+
+  @ApiProperty()
+  at: Date;
+}
+
+export class BusDelayInputDto {
+  @ApiProperty({ example: 20, minimum: 5, maximum: 180, description: 'About how many minutes late (10, 20, 30 …)' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(5)
+  @Max(180)
+  minutes: number;
+
+  @ApiPropertyOptional({ example: 'Traffic jam at Koyambedu', maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
+
+export class TripFlagCountsDto {
+  @ApiProperty({ example: 1, description: 'Riders who were not away and never got on' })
+  not_boarded: number;
+
+  @ApiProperty({ example: 0, description: 'Riders marked on the bus and never marked off' })
+  not_alighted: number;
+}
+
+export class TripListItemDto extends TripDto {
+  @ApiProperty({ type: TripFlagCountsDto, nullable: true, description: 'Only for ended trips; null while running' })
+  flags: TripFlagCountsDto | null;
 }
 
 export class TripEventDto {
@@ -269,8 +377,19 @@ export class RiderDto {
   @ApiProperty({ example: false, description: 'Got off the bus (scanned or tapped as alighted)' })
   alighted: boolean;
 
-  @ApiProperty({ example: false, description: 'On leave or marked absent today, so not expected' })
+  @ApiProperty({
+    example: false,
+    description: 'Not expected on this trip: leave (half-day leave only for its half), sports OD or marked absent',
+  })
   away_today: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: 'Sports OD – District athletics',
+    description: 'Why the student is not expected on this trip: On leave, Half-day leave, Sports OD or Marked absent',
+  })
+  away_note: string | null;
 }
 
 export class TripDetailDto extends TripDto {

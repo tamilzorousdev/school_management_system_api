@@ -207,6 +207,7 @@ export class SchoolsService {
       staff_reporting_time: school.staff_reporting_time,
       diary_review_mode: school.diary_review_mode,
       attendance_grace_minutes: school.attendance_grace_minutes,
+      class_periods_per_week: school.class_periods_per_week,
       attendance_mode: school.attendance_mode,
       chat_office_start: school.chat_office_start,
       chat_office_end: school.chat_office_end,

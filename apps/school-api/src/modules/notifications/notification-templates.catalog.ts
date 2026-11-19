@@ -13,6 +13,9 @@ export const TEMPLATES = {
   STUDENT_BOARDED: 'STUDENT_BOARDED',
   STUDENT_ALIGHTED: 'STUDENT_ALIGHTED',
   SOS_ALERT: 'SOS_ALERT',
+  SOS_ACKNOWLEDGED: 'SOS_ACKNOWLEDGED',
+  SOS_RESOLVED: 'SOS_RESOLVED',
+  SOS_CANCELLED: 'SOS_CANCELLED',
   SAFETY_ALERT: 'SAFETY_ALERT',
   SAFETY_ALERT_HIGH: 'SAFETY_ALERT_HIGH',
   DIARY_POSTED: 'DIARY_POSTED',
@@ -42,6 +45,7 @@ export const TEMPLATES = {
   FEE_FINE_APPROVED: 'FEE_FINE_APPROVED',
   FEE_FINE_REJECTED: 'FEE_FINE_REJECTED',
   FEE_FINE_CHARGED: 'FEE_FINE_CHARGED',
+  TRANSPORT_FEE_UPDATED: 'TRANSPORT_FEE_UPDATED',
   FLEET_DOCUMENT_EXPIRY: 'FLEET_DOCUMENT_EXPIRY',
   TRANSPORT_ASSIGNED: 'TRANSPORT_ASSIGNED',
   TRANSPORT_REMOVED: 'TRANSPORT_REMOVED',
@@ -52,9 +56,18 @@ export const TEMPLATES = {
   FLEET_DOCUMENT_EXPIRY_URGENT: 'FLEET_DOCUMENT_EXPIRY_URGENT',
   CREW_DOCUMENT_EXPIRY_URGENT: 'CREW_DOCUMENT_EXPIRY_URGENT',
   BUS_DOCUMENT_EXPIRY_DRIVER: 'BUS_DOCUMENT_EXPIRY_DRIVER',
+  TRANSPORT_CHANGED: 'TRANSPORT_CHANGED',
   VEHICLE_FAULT: 'VEHICLE_FAULT',
+  SERVICE_DUE_SOON: 'SERVICE_DUE_SOON',
+  SERVICE_OVERDUE: 'SERVICE_OVERDUE',
+  BUS_LOW_MILEAGE: 'BUS_LOW_MILEAGE',
+  BUS_BUDGET_EXCEEDED: 'BUS_BUDGET_EXCEEDED',
+  BUS_PROBLEM_REPORTED: 'BUS_PROBLEM_REPORTED',
+  FUEL_ENTRY_REVIEWED: 'FUEL_ENTRY_REVIEWED',
   TRIP_NOT_BOARDED: 'TRIP_NOT_BOARDED',
   STUDENTS_LEFT_ON_BUS: 'STUDENTS_LEFT_ON_BUS',
+  CHILD_NOT_ON_BUS: 'CHILD_NOT_ON_BUS',
+  DRIVER_LOW_RATING: 'DRIVER_LOW_RATING',
   RESULT_PUBLISHED: 'RESULT_PUBLISHED',
   ACHIEVEMENT_ADDED: 'ACHIEVEMENT_ADDED',
   CLASS_COMBINED: 'CLASS_COMBINED',
@@ -71,6 +84,16 @@ export const TEMPLATES = {
   TEACHER_RATED: 'TEACHER_RATED',
   STUDENT_FEEDBACK: 'STUDENT_FEEDBACK',
   EMERGENCY_BROADCAST: 'EMERGENCY_BROADCAST',
+  EMERGENCY_APPROVAL_NEEDED: 'EMERGENCY_APPROVAL_NEEDED',
+  EMERGENCY_REVIEWED: 'EMERGENCY_REVIEWED',
+  BUS_SWAPPED: 'BUS_SWAPPED',
+  BUS_DELAYED: 'BUS_DELAYED',
+  BUS_HANDOVER: 'BUS_HANDOVER',
+  BUS_HANDOVER_ONBOARD: 'BUS_HANDOVER_ONBOARD',
+  BUS_PASS_ISSUED: 'BUS_PASS_ISSUED',
+  BUS_FEE_REMINDER: 'BUS_FEE_REMINDER',
+  BUS_PASS_HELD: 'BUS_PASS_HELD',
+  BUS_PASS_ACTIVE: 'BUS_PASS_ACTIVE',
   PARENT_SIGNATURE_CHANGED: 'PARENT_SIGNATURE_CHANGED',
   SIGNATURE_SET_BY_SCHOOL: 'SIGNATURE_SET_BY_SCHOOL',
 } as const;
@@ -91,6 +114,17 @@ export interface TemplateDefinition {
 }
 
 export const TEMPLATE_CATALOG: TemplateDefinition[] = [
+  {
+    code: TEMPLATES.TRANSPORT_CHANGED,
+    category: 'transport',
+    push: false,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: { title: 'School bus update', body: '{{summary}}', sms_body: null },
+      ta: { title: 'பள்ளிப் பேருந்து மாற்றம்', body: '{{summary}}', sms_body: null },
+    },
+  },
   {
     code: TEMPLATES.PARENT_SIGNATURE_CHANGED,
     category: 'system',
@@ -145,6 +179,196 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
         title: '{{title}}',
         body: '{{message}}',
         sms_body: '{{school}}: {{title}}. {{message}}',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.EMERGENCY_APPROVAL_NEEDED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: 'Emergency broadcast waiting for approval',
+        body: '{{sender}} wants to send "{{title}}" to {{audience}}. Open Emergency broadcast to approve or reject it.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'அவசர அறிவிப்பு ஒப்புதலுக்காகக் காத்திருக்கிறது',
+        body: '{{sender}} "{{title}}" அறிவிப்பை {{audience}}-க்கு அனுப்ப விரும்புகிறார். ஒப்புதல் அளிக்க அல்லது நிராகரிக்க அவசர அறிவிப்பைத் திறக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.EMERGENCY_REVIEWED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Your emergency broadcast was {{decision}}',
+        body: '"{{title}}" was {{decision}} by {{reviewer}}. {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உங்கள் அவசர அறிவிப்பு {{decision_ta}}',
+        body: '"{{title}}" அறிவிப்பை {{reviewer}} {{decision_ta}}. {{note}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_SWAPPED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: 'Different bus on {{route}} {{when}}',
+        body: '{{bus}} will run {{route}} {{when}} instead of {{old_bus}}. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{route}} வழித்தடத்தில் {{when_ta}} வேறு பேருந்து',
+        body: '{{when_ta}} {{route}} வழித்தடத்தில் {{old_bus}}-க்குப் பதிலாக {{bus}} இயங்கும். {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_DELAYED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: '{{bus}} is running about {{minutes}} minutes late',
+        body: 'The {{trip}} on {{route}} is delayed by about {{minutes}} minutes. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} சுமார் {{minutes}} நிமிடம் தாமதம்',
+        body: '{{route}} வழித்தட {{trip_ta}} பேருந்து சுமார் {{minutes}} நிமிடம் தாமதமாக வருகிறது. {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_HANDOVER,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: '{{new_bus}} takes over {{route}}',
+        body: '{{old_bus}} broke down on the {{trip}}, so {{new_bus}} takes over and comes to the stops that are left. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{route}} வழித்தடத்தில் {{new_bus}} மாற்றுப் பேருந்து',
+        body: '{{trip_ta}} பயணத்தில் {{old_bus}} பழுதானதால் {{new_bus}} மீதமுள்ள நிறுத்தங்களுக்கு வரும். {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_HANDOVER_ONBOARD,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: '{{student}} is moving to {{new_bus}}',
+        body: '{{old_bus}} broke down on the {{trip}}. {{student}} is safe and moves to {{new_bus}} to finish the journey. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} {{new_bus}} பேருந்துக்கு மாறுகிறார்',
+        body: '{{trip_ta}} பயணத்தில் {{old_bus}} பழுதானது. {{student}} பாதுகாப்பாக உள்ளார்; பயணத்தை முடிக்க {{new_bus}} பேருந்துக்கு மாறுகிறார். {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PASS_ISSUED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus pass ready for {{student}}',
+        body: 'Thank you for paying the bus fee. The bus pass {{pass_no}} for {{student}} is ready in the app, valid until {{valid_until}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்து அனுமதிச் சீட்டு தயார்',
+        body: 'பேருந்துக் கட்டணம் செலுத்தியதற்கு நன்றி. {{student}} பேருந்து அனுமதிச் சீட்டு {{pass_no}} செயலியில் உள்ளது; {{valid_until}} வரை செல்லும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_FEE_REMINDER,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus fee reminder for {{student}}',
+        body: 'Dear Parent, the bus fee for {{student}} is pending. Please pay by {{grace_ends}} to keep the bus pass active.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்துக் கட்டண நினைவூட்டல்',
+        body: 'அன்புள்ள பெற்றோரே, {{student}} பேருந்துக் கட்டணம் நிலுவையில் உள்ளது. பேருந்து அனுமதிச் சீட்டு தொடர {{grace_ends}}-க்குள் செலுத்தவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PASS_HELD,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus pass on hold for {{student}}',
+        body: '{{reason}} Please pay in the app or contact the school office.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்து அனுமதிச் சீட்டு நிறுத்திவைப்பு',
+        body: '{{reason_ta}} செயலியில் செலுத்தவும் அல்லது பள்ளி அலுவலகத்தைத் தொடர்புகொள்ளவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PASS_ACTIVE,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus pass active again for {{student}}',
+        body: 'Thank you. The bus pass for {{student}} is active again.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்து அனுமதிச் சீட்டு மீண்டும் செயலில்',
+        body: 'நன்றி. {{student}} பேருந்து அனுமதிச் சீட்டு மீண்டும் செயலில் உள்ளது.',
+        sms_body: null,
       },
     },
   },
@@ -507,6 +731,82 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
         body: '{{reporter}} {{time}} மணிக்கு {{location}} அருகே {{bus}}-இல் அவசர அழைப்பு விடுத்துள்ளார். {{phone}} எண்ணை அழைக்கவும்.',
         sms_body:
           'அவசரம்: {{reporter}} {{time}} மணிக்கு {{location}} அருகே {{bus}}-இல் அவசர அழைப்பு. {{phone}} எண்ணை அழைக்கவும். -TAMILZOROUS',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.TRANSPORT_FEE_UPDATED,
+    category: 'fees',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus fee updated for {{student}}',
+        body: 'The bus fee for {{student}} is now {{amount}}. The unpaid invoice has been updated.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்துக் கட்டணம் மாற்றம்',
+        body: '{{student}} பேருந்துக் கட்டணம் இப்போது {{amount}}. செலுத்தப்படாத கட்டணச் சீட்டு மாற்றப்பட்டது.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SOS_ACKNOWLEDGED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: 'Help is on the way',
+        body: '{{by}} from the school office has seen your SOS ({{time}}) and is acting on it. Stay safe and keep your phone on.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உதவி வருகிறது',
+        body: 'பள்ளி அலுவலகத்தின் {{by}} உங்கள் அவசர அழைப்பைப் பார்த்துவிட்டார் ({{time}}). பாதுகாப்பாக இருங்கள், தொலைபேசியை இயக்கத்தில் வைத்திருங்கள்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SOS_RESOLVED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'SOS closed: {{bus}}',
+        body: '{{by}} closed the SOS on {{bus}}: {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'அவசர அழைப்பு முடிந்தது: {{bus}}',
+        body: '{{bus}} அவசர அழைப்பை {{by}} முடித்தார்: {{note}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SOS_CANCELLED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'SOS cancelled: {{bus}}',
+        body: '{{reporter}} cancelled the SOS on {{bus}}. {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'அவசர அழைப்பு ரத்து: {{bus}}',
+        body: '{{reporter}} {{bus}} அவசர அழைப்பை ரத்து செய்தார். {{note}}',
+        sms_body: null,
       },
     },
   },
@@ -1261,6 +1561,44 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
     },
   },
   {
+    code: TEMPLATES.CHILD_NOT_ON_BUS,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}} did not come on the {{trip}}',
+        body: '{{student}} was not marked on {{bus}} for the {{trip}} today. If you did not expect this, please contact the school.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} இன்று {{trip_ta}} பேருந்தில் வரவில்லை',
+        body: '{{student}} இன்று {{trip_ta}} {{bus}} பேருந்தில் ஏறியதாகக் குறிக்கப்படவில்லை. இது எதிர்பாராதது என்றால் பள்ளியைத் தொடர்புகொள்ளவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.DRIVER_LOW_RATING,
+    category: 'transport',
+    push: false,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{rating}}-star rating for {{driver}}',
+        body: '{{parent}} ({{student}}) rated {{driver}} on {{bus}} {{rating}} out of 5. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{driver}} ஓட்டுநருக்கு {{rating}} நட்சத்திர மதிப்பீடு',
+        body: '{{parent}} ({{student}}) {{bus}} ஓட்டுநர் {{driver}}-க்கு 5-க்கு {{rating}} மதிப்பீடு அளித்தார். {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
     code: TEMPLATES.STUDENTS_LEFT_ON_BUS,
     category: 'transport',
     push: true,
@@ -1296,6 +1634,120 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{exam}} முடிவுகள்: {{student}}',
         body: '{{exam}} தேர்வில் {{student}} {{percent}}% மதிப்பெண் (தரம் {{grade}}) பெற்றுள்ளார். வகுப்பு தரவரிசை {{rank}}. பாட வாரியான மதிப்பெண்களுக்கு செயலியைத் திறக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SERVICE_DUE_SOON,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Service due soon: {{bus}}',
+        body: '{{service}} for {{bus}} is due {{due}}. Book it in Maintenance.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'சேவை நெருங்குகிறது: {{bus}}',
+        body: '{{bus}} பேருந்தின் {{service}} {{due}} செய்ய வேண்டும். பராமரிப்பு பகுதியில் பதிவு செய்யவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SERVICE_OVERDUE,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Service overdue: {{bus}}',
+        body: '{{service}} for {{bus}} is overdue ({{due}}). Get it done before more trips.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'சேவை தாமதம்: {{bus}}',
+        body: '{{bus}} பேருந்தின் {{service}} தாமதமாகியுள்ளது ({{due}}). விரைவில் செய்து முடிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_LOW_MILEAGE,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Low mileage on {{bus}}',
+        body: '{{bus}} gave {{kmpl}} km per litre, {{drop}}% below its normal {{normal}}. Check for a leak or an engine problem.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} பேருந்தின் மைலேஜ் குறைவு',
+        body: '{{bus}} லிட்டருக்கு {{kmpl}} கி.மீ. மட்டுமே ஓடியது, வழக்கமான {{normal}}-ஐ விட {{drop}}% குறைவு. கசிவு அல்லது என்ஜின் கோளாறு உள்ளதா எனப் பார்க்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_BUDGET_EXCEEDED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{bus}} is over its monthly budget',
+        body: '{{bus}} has spent ₹{{spent}} this month against a budget of ₹{{budget}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} மாத பட்ஜெட்டைத் தாண்டியது',
+        body: '{{bus}} இந்த மாதம் ₹{{spent}} செலவாகியுள்ளது, பட்ஜெட் ₹{{budget}}.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PROBLEM_REPORTED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Problem reported on {{bus}}',
+        body: '{{by}} reported: {{problem}}. A repair ticket is open in Maintenance.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} பேருந்தில் பிரச்சனை',
+        body: '{{by}} தெரிவித்தது: {{problem}}. பராமரிப்பு பகுதியில் பழுது டிக்கெட் திறக்கப்பட்டுள்ளது.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FUEL_ENTRY_REVIEWED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Fuel entry {{decision}}',
+        body: 'Your fuel entry of {{litres}} L on {{filled_on}} was {{decision}}. {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'எரிபொருள் பதிவு {{decision}}',
+        body: '{{filled_on}} அன்று நீங்கள் பதிவு செய்த {{litres}} லிட்டர் எரிபொருள் {{decision}}. {{note}}',
         sms_body: null,
       },
     },

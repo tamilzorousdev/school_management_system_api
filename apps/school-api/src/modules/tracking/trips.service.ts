@@ -6,6 +6,8 @@ import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { addDays, holidaySet, WEEKLY_OFF, weekday } from '../../shared/school-days';
 import { ClearanceService } from '../crew/clearance.service';
+import { AWAY_FOR_TRIP_SQL, awayLookup } from '../../shared/student-away';
+import { routeIdsRunBy, vehicleOnDay } from '../transport/bus-swaps';
 import { STOP_FOR_TRIP_SQL, stopForTrip } from '../transport/transport.logic';
 import { TelematicsClient } from '../fleet/telematics.client';
 import { RouteStop } from '../transport/entities/route-stop.entity';
@@ -22,6 +24,8 @@ import {
   RiderDto,
   TripDetailDto,
   TripDto,
+  TripFlagCountsDto,
+  TripListItemDto,
   TripPositionDto,
   TripQueryDto,
   TripStopDto,
@@ -30,6 +34,7 @@ import { TransportTrip, TripKind, TripPosition, TripStop } from './entities/tran
 import { TripBoarding } from './entities/trip-boarding.entity';
 import { TripEvent } from './entities/trip-event.entity';
 import { boardingStatus, liveTimeline, nextScheduledTrip, plannedTimeline, zoneOffset } from './bus-timeline.logic';
+import { TripFlagFilter } from './boarding.logic';
 import { childBusStatus, minutesFrom, orderStops, ridesOn } from './tracking.logic';
 
 interface TelematicsStop {
@@ -51,6 +56,23 @@ interface TelematicsTrip {
 
 const STALE_MS = 2 * 60 * 1000;
 
+const TRIP_RIDERS_SQL = `FROM student_transport r
+  JOIN students rs ON rs.id = r.student_id AND rs.deleted_at IS NULL AND rs.status = 'active'
+  WHERE r.route_id = t.route_id AND r.deleted_at IS NULL AND (r.mode = 'both' OR r.mode = t.kind)`;
+const MARKED_SQL = (action: string) =>
+  `EXISTS (SELECT 1 FROM transport_boardings b WHERE b.trip_id = t.id AND b.student_id = r.student_id AND b.action = '${action}')`;
+const NOT_ALIGHTED_RIDERS_SQL = `${TRIP_RIDERS_SQL} AND ${MARKED_SQL('boarded')} AND NOT ${MARKED_SQL('alighted')}`;
+const NOT_BOARDED_RIDERS_SQL = `${TRIP_RIDERS_SQL} AND NOT ${MARKED_SQL('boarded')} AND NOT ${MARKED_SQL('alighted')}
+  AND NOT ${AWAY_FOR_TRIP_SQL('r.student_id', 't.trip_date', 't.kind')}`;
+
+function flaggedTripSql(flag: TripFlagFilter): string {
+  const notBoarded = `EXISTS (SELECT 1 ${NOT_BOARDED_RIDERS_SQL})`;
+  const notAlighted = `EXISTS (SELECT 1 ${NOT_ALIGHTED_RIDERS_SQL})`;
+  if (flag === 'not_boarded') return notBoarded;
+  if (flag === 'not_alighted') return notAlighted;
+  return `(${notBoarded} OR ${notAlighted})`;
+}
+
 @Injectable()
 export class TripsService {
   private readonly logger = new Logger('Trips');
@@ -65,21 +87,31 @@ export class TripsService {
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
-  async start(schoolId: number, dto: { route_id: number; kind: TripKind }, actor: AuthUser, vehicleId?: number) {
+  async start(
+    schoolId: number,
+    dto: { route_id: number; kind: TripKind },
+    actor: AuthUser,
+    vehicleId?: number,
+    handover?: { vehicleId: number; stopIds: number[]; fromTripId: number },
+  ) {
     const route = await this.dataSource
       .getRepository(TransportRoute)
       .findOneBy({ id: dto.route_id, school_id: schoolId });
     if (!route || !route.is_active) throw AppException.notFound('Route not found or not running', 'ROUTE_NOT_FOUND');
-    if (vehicleId !== undefined && route.vehicle_id !== vehicleId) {
+    const busToday = handover
+      ? handover.vehicleId
+      : await vehicleOnDay(this.dataSource, route, todayIn(this.app.timeZone));
+    if (!handover && vehicleId !== undefined && busToday !== vehicleId) {
       throw AppException.forbidden('This route is not run by your bus', 'NOT_YOUR_ROUTE');
     }
-    if (!route.vehicle_id) throw AppException.badRequest('Give this route a bus first', 'ROUTE_HAS_NO_BUS');
-    const vehicle = await this.dataSource.getRepository(Vehicle).findOneByOrFail({ id: route.vehicle_id });
+    if (!busToday) throw AppException.badRequest('Give this route a bus first', 'ROUTE_HAS_NO_BUS');
+    const vehicle = await this.dataSource.getRepository(Vehicle).findOneByOrFail({ id: busToday });
     if (!vehicle.device_id) {
       throw AppException.badRequest('Fit a GPS tracker to this bus in Buses and routes first', 'NO_TRACKER');
     }
     await this.clearance.assertCanRun(schoolId, vehicle);
-    const stops = await this.dataSource.getRepository(RouteStop).find({ where: { route_id: route.id } });
+    const allStops = await this.dataSource.getRepository(RouteStop).find({ where: { route_id: route.id } });
+    const stops = handover ? allStops.filter((stop) => handover.stopIds.includes(stop.id)) : allStops;
     if (!stops.length) throw AppException.badRequest('Add stops to this route first', 'ROUTE_HAS_NO_STOPS');
     const [school] = await this.dataSource.query(
       `SELECT code, name, latitude, longitude, geofence_radius_m FROM schools WHERE id = $1`,
@@ -105,6 +137,7 @@ export class TripsService {
         status: 'active',
         started_by: actor.id,
         started_at: new Date(),
+        handover_of: handover?.fromTripId ?? null,
         stops: ordered.map((stop) => ({
           stop_id: stop.id,
           name: stop.name,
@@ -167,6 +200,22 @@ export class TripsService {
     return this.detail(schoolId, tripId);
   }
 
+  async closeForHandover(trip: TransportTrip, newTripId: number): Promise<void> {
+    await this.trips.update(trip.id, {
+      flags_sent_at: new Date(),
+      not_boarded_sent_at: new Date(),
+      replaced_by: newTripId,
+    });
+    if (trip.telematics_trip_id) {
+      await this.telematics
+        .post(`/trips/${trip.telematics_trip_id}/end`, { reason: 'breakdown' })
+        .catch((error: Error) =>
+          this.logger.warn(`Ending telematics trip ${trip.telematics_trip_id}: ${error.message}`),
+        );
+    }
+    await this.markEnded(trip, 'breakdown', new Date());
+  }
+
   async markEnded(trip: TransportTrip, reason: string, at: Date): Promise<boolean> {
     const result = await this.trips.update(
       { id: trip.id, status: 'active' },
@@ -175,18 +224,39 @@ export class TripsService {
     return Boolean(result.affected);
   }
 
-  async list(schoolId: number, query: TripQueryDto): Promise<Paginated<TripDto>> {
+  async list(schoolId: number, query: TripQueryDto): Promise<Paginated<TripListItemDto>> {
     const qb = this.trips.createQueryBuilder('t').where('t.school_id = :schoolId', { schoolId });
     if (query.date) qb.andWhere('t.trip_date = :date', { date: query.date });
     if (query.status) qb.andWhere('t.status = :status', { status: query.status });
     if (query.route_id) qb.andWhere('t.route_id = :route', { route: query.route_id });
     if (query.vehicle_id) qb.andWhere('t.vehicle_id = :vehicle', { vehicle: query.vehicle_id });
+    if (query.flag) qb.andWhere(`t.status = 'ended' AND ${flaggedTripSql(query.flag)}`);
     const [rows, total] = await qb
       .orderBy('t.started_at', 'DESC')
       .skip((query.page - 1) * query.limit)
       .take(query.limit)
       .getManyAndCount();
-    return paginate([await this.present(rows), total], query.page, query.limit);
+    const [presented, counts] = await Promise.all([this.present(rows), this.flagCounts(rows)]);
+    const items = presented.map((trip) => ({ ...trip, flags: counts.get(trip.id) ?? null }));
+    return paginate([items, total], query.page, query.limit);
+  }
+
+  private async flagCounts(trips: TransportTrip[]): Promise<Map<number, TripFlagCountsDto>> {
+    const ended = trips.filter((trip) => trip.status === 'ended').map((trip) => trip.id);
+    if (!ended.length) return new Map();
+    const rows: { id: number; not_boarded: string; not_alighted: string }[] = await this.dataSource.query(
+      `SELECT t.id,
+              (SELECT COUNT(*) ${NOT_BOARDED_RIDERS_SQL}) AS not_boarded,
+              (SELECT COUNT(*) ${NOT_ALIGHTED_RIDERS_SQL}) AS not_alighted
+       FROM transport_trips t WHERE t.id = ANY($1)`,
+      [ended],
+    );
+    return new Map(
+      rows.map((row) => [
+        Number(row.id),
+        { not_boarded: Number(row.not_boarded), not_alighted: Number(row.not_alighted) },
+      ]),
+    );
   }
 
   async detail(schoolId: number, tripId: number): Promise<TripDetailDto> {
@@ -223,9 +293,12 @@ export class TripsService {
     const vehicle = await this.crewVehicle(user);
     if (!vehicle) return { vehicle: null, has_tracker: false, active_trip: null, routes: [] };
     const today = todayIn(this.app.timeZone);
-    const routes = await this.dataSource
-      .getRepository(TransportRoute)
-      .find({ where: { vehicle_id: vehicle.id, is_active: true }, order: { code: 'ASC' } });
+    const routeIds = await routeIdsRunBy(this.dataSource, vehicle.school_id, vehicle.id, today);
+    const routes = routeIds.length
+      ? (await this.dataSource.getRepository(TransportRoute).findBy({ id: In(routeIds) })).sort((a, b) =>
+          a.code.localeCompare(b.code),
+        )
+      : [];
     const trips = await this.trips.find({
       where: { vehicle_id: vehicle.id, trip_date: today },
       order: { started_at: 'ASC' },
@@ -386,9 +459,8 @@ export class TripsService {
       .findOneBy({ school_id: schoolId, student_id: studentId });
     if (!assignment) return null;
     const route = await this.dataSource.getRepository(TransportRoute).findOneByOrFail({ id: assignment.route_id });
-    const vehicle = route.vehicle_id
-      ? await this.dataSource.getRepository(Vehicle).findOneBy({ id: route.vehicle_id })
-      : null;
+    const busToday = await vehicleOnDay(this.dataSource, route, todayIn(this.app.timeZone));
+    const vehicle = busToday ? await this.dataSource.getRepository(Vehicle).findOneBy({ id: busToday }) : null;
     const today = todayIn(this.app.timeZone);
     const candidates = await this.trips.find({
       where: { route_id: route.id, trip_date: today },
@@ -470,21 +542,17 @@ export class TripsService {
     const ids = rows.map((row) => Number(row.student_id));
     const [recorded, away] = await Promise.all([
       this.boardings.find({ where: { trip_id: trip.id, student_id: In(ids) } }),
-      this.dataSource.query(
-        `SELECT student_id FROM student_leave_requests
-           WHERE student_id = ANY($1) AND status = 'approved' AND deleted_at IS NULL AND from_date <= $2 AND to_date >= $2
-         UNION
-         SELECT student_id FROM student_attendance_days
-           WHERE student_id = ANY($1) AND date = $2 AND status IN ('absent', 'leave')`,
-        [ids, trip.trip_date],
-      ) as Promise<{ student_id: number }[]>,
+      awayLookup(this.dataSource, ids, [trip.trip_date]),
     ]);
     const boardedIds = new Set(recorded.filter((row) => row.action === 'boarded').map((row) => row.student_id));
     const alightedIds = new Set(recorded.filter((row) => row.action === 'alighted').map((row) => row.student_id));
-    const awayIds = new Set(away.map((row) => Number(row.student_id)));
     const order = new Map(trip.stops.map((stop, index) => [stop.stop_id, index]));
     return rows
       .map((row) => ({
+        away: away(Number(row.student_id), trip.trip_date, trip.kind),
+        row,
+      }))
+      .map(({ away: absence, row }) => ({
         student_id: Number(row.student_id),
         full_name: [row.first_name, row.last_name].filter(Boolean).join(' '),
         class_section: row.class_name ? [row.class_name, row.section_name].filter(Boolean).join(' - ') : null,
@@ -493,7 +561,8 @@ export class TripsService {
         passenger_ref: row.passenger_ref,
         boarded: boardedIds.has(Number(row.student_id)),
         alighted: alightedIds.has(Number(row.student_id)),
-        away_today: awayIds.has(Number(row.student_id)),
+        away_today: Boolean(absence),
+        away_note: absence?.note ?? null,
       }))
       .sort(
         (a, b) => (order.get(a.stop_id) ?? 99) - (order.get(b.stop_id) ?? 99) || a.full_name.localeCompare(b.full_name),
@@ -605,6 +674,12 @@ export class TripsService {
         destination_eta_seconds: row.status === 'active' ? row.destination_eta_seconds : null,
         stops_done: row.stops.filter((stop) => stop.status === 'departed' || stop.status === 'skipped').length,
         stops_total: row.stops.length,
+        delay:
+          row.delay_minutes && row.delayed_at
+            ? { minutes: row.delay_minutes, reason: row.delay_reason, at: row.delayed_at }
+            : null,
+        handover_of: row.handover_of,
+        replaced_by: row.replaced_by,
       };
     });
   }
