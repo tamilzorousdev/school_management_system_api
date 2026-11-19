@@ -47,6 +47,12 @@ export const TEMPLATES = {
   BUS_DOCUMENT_EXPIRY_DRIVER: 'BUS_DOCUMENT_EXPIRY_DRIVER',
   TRANSPORT_CHANGED: 'TRANSPORT_CHANGED',
   VEHICLE_FAULT: 'VEHICLE_FAULT',
+  SERVICE_DUE_SOON: 'SERVICE_DUE_SOON',
+  SERVICE_OVERDUE: 'SERVICE_OVERDUE',
+  BUS_LOW_MILEAGE: 'BUS_LOW_MILEAGE',
+  BUS_BUDGET_EXCEEDED: 'BUS_BUDGET_EXCEEDED',
+  BUS_PROBLEM_REPORTED: 'BUS_PROBLEM_REPORTED',
+  FUEL_ENTRY_REVIEWED: 'FUEL_ENTRY_REVIEWED',
   TRIP_NOT_BOARDED: 'TRIP_NOT_BOARDED',
   STUDENTS_LEFT_ON_BUS: 'STUDENTS_LEFT_ON_BUS',
   CHILD_NOT_ON_BUS: 'CHILD_NOT_ON_BUS',
@@ -1408,6 +1414,120 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{exam}} முடிவுகள்: {{student}}',
         body: '{{exam}} தேர்வில் {{student}} {{percent}}% மதிப்பெண் (தரம் {{grade}}) பெற்றுள்ளார். வகுப்பு தரவரிசை {{rank}}. பாட வாரியான மதிப்பெண்களுக்கு செயலியைத் திறக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SERVICE_DUE_SOON,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Service due soon: {{bus}}',
+        body: '{{service}} for {{bus}} is due {{due}}. Book it in Maintenance.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'சேவை நெருங்குகிறது: {{bus}}',
+        body: '{{bus}} பேருந்தின் {{service}} {{due}} செய்ய வேண்டும். பராமரிப்பு பகுதியில் பதிவு செய்யவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SERVICE_OVERDUE,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Service overdue: {{bus}}',
+        body: '{{service}} for {{bus}} is overdue ({{due}}). Get it done before more trips.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'சேவை தாமதம்: {{bus}}',
+        body: '{{bus}} பேருந்தின் {{service}} தாமதமாகியுள்ளது ({{due}}). விரைவில் செய்து முடிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_LOW_MILEAGE,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Low mileage on {{bus}}',
+        body: '{{bus}} gave {{kmpl}} km per litre, {{drop}}% below its normal {{normal}}. Check for a leak or an engine problem.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} பேருந்தின் மைலேஜ் குறைவு',
+        body: '{{bus}} லிட்டருக்கு {{kmpl}} கி.மீ. மட்டுமே ஓடியது, வழக்கமான {{normal}}-ஐ விட {{drop}}% குறைவு. கசிவு அல்லது என்ஜின் கோளாறு உள்ளதா எனப் பார்க்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_BUDGET_EXCEEDED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{bus}} is over its monthly budget',
+        body: '{{bus}} has spent ₹{{spent}} this month against a budget of ₹{{budget}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} மாத பட்ஜெட்டைத் தாண்டியது',
+        body: '{{bus}} இந்த மாதம் ₹{{spent}} செலவாகியுள்ளது, பட்ஜெட் ₹{{budget}}.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PROBLEM_REPORTED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Problem reported on {{bus}}',
+        body: '{{by}} reported: {{problem}}. A repair ticket is open in Maintenance.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} பேருந்தில் பிரச்சனை',
+        body: '{{by}} தெரிவித்தது: {{problem}}. பராமரிப்பு பகுதியில் பழுது டிக்கெட் திறக்கப்பட்டுள்ளது.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FUEL_ENTRY_REVIEWED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Fuel entry {{decision}}',
+        body: 'Your fuel entry of {{litres}} L on {{filled_on}} was {{decision}}. {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'எரிபொருள் பதிவு {{decision}}',
+        body: '{{filled_on}} அன்று நீங்கள் பதிவு செய்த {{litres}} லிட்டர் எரிபொருள் {{decision}}. {{note}}',
         sms_body: null,
       },
     },

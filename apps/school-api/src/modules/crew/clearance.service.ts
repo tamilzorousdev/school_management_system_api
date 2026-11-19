@@ -39,6 +39,7 @@ export class ClearanceService {
   }
 
   async assertCanRun(schoolId: number, vehicle: Vehicle): Promise<void> {
+    await this.assertMaintained(schoolId, vehicle);
     const blockers = this.vehicleBlockers(vehicle);
     if (blockers.length && !(await this.todayOverrides(schoolId, 'vehicle', [vehicle.id])).has(vehicle.id)) {
       throw AppException.forbidden(
@@ -57,6 +58,42 @@ export class ClearanceService {
           'CREW_NOT_APPROVED',
         );
       }
+    }
+  }
+
+  private async assertMaintained(schoolId: number, vehicle: Vehicle): Promise<void> {
+    const today = todayIn(this.app.timeZone);
+    const [[offRoad], [check], [settings]] = await Promise.all([
+      this.dataSource.query(
+        `SELECT id, title FROM maintenance_tickets
+         WHERE school_id = $1 AND vehicle_id = $2 AND off_road = true AND status <> 'done' AND deleted_at IS NULL
+         ORDER BY opened_at DESC LIMIT 1`,
+        [schoolId, vehicle.id],
+      ),
+      this.dataSource.query(
+        `SELECT id, critical_failed, cleared_at FROM pre_trip_checks
+         WHERE school_id = $1 AND vehicle_id = $2 AND check_date = $3 AND deleted_at IS NULL`,
+        [schoolId, vehicle.id, today],
+      ),
+      this.dataSource.query(`SELECT pre_trip_check_required FROM fleet_settings WHERE school_id = $1`, [schoolId]),
+    ]);
+    if (offRoad) {
+      throw AppException.forbidden(
+        `${vehicle.registration_no} is off the road for repair (ticket ${offRoad.id}: ${offRoad.title}). Close the ticket, or give the route another bus for the day.`,
+        'VEHICLE_OFF_ROAD',
+      );
+    }
+    if (check?.critical_failed && !check.cleared_at) {
+      throw AppException.forbidden(
+        `Today’s pre-trip check of ${vehicle.registration_no} found a safety problem. The transport office must clear it before the bus runs.`,
+        'BUS_CHECK_FAILED',
+      );
+    }
+    if (!check && settings?.pre_trip_check_required) {
+      throw AppException.forbidden(
+        `Do today’s pre-trip check of ${vehicle.registration_no} in the app before the first trip.`,
+        'PRE_TRIP_CHECK_MISSING',
+      );
     }
   }
 

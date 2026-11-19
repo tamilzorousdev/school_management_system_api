@@ -1,5 +1,6 @@
 import { Column, Entity, Index } from 'typeorm';
 import { SchoolScopedEntity } from '@app/common';
+import { decimal } from '../../fleet-ops/entities/decimal';
 
 export const VEHICLE_STATUSES = ['active', 'inactive'] as const;
 export type VehicleStatus = (typeof VEHICLE_STATUSES)[number];
@@ -97,4 +98,19 @@ export class Vehicle extends SchoolScopedEntity {
 
   @Column({ type: 'varchar', length: 10, default: 'active' })
   status: VehicleStatus;
+
+  @Column({ type: 'smallint', nullable: true })
+  tank_litres: number | null;
+
+  @Column(decimal(12, 2))
+  monthly_budget: number | null;
+
+  @Column({ type: 'varchar', length: 7, nullable: true })
+  budget_alerted_month: string | null;
+
+  @Column(decimal(10, 1))
+  tracker_odometer_km: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  tracker_odometer_at: Date | null;
 }

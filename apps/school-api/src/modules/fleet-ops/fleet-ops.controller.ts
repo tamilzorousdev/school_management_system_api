@@ -15,6 +15,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS } from '../access/access.catalog';
+import { ReasonDto, RejectFuelDto, ReviewFuelDto } from './dto/fleet-maintenance.dto';
 import {
   BusFilterDto,
   BusHealthDto,
@@ -49,9 +50,9 @@ export class MaintenanceController {
   @Get()
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
   @ApiOperation({
-    summary: 'Maintenance tickets, newest first',
+    summary: 'Service history: planned services and repairs, newest first',
     description:
-      'Filters: status, source (obd, manual), vehicle_id. search matches title, fault code, vendor and bus. sort: opened_at, closed_at, cost, status.',
+      'Filters: status, source (obd, manual, driver), kind (service, repair), category, off_road, vehicle_id. search matches title, fault code, vendor and bus. sort: opened_at, closed_at, cost, status. warranty_claim is set when the same part was fitted earlier and is still under warranty.',
   })
   @ApiEnvelope(TicketDto, { paginated: true })
   @ApiErrors(HttpStatus.BAD_REQUEST)
@@ -94,23 +95,57 @@ export class MaintenanceController {
   @ResponseMessage('Ticket updated')
   @ApiOperation({
     summary: 'Edit a ticket or move its status',
-    description: 'status done sets closed_at; moving a done ticket back to open or in_progress clears it.',
+    description:
+      'status done sets closed_at, takes the bus back on the road and, for a service, resets its service rule; moving a done ticket back to open or in_progress clears closed_at. parts_cost + labour_cost make the cost. Cost and garage changes go to the change history. 409 MONTH_LOCKED for a ticket closed in a locked month.',
   })
   @ApiEnvelope(TicketDto, { message: 'Ticket updated' })
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
-  update(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateTicketDto) {
-    return this.maintenance.update(schoolId, id, dto);
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  update(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateTicketDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.maintenance.update(schoolId, id, dto, actor);
   }
 
   @Post(':id/close')
   @HttpCode(HttpStatus.OK)
   @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
   @ResponseMessage('Ticket closed')
-  @ApiOperation({ summary: 'Close a ticket with the final cost, vendor and notes (409 TICKET_CLOSED when done)' })
+  @ApiOperation({
+    summary: 'Close a ticket with the final cost, garage, bill and warranty (409 TICKET_CLOSED when done)',
+    description:
+      'Takes the bus back on the road. Closing a service (kind service) resets its service rule to today and the odometer given (or the bus’s current km).',
+  })
   @ApiEnvelope(TicketDto, { message: 'Ticket closed' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
-  close(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: CloseTicketDto) {
-    return this.maintenance.close(schoolId, id, dto);
+  close(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CloseTicketDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.maintenance.close(schoolId, id, dto, actor);
+  }
+
+  @Delete(':id')
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Ticket deleted')
+  @ApiOperation({
+    summary: 'Delete a ticket added by mistake (kept in the change history with the reason)',
+    description:
+      'A deleted off-road ticket no longer keeps the bus off the road. 409 MONTH_LOCKED for a ticket closed in a locked month.',
+  })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  async remove(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: ReasonDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    await this.maintenance.remove(schoolId, id, actor, query.reason ?? null);
+    return null;
   }
 }
 
@@ -127,7 +162,7 @@ export class FuelController {
   @ApiOperation({
     summary: 'Fuel log, newest first, with km since the last fill and km/l',
     description:
-      'Filters: vehicle_id, from, to (filled_on dates). search matches station and bus. sort: filled_on, amount, litres, odometer_km.',
+      'Filters: vehicle_id, from, to (filled_on dates), status (approved, pending, rejected), payment_mode, reimbursed. search matches station and bus. sort: filled_on, amount, litres, odometer_km. km_per_litre is worked out between full fills. price_warning and gps_check flag entries to look at.',
   })
   @ApiEnvelope(FuelLogDto, { paginated: true })
   @ApiErrors(HttpStatus.BAD_REQUEST)
@@ -137,7 +172,9 @@ export class FuelController {
 
   @Get('insights')
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)
-  @ApiOperation({ summary: 'Fuel this month and the average km/l over the last 90 days' })
+  @ApiOperation({
+    summary: 'Fuel this month, the average km/l over the last 90 days, entries waiting and driver pay-backs',
+  })
   @ApiEnvelope(FuelInsightsDto)
   insights(@SchoolId() schoolId: number, @Query() query: BusFilterDto) {
     return this.fuel.insights(schoolId, query.vehicle_id);
@@ -158,7 +195,7 @@ export class FuelController {
   @ApiOperation({
     summary: 'Add a fuel entry',
     description:
-      'filled_on cannot be in the future; odometer_km must sit between the readings of the fills before and after it (VALIDATION_FAILED on the field). 404 VEHICLE_NOT_FOUND.',
+      'filled_on cannot be in the future; odometer_km must sit between the readings of the fills before and after it; litres cannot be more than the bus tank (VALIDATION_FAILED on the field). 409 FUEL_DUPLICATE for the same bus, date and odometer; 409 MONTH_LOCKED for a locked month. 404 VEHICLE_NOT_FOUND. A full fill whose km/l is far below the bus normal sends BUS_LOW_MILEAGE.',
   })
   @ApiEnvelope(FuelLogDto, { status: HttpStatus.CREATED, message: 'Fuel entry added' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
@@ -169,21 +206,81 @@ export class FuelController {
   @Patch(':id')
   @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
   @ResponseMessage('Fuel entry updated')
-  @ApiOperation({ summary: 'Edit a fuel entry (same rules as adding)' })
+  @ApiOperation({
+    summary: 'Edit a fuel entry (same rules as adding); old values and the reason go to the change history',
+  })
   @ApiEnvelope(FuelLogDto, { message: 'Fuel entry updated' })
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
-  update(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateFuelDto) {
-    return this.fuel.update(schoolId, id, dto);
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  update(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateFuelDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.fuel.update(schoolId, id, dto, actor);
   }
 
   @Delete(':id')
   @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
   @ResponseMessage('Fuel entry deleted')
-  @ApiOperation({ summary: 'Delete a fuel entry' })
-  @ApiErrors(HttpStatus.NOT_FOUND)
-  async remove(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
-    await this.fuel.remove(schoolId, id);
+  @ApiOperation({ summary: 'Delete a fuel entry (kept in the change history with the reason)' })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  async remove(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: ReasonDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    await this.fuel.remove(schoolId, id, actor, query.reason ?? null);
     return null;
+  }
+
+  @Post(':id/approve')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Fuel entry approved')
+  @ApiOperation({
+    summary: 'Approve a fuel entry added by a driver (409 FUEL_NOT_PENDING)',
+    description: 'Only approved entries count in km/l, reports and budgets. The driver gets FUEL_ENTRY_REVIEWED.',
+  })
+  @ApiEnvelope(FuelLogDto, { message: 'Fuel entry approved' })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  approve(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReviewFuelDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.fuel.review(schoolId, id, 'approved', dto.note ?? null, actor);
+  }
+
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Fuel entry rejected')
+  @ApiOperation({ summary: 'Reject a fuel entry added by a driver, with the reason (409 FUEL_NOT_PENDING)' })
+  @ApiEnvelope(FuelLogDto, { message: 'Fuel entry rejected' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  reject(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RejectFuelDto,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.fuel.review(schoolId, id, 'rejected', dto.note, actor);
+  }
+
+  @Post(':id/reimburse')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.FLEET_MANAGE)
+  @ResponseMessage('Marked as paid back')
+  @ApiOperation({
+    summary: 'Mark a driver-paid fuel entry as paid back (409 NOT_DRIVER_PAID, FUEL_NOT_APPROVED, ALREADY_REIMBURSED)',
+  })
+  @ApiEnvelope(FuelLogDto, { message: 'Marked as paid back' })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  reimburse(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @CurrentUser() actor: AuthUser) {
+    return this.fuel.reimburse(schoolId, id, actor);
   }
 }
 
