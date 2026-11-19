@@ -24,6 +24,7 @@ import { SmsModule } from './modules/sms/sms.module';
 import { StudentsModule } from './modules/students/students.module';
 import { FleetModule } from './modules/fleet/fleet.module';
 import { FleetOpsModule } from './modules/fleet-ops/fleet-ops.module';
+import { GateModule } from './modules/gate/gate.module';
 import { MeetingsModule } from './modules/meetings/meetings.module';
 import { DiaryModule } from './modules/diary/diary.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
@@ -92,6 +93,7 @@ import { UsersModule } from './modules/users/users.module';
     MobileModule,
     FleetModule,
     FleetOpsModule,
+    GateModule,
     AccessModule,
     UsersModule,
     AuthModule,

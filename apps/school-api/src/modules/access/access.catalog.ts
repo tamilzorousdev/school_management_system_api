@@ -54,6 +54,10 @@ export const PERMISSIONS = {
   LIBRARY_FINES: 'library.fines',
   LIBRARY_WAIVE: 'library.waive',
   LIBRARY_ATTENDANCE: 'library.attendance',
+  GATE_VIEW: 'gate.view',
+  GATE_OPERATE: 'gate.operate',
+  GATE_APPROVE: 'gate.approve',
+  GATE_MANAGE: 'gate.manage',
 } as const;
 
 export interface PermissionDefinition {
@@ -172,6 +176,14 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { code: PERMISSIONS.LIBRARY_FINES, name: 'Collect library fines and give receipts', group: 'Library' },
   { code: PERMISSIONS.LIBRARY_WAIVE, name: 'Waive library fines', group: 'Library' },
   { code: PERMISSIONS.LIBRARY_ATTENDANCE, name: 'Scan library visitors and mark library periods', group: 'Library' },
+  { code: PERMISSIONS.GATE_VIEW, name: 'See gate passes, visitors and the gate log', group: 'Gate' },
+  {
+    code: PERMISSIONS.GATE_OPERATE,
+    name: 'Work the gate: check passes, release students, let visitors in and out',
+    group: 'Gate',
+  },
+  { code: PERMISSIONS.GATE_APPROVE, name: 'Approve gate passes and emergency releases', group: 'Gate' },
+  { code: PERMISSIONS.GATE_MANAGE, name: 'Gate settings, blocked list, pre-invite visitors', group: 'Gate' },
 ];
 
 export const ROLES = {
@@ -187,6 +199,7 @@ export const ROLES = {
   DRIVER: 'DRIVER',
   ATTENDANT: 'ATTENDANT',
   LIBRARIAN: 'LIBRARIAN',
+  GATE_INCHARGE: 'GATE_INCHARGE',
 } as const;
 
 export type RoleCode = (typeof ROLES)[keyof typeof ROLES];
@@ -256,6 +269,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.EMERGENCY_SEND,
       PERMISSIONS.EMERGENCY_APPROVE,
       PERMISSIONS.LIBRARY_VIEW,
+      PERMISSIONS.GATE_VIEW,
+      PERMISSIONS.GATE_APPROVE,
+      PERMISSIONS.GATE_MANAGE,
     ],
   },
   {
@@ -299,6 +315,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.EMERGENCY_SEND,
       PERMISSIONS.LIBRARY_VIEW,
       PERMISSIONS.LIBRARY_FINES,
+      PERMISSIONS.GATE_VIEW,
+      PERMISSIONS.GATE_APPROVE,
+      PERMISSIONS.GATE_MANAGE,
     ],
   },
   {
@@ -360,7 +379,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
     name: 'Teacher',
     description: 'Uses the Staff app for classes, attendance, diary and chat.',
     app: 'staff',
-    permissions: [PERMISSIONS.EXAMS_VIEW],
+    permissions: [PERMISSIONS.EXAMS_VIEW, PERMISSIONS.GATE_APPROVE],
   },
   {
     code: ROLES.PARENT,
@@ -382,6 +401,14 @@ export const ROLE_CATALOG: RoleDefinition[] = [
     description: 'Uses the Driver app to scan students on and off the bus.',
     app: 'driver',
     permissions: [],
+  },
+  {
+    code: ROLES.GATE_INCHARGE,
+    name: 'Gate in-charge',
+    description:
+      'Uses the Gate section of the Staff app: checks gate passes, releases students and registers visitors.',
+    app: 'staff',
+    permissions: [PERMISSIONS.GATE_VIEW, PERMISSIONS.GATE_OPERATE],
   },
 ];
 

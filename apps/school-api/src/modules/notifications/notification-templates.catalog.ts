@@ -65,6 +65,20 @@ export const TEMPLATES = {
   BUS_DOCUMENT_EXPIRY_DRIVER: 'BUS_DOCUMENT_EXPIRY_DRIVER',
   TRANSPORT_CHANGED: 'TRANSPORT_CHANGED',
   VEHICLE_FAULT: 'VEHICLE_FAULT',
+  GATE_PASS_REQUESTED: 'GATE_PASS_REQUESTED',
+  GATE_PASS_DECIDED: 'GATE_PASS_DECIDED',
+  GATE_RELEASED: 'GATE_RELEASED',
+  GATE_EMERGENCY: 'GATE_EMERGENCY',
+  GATE_CONSENT_NEEDED: 'GATE_CONSENT_NEEDED',
+  GATE_CONSENT_GIVEN: 'GATE_CONSENT_GIVEN',
+  GATE_REQUEST_ANSWERED: 'GATE_REQUEST_ANSWERED',
+  GATE_NO_ANSWER: 'GATE_NO_ANSWER',
+  GATE_MANUAL_RELEASE: 'GATE_MANUAL_RELEASE',
+  GATE_BLOCKED_PERSON: 'GATE_BLOCKED_PERSON',
+  VISITOR_WAITING: 'VISITOR_WAITING',
+  VISITOR_ANSWERED: 'VISITOR_ANSWERED',
+  VISITOR_ARRIVED: 'VISITOR_ARRIVED',
+  VISITOR_OVERSTAY: 'VISITOR_OVERSTAY',
   SERVICE_DUE_SOON: 'SERVICE_DUE_SOON',
   SERVICE_OVERDUE: 'SERVICE_OVERDUE',
   BUS_LOW_MILEAGE: 'BUS_LOW_MILEAGE',
@@ -1846,6 +1860,275 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: 'எரிபொருள் பதிவு {{decision}}',
         body: '{{filled_on}} அன்று நீங்கள் பதிவு செய்த {{litres}} லிட்டர் எரிபொருள் {{decision}}. {{note}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_PASS_REQUESTED,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Gate pass request: {{student}}',
+        body: '{{student}} ({{class_section}}) to leave on {{date}} from {{from}}: {{reason}}. Approve in the app.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'வெளியேறும் அனுமதி கோரிக்கை: {{student}}',
+        body: '{{student}} ({{class_section}}) {{date}} அன்று {{from}} முதல் வெளியேற: {{reason}}. செயலியில் அனுமதிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_PASS_DECIDED,
+    category: 'attendance',
+    push: true,
+    sms: 'fallback',
+    critical: false,
+    text: {
+      en: {
+        title: 'Gate pass {{decision}}: {{student}}',
+        body: 'Gate pass for {{student}} on {{date}} ({{from}}–{{until}}) is {{decision}}. Code {{code}}. {{note}}',
+        sms_body: 'Gate pass for {{student}} on {{date}} ({{from}}–{{until}}) is {{decision}}. Code {{code}}. {{note}}',
+      },
+      ta: {
+        title: 'வெளியேறும் அனுமதி {{decision}}: {{student}}',
+        body: '{{date}} ({{from}}–{{until}}) {{student}} வெளியேறும் அனுமதி {{decision}}. குறியீடு {{code}}. {{note}}',
+        sms_body:
+          '{{date}} ({{from}}–{{until}}) {{student}} வெளியேறும் அனுமதி {{decision}}. குறியீடு {{code}}. {{note}}',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_RELEASED,
+    category: 'attendance',
+    push: true,
+    sms: 'fallback',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}} left school',
+        body: '{{student}} left school at {{time}} with {{person}} {{relation}} ({{method}}).',
+        sms_body: '{{student}} left school at {{time}} with {{person}} {{relation}} ({{method}}).',
+      },
+      ta: {
+        title: '{{student}} பள்ளியிலிருந்து வெளியேறினார்',
+        body: '{{student}} {{time}} மணிக்கு {{person}} {{relation}} உடன் பள்ளியிலிருந்து வெளியேறினார் ({{method}}).',
+        sms_body:
+          '{{student}} {{time}} மணிக்கு {{person}} {{relation}} உடன் பள்ளியிலிருந்து வெளியேறினார் ({{method}}).',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_EMERGENCY,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: 'Emergency release: {{student}}',
+        body: '{{person}} is at the gate to take {{student}} ({{class_section}}) now: {{reason}}. Approve or refuse.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'அவசர வெளியேற்றம்: {{student}}',
+        body: '{{student}} ({{class_section}}) உடனே அழைத்துச் செல்ல {{person}} வாயிலில் உள்ளார்: {{reason}}. அனுமதிக்கவும் அல்லது மறுக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_CONSENT_NEEDED,
+    category: 'attendance',
+    push: true,
+    sms: 'always',
+    critical: true,
+    text: {
+      en: {
+        title: 'Someone is at the gate for {{student}}',
+        body: '{{person}} is at the school gate to take {{student}}: {{reason}}. Agree or refuse in the app.',
+        sms_body: '{{person}} is at the school gate to take {{student}}: {{reason}}. Agree or refuse in the app.',
+      },
+      ta: {
+        title: '{{student}} க்காக ஒருவர் வாயிலில் உள்ளார்',
+        body: '{{student}} ஐ அழைத்துச் செல்ல {{person}} பள்ளி வாயிலில் உள்ளார்: {{reason}}. செயலியில் ஒப்புக்கொள்ளவும் அல்லது மறுக்கவும்.',
+        sms_body:
+          '{{student}} ஐ அழைத்துச் செல்ல {{person}} பள்ளி வாயிலில் உள்ளார்: {{reason}}. செயலியில் ஒப்புக்கொள்ளவும் அல்லது மறுக்கவும்.',
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_CONSENT_GIVEN,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Parent agreed: {{student}}',
+        body: 'A parent agreed that {{person}} may take {{student}} ({{class_section}}). Approve the emergency release.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'பெற்றோர் ஒப்புக்கொண்டனர்: {{student}}',
+        body: '{{person}} {{student}} ({{class_section}}) ஐ அழைத்துச் செல்ல பெற்றோர் ஒப்புக்கொண்டனர். அவசர வெளியேற்றத்தை அனுமதிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_REQUEST_ANSWERED,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Emergency request {{decision}}',
+        body: 'Release of {{student}} ({{class_section}}) was {{decision}} by {{by}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'அவசர கோரிக்கை பதில்',
+        body: '{{student}} ({{class_section}}) வெளியேற்றம்: {{decision}} ({{by}}).',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_NO_ANSWER,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'No answer yet: call the office',
+        body: 'Nobody has answered the emergency request for {{student}} ({{person}}). Call the office before releasing.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'பதில் இல்லை: அலுவலகத்தை அழைக்கவும்',
+        body: '{{student}} ({{person}}) அவசர கோரிக்கைக்கு இன்னும் பதில் இல்லை. வெளியேற்றும் முன் அலுவலகத்தை அழைக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_MANUAL_RELEASE,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Released by a manual check: {{student}}',
+        body: '{{student}} was released at {{time}} to {{person}} after a manual check by {{by}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'கைமுறை சரிபார்ப்பில் வெளியேற்றம்: {{student}}',
+        body: '{{by}} கைமுறையாகச் சரிபார்த்து {{time}} மணிக்கு {{student}} ஐ {{person}} உடன் அனுப்பினார்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_BLOCKED_PERSON,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: 'Blocked person at the gate',
+        body: '{{person}} ({{mobile}}) on the blocked list came to the gate: {{purpose}}. They were not let in.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'தடைசெய்யப்பட்ட நபர் வாயிலில்',
+        body: 'தடைப் பட்டியலில் உள்ள {{person}} ({{mobile}}) வாயிலுக்கு வந்தார்: {{purpose}}. அனுமதிக்கப்படவில்லை.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.VISITOR_WAITING,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Visitor at the gate: {{visitor}}',
+        body: '{{visitor}} {{company}} is at the gate for: {{purpose}}. Allow or decline.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'வாயிலில் பார்வையாளர்: {{visitor}}',
+        body: '{{visitor}} {{company}} வாயிலில் உள்ளார்: {{purpose}}. அனுமதிக்கவும் அல்லது மறுக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.VISITOR_ANSWERED,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Visitor {{visitor}}: {{decision}}',
+        body: '{{visitor}} was {{decision}} by {{by}}. {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'பார்வையாளர் {{visitor}}: {{decision}}',
+        body: '{{visitor}}: {{decision}} ({{by}}). {{note}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.VISITOR_ARRIVED,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Your visitor has arrived',
+        body: '{{visitor}} has come in through the gate.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உங்கள் பார்வையாளர் வந்துவிட்டார்',
+        body: '{{visitor}} வாயில் வழியாக உள்ளே வந்துள்ளார்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.VISITOR_OVERSTAY,
+    category: 'attendance',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Visitor still inside: {{visitor}}',
+        body: '{{visitor}} was expected to leave by {{until}} and is still inside.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'பார்வையாளர் இன்னும் உள்ளே: {{visitor}}',
+        body: '{{visitor}} {{until}} க்குள் வெளியேற வேண்டியவர் இன்னும் உள்ளே இருக்கிறார்.',
         sms_body: null,
       },
     },

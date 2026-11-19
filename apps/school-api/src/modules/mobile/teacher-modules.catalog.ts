@@ -10,4 +10,5 @@ export const TEACHER_MODULE_TAGS = {
   MODULE_9: 'Mobile · Teacher · Module 9: Student Fees Overview',
   MODULE_10: 'Mobile · Teacher · Module 10: Academic Calendar & Holidays',
   MODULE_11: 'Mobile · Teacher · Module 11: Library',
+  MODULE_12: 'Mobile · Teacher · Module 12: Gate, Visitors & Pickups',
 } as const;
