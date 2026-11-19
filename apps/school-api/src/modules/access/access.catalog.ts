@@ -192,7 +192,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
   {
     code: ROLES.PRINCIPAL,
     name: 'Principal',
-    description: 'Oversees the school; approves leave and views every module.',
+    description: 'Oversees the school; approves leave and fee requests and views every module.',
     app: 'admin',
     permissions: [
       PERMISSIONS.USERS_VIEW,
@@ -206,6 +206,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.PAYROLL_VIEW,
       PERMISSIONS.FEES_VIEW,
       PERMISSIONS.FEES_AUDIT,
+      PERMISSIONS.FEES_APPROVE,
       PERMISSIONS.EXAMS_VIEW,
       PERMISSIONS.FEEDBACK_VIEW,
       PERMISSIONS.NOTIFICATIONS_VIEW,

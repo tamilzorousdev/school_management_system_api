@@ -75,6 +75,7 @@ import {
   sumAmounts,
 } from './fees.logic';
 import { advanceReceiptPdf, receiptPdf } from './receipt.pdf';
+import { feesForTeacher } from './fee-views';
 import { FeeCollection } from './entities/fee-collection.entity';
 import { yearClause } from '../../shared/year-context';
 
@@ -1162,7 +1163,7 @@ export class FeesService {
     if (Number(row.class_teacher_user_id) !== userId) {
       throw AppException.forbidden('Only the class teacher of this student can see their fees', 'NOT_CLASS_TEACHER');
     }
-    return this.summary(schoolId, studentId);
+    return feesForTeacher(await this.summary(schoolId, studentId));
   }
 
   async childSchool(userId: number, studentId: number): Promise<number> {

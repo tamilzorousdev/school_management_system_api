@@ -884,7 +884,7 @@ Every fee summary also has `total`, `paid`, `balance`, `overdue_amount`, `next_d
 | Call | Screen |
 |---|---|
 | `GET /mobile/teacher/sections/{id}/fees` | Section roster with each student's fee `status`, `balance`, `next_due_date`, `overdue_amount`, `last_payment`, plus `counts` per status. Only the class teacher of the section; others get `403 NOT_CLASS_TEACHER` |
-| `GET /mobile/teacher/students/{id}/fees` | One student's summary with invoices and payments (same shape as the parent call) |
+| `GET /mobile/teacher/students/{id}/fees` | One student's summary with invoices and payments (same shape as the parent call). Amounts, due dates and statuses only: `discount_reason`, `cancel_reason`, `benefits`, `refunds` and `pending_requests` are empty, and payments have no `reference`, `notes`, `received_by`, `reversed_by` or `reversal_reason` |
 
 ```json
 {
@@ -917,15 +917,15 @@ Parents get `FEE_DUE` (category `fees`) when the school raises an invoice, and `
 
 | Permission | Routes | Roles |
 |---|---|---|
-| `fees.view` | Every `GET` above | Admin, Principal, AO |
+| `fees.view` | Every `GET` above | Admin, Principal, AO, Accountant |
 | `fees.configure` | Heads (`POST`, `PATCH`, `DELETE`), `PUT /admin/fees/plans/{classId}` | Admin, AO |
 | `fees.assign` | `POST /admin/fees/invoices/generate` | Admin, AO |
-| `fees.collect` | `POST /admin/fees/invoices/{id}/payments`, `POST /admin/fees/overdue-reminders` | Admin, AO |
-| `fees.adjust` | Ask for: `PATCH .../discount`, `POST .../cancel`, `POST .../refunds`, `POST /admin/fees/payments/{id}/reverse`; `POST /admin/fees/requests/{id}/withdraw` | Admin, AO |
+| `fees.collect` | `POST /admin/fees/invoices/{id}/payments`, `POST /admin/fees/overdue-reminders` | Admin, AO, Accountant |
+| `fees.adjust` | Ask for: `PATCH .../discount`, `POST .../cancel`, `POST .../refunds`, `POST /admin/fees/payments/{id}/reverse`; `POST /admin/fees/requests/{id}/withdraw` | Admin, AO, Accountant |
 | `fees.audit` | `GET /admin/fees/audit-logs`, `GET /admin/fees/reconciliation` | Admin, Principal |
 
 The **Accountant** role (`ACCOUNTANT`, admin web) has `fees.view`, `fees.collect` and `fees.adjust`, plus `students.view`. An accountant can see fees, record payments and ask for discounts, refunds, cancellations, reversals, write-offs and due date changes, but cannot approve them or change fee plans and settings. Demo user: `9000000009`.
-| `fees.approve` | `POST /admin/fees/plans/{classId}/approve` and `/reject`, `POST /admin/fees/requests/{id}/approve` and `/reject` | Admin, AO |
+| `fees.approve` | `POST /admin/fees/plans/{classId}/approve` and `/reject`, `POST /admin/fees/requests/{id}/approve` and `/reject` | Admin, Principal, AO |
 
 Concessions and scholarships: creating, changing and deleting them needs `fees.configure`; giving and withdrawing them needs `fees.adjust`.
 
@@ -951,6 +951,7 @@ The invoice changes only when someone with `fees.approve` approves:
 - `GET /admin/fees/requests` filters by `status`, `kind`, `invoice_id` and `student_id`; `search` matches the student, invoice number and reason.
 - Each request has `kind` (`discount`, `cancel`, `reversal`, `refund`, `reschedule`, `write_off`), `status` (`pending`, `approved`, `rejected`, `withdrawn`), `invoice`, `payment`, `student`, `amount`, `details`, `reason`, `requested_by`/`requested_at` and `decided_by`/`decided_at`/`decision_comment`.
 - The invoice detail adds `pending_requests[]` (with `details`), so screens can show what is waiting.
+- The parent fee summary (`GET /mobile/parent/children/{id}/fees`) leaves out `pending_requests` and payment `notes`; both are for school staff.
 
 Notifications are sent in-app and by push only, never SMS:
 

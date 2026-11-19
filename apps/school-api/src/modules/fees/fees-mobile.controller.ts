@@ -12,6 +12,7 @@ import {
   StudentFeesDto,
 } from './dto/fees.dto';
 import { FeesService } from './fees.service';
+import { feesForParent } from './fee-views';
 import { OnlinePaymentsService } from './online-payments.service';
 import { TEACHER_MODULE_TAGS } from '../mobile/teacher-modules.catalog';
 import { PARENT_MODULE_TAGS } from '../mobile/parent-modules.catalog';
@@ -41,7 +42,11 @@ export class MobileTeacherFeesController {
   }
 
   @Get('students/:id/fees')
-  @ApiOperation({ summary: 'Fee summary of a student in my class-teacher section (read-only)' })
+  @ApiOperation({
+    summary: 'Fee summary of a student in my class-teacher section (read-only)',
+    description:
+      'Amounts, due dates and statuses only: concession names, reasons, waiting requests, payment references, notes and staff names are left out.',
+  })
   @ApiEnvelope(StudentFeesDto)
   student(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
     return this.fees.teacherStudentFees(teacherSchool(user), id, user.id);
@@ -65,7 +70,7 @@ export class MobileParentFeesController {
   })
   @ApiEnvelope(StudentFeesDto)
   async summary(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
-    return this.fees.summary(await this.fees.childSchool(user.id, id), id);
+    return feesForParent(await this.fees.summary(await this.fees.childSchool(user.id, id), id));
   }
 
   @Post('invoices/:invoiceId/pay-online')

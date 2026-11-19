@@ -13,6 +13,7 @@ npm run lint                 # must be clean before commit
 npm run format               # prettier
 npm test                     # unit tests, no database needed
 npm run test:e2e             # smoke tests, needs a migrated database
+npm run test:e2e:fees        # fee flows; only on a fresh scratch DB whose DB_NAME contains test or e2e (migrate, seed, seed:demo first)
 npm run migration:generate -- apps/school-api/src/database/migrations/Name
 npm run migration:run
 npm run seed                 # roles, permissions, templates (production-safe)
