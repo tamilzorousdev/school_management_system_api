@@ -12,6 +12,8 @@ export const FEE_AUDIT_ENTITIES = [
   'fee_request',
   'fee_refund',
   'fee_settings',
+  'fee_fine',
+  'fine_type',
 ] as const;
 export type FeeAuditEntity = (typeof FEE_AUDIT_ENTITIES)[number];
 

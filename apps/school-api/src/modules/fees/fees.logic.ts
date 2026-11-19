@@ -157,7 +157,7 @@ export function applyDiscount(
 
 export function feeNumber(
   schoolCode: string,
-  kind: 'FEE' | 'RCP' | 'RFD',
+  kind: 'FEE' | 'RCP' | 'RFD' | 'FIN',
   year: string | number,
   value: number,
 ): string {

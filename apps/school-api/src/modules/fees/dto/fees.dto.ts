@@ -21,7 +21,7 @@ import {
 import { ListQueryDto, toBoolean } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { FEE_FREQUENCIES, FeeFrequency } from '../entities/fee-head.entity';
-import { INVOICE_STATUSES, InvoiceStatus } from '../entities/fee-invoice.entity';
+import { INVOICE_KINDS, INVOICE_STATUSES, InvoiceKind, InvoiceStatus } from '../entities/fee-invoice.entity';
 import {
   FEE_AUDIT_ACTIONS,
   FEE_AUDIT_ENTITIES,
@@ -588,6 +588,11 @@ export class InvoiceQueryDto extends ListQueryDto {
   @IsIn(INVOICE_STATUSES)
   status?: InvoiceStatus;
 
+  @ApiPropertyOptional({ enum: INVOICE_KINDS, description: 'fee: installments of the fee plan; fine: approved fines' })
+  @IsOptional()
+  @IsIn(INVOICE_KINDS)
+  kind?: InvoiceKind;
+
   @ApiPropertyOptional({ example: 8 })
   @IsOptional()
   @IsInt()
@@ -855,8 +860,15 @@ export class FeeInvoiceDto {
   @ApiProperty({ example: 2 })
   academic_year_id: number;
 
-  @ApiProperty({ example: 'Term 1' })
+  @ApiProperty({ example: 'Term 1', description: 'For a fine: “Fine 4 · Broke the lab microscope”' })
   installment: string;
+
+  @ApiProperty({
+    enum: INVOICE_KINDS,
+    example: 'fee',
+    description: 'fee: an installment of the fee plan; fine: an approved fine',
+  })
+  kind: InvoiceKind;
 
   @ApiProperty({ example: '2026-10-03' })
   due_date: string;

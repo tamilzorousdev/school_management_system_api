@@ -5,6 +5,9 @@ import { money } from '../../payroll/entities/money';
 export const INVOICE_STATUSES = ['unpaid', 'partly_paid', 'paid', 'cancelled'] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
+export const INVOICE_KINDS = ['fee', 'fine'] as const;
+export type InvoiceKind = (typeof INVOICE_KINDS)[number];
+
 @Entity('fee_invoices')
 @Check(
   'CHK_fee_invoices_amounts',
@@ -93,4 +96,7 @@ export class FeeInvoice extends SchoolScopedEntity {
 
   @Column(money())
   refunded: number;
+
+  @Column({ type: 'varchar', length: 6, default: 'fee' })
+  kind: InvoiceKind;
 }

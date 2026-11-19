@@ -296,6 +296,69 @@ export async function generateInvoices(manager: EntityManager, input: GenerateIn
   return outcome;
 }
 
+export interface OneOffInvoiceInput {
+  school_id: number;
+  year: FeeYear;
+  student_id: number;
+  installment: string;
+  due_date: string;
+  kind: FeeInvoice['kind'];
+  lines: { head_name: string; description: string | null; amount: number }[];
+  created_by: number | null;
+}
+
+export async function createOneOffInvoice(manager: EntityManager, input: OneOffInvoiceInput): Promise<FeeInvoice> {
+  const [enrolment] = await manager.query(
+    `SELECT class_id, section_id FROM student_enrollments
+     WHERE school_id = $1 AND academic_year_id = $2 AND student_id = $3 ORDER BY id DESC LIMIT 1`,
+    [input.school_id, input.year.id, input.student_id],
+  );
+  if (!enrolment) {
+    throw AppException.conflict('The student is not enrolled in this academic year', 'STUDENT_NOT_ENROLLED');
+  }
+  const gross = sumAmounts(input.lines.map((line) => line.amount));
+  const value = await sequences.next(manager, input.school_id, `fee_invoice:${startYear(input.year)}`);
+  const invoice = await manager.save(
+    manager.create(FeeInvoice, {
+      school_id: input.school_id,
+      academic_year_id: input.year.id,
+      student_id: input.student_id,
+      class_id: Number(enrolment.class_id),
+      section_id: enrolment.section_id === null ? null : Number(enrolment.section_id),
+      invoice_no: feeNumber(await schoolCode(manager, input.school_id), 'FEE', startYear(input.year), value),
+      installment: input.installment,
+      due_date: input.due_date,
+      gross,
+      benefit: 0,
+      discount: 0,
+      total: gross,
+      paid: 0,
+      balance: gross,
+      status: invoiceStatus(gross, 0),
+      kind: input.kind,
+      created_by: input.created_by,
+    }),
+  );
+  await manager.save(
+    input.lines.map((line, index) =>
+      manager.create(FeeInvoiceLine, {
+        ...line,
+        fee_head_id: null,
+        school_id: input.school_id,
+        invoice_id: invoice.id,
+        sort_order: index,
+        created_by: input.created_by,
+      }),
+    ),
+  );
+  return invoice;
+}
+
+export async function nextFineNumber(manager: EntityManager, schoolId: number, year: FeeYear): Promise<string> {
+  const value = await sequences.next(manager, schoolId, `fee_fine:${startYear(year)}`);
+  return feeNumber(await schoolCode(manager, schoolId), 'FIN', startYear(year), value);
+}
+
 export async function recordPayment(
   manager: EntityManager,
   schoolId: number,

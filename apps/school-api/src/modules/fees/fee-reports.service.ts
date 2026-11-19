@@ -157,7 +157,8 @@ export class FeeReportsService {
   private async installments(schoolId: number, year: FeeYear, query: FeeReportQueryDto): Promise<FeeReportDto> {
     const params: unknown[] = [schoolId, year.id, this.today()];
     const rows: Row[] = await this.dataSource.query(
-      `SELECT i.installment, to_char(max(i.due_date), 'YYYY-MM-DD') AS due_date, count(*)::int AS invoices,
+      `SELECT CASE WHEN i.kind = 'fine' THEN 'Fines' ELSE i.installment END AS installment,
+              to_char(max(i.due_date), 'YYYY-MM-DD') AS due_date, count(*)::int AS invoices,
               count(*) FILTER (WHERE i.status = 'paid')::int AS paid_invoices,
               sum(i.gross) AS billed, sum(i.benefit) AS benefit, sum(i.discount) AS discount, sum(i.total) AS net,
               sum(i.paid) AS collected, sum(i.balance) AS outstanding,
@@ -165,7 +166,7 @@ export class FeeReportsService {
        FROM fee_invoices i
        WHERE i.school_id = $1 AND i.academic_year_id = $2 AND i.deleted_at IS NULL AND i.status <> 'cancelled'
        ${this.invoiceFilter(query, params)}
-       GROUP BY i.installment ORDER BY max(i.due_date), i.installment`,
+       GROUP BY 1 ORDER BY max(i.due_date), 1`,
       params,
     );
     return report(

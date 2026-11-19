@@ -18,6 +18,7 @@ npm run migration:generate -- apps/school-api/src/database/migrations/Name
 npm run migration:run
 npm run seed                 # roles, permissions, templates (production-safe)
 npm run seed:demo            # local only: demo school + users (seeds/demo.data.ts)
+npm run seed:demo:fees       # local only, after seed:demo: every fee flow through the real services (approvals, requests, credit, refunds, Razorpay orders, late fees); runs once per year
 npm run seed:super-admin -- --mobile 9xxxxxxxxx --name "Full Name"
 ```
 

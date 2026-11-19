@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { FeeAuditLog } from './entities/fee-audit-log.entity';
+import { FeeFineType } from './entities/fee-fine-type.entity';
+import { FeeFine } from './entities/fee-fine.entity';
+import { FeeFinesController } from './fee-fines.controller';
+import { FeeFinesService } from './fee-fines.service';
 import { FeeBenefit } from './entities/fee-benefit.entity';
 import { FeeHead } from './entities/fee-head.entity';
 import { FeeInvoiceBenefit } from './entities/fee-invoice-benefit.entity';
@@ -49,6 +53,8 @@ import { FeesService } from './fees.service';
       FeeCollection,
       FeeCredit,
       FeePaymentOrder,
+      FeeFine,
+      FeeFineType,
     ]),
   ],
   controllers: [
@@ -56,6 +62,7 @@ import { FeesService } from './fees.service';
     FeeBenefitsController,
     FeeReportsController,
     FeeRequestsController,
+    FeeFinesController,
     OnlinePaymentsController,
     RazorpayWebhookController,
     StudentFeesController,
@@ -67,10 +74,11 @@ import { FeesService } from './fees.service';
     FeeBenefitsService,
     FeeReportsService,
     FeeRequestsService,
+    FeeFinesService,
     FeeSettingsService,
     OnlinePaymentsService,
     RazorpayClient,
   ],
-  exports: [FeesService],
+  exports: [FeesService, FeeFinesService],
 })
 export class FeesModule {}

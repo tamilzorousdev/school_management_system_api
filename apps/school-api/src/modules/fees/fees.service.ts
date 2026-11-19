@@ -706,6 +706,7 @@ export class FeesService {
       .where('i.school_id = :schoolId AND i.academic_year_id = :yearId', { schoolId, yearId: year.id });
     if (query.status) qb.andWhere('i.status = :status', { status: query.status });
     else qb.andWhere("i.status <> 'cancelled'");
+    if (query.kind) qb.andWhere('i.kind = :kind', { kind: query.kind });
     if (query.class_id) qb.andWhere('i.class_id = :classId', { classId: query.class_id });
     if (query.section_id) qb.andWhere('i.section_id = :sectionId', { sectionId: query.section_id });
     if (query.student_id) qb.andWhere('i.student_id = :studentId', { studentId: query.student_id });
@@ -1458,6 +1459,7 @@ export class FeesService {
         invoice_no: invoice.invoice_no,
         academic_year_id: invoice.academic_year_id,
         installment: invoice.installment,
+        kind: invoice.kind,
         due_date: invoice.due_date,
         student: refs.get(invoice.student_id) ?? missingStudent(invoice.student_id),
         class_id: invoice.class_id,

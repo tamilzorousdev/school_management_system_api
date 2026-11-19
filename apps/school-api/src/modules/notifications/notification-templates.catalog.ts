@@ -38,6 +38,10 @@ export const TEMPLATES = {
   FEE_PAYMENT_REVERSED: 'FEE_PAYMENT_REVERSED',
   FEE_LATE_FEE: 'FEE_LATE_FEE',
   FEE_DUE_DATE_CHANGED: 'FEE_DUE_DATE_CHANGED',
+  FEE_FINE_APPROVAL_NEEDED: 'FEE_FINE_APPROVAL_NEEDED',
+  FEE_FINE_APPROVED: 'FEE_FINE_APPROVED',
+  FEE_FINE_REJECTED: 'FEE_FINE_REJECTED',
+  FEE_FINE_CHARGED: 'FEE_FINE_CHARGED',
   FLEET_DOCUMENT_EXPIRY: 'FLEET_DOCUMENT_EXPIRY',
   TRANSPORT_ASSIGNED: 'TRANSPORT_ASSIGNED',
   TRANSPORT_REMOVED: 'TRANSPORT_REMOVED',
@@ -929,6 +933,82 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{student}}-க்கு தாமதக் கட்டணம்',
         body: '{{student}}-இன் {{installment}} கட்டணம் ({{due_date}} அன்று செலுத்த வேண்டியது) செலுத்தப்படாததால் {{amount}} தாமதக் கட்டணம் சேர்க்கப்பட்டது. இப்போது {{balance}} செலுத்த வேண்டும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_FINE_APPROVAL_NEEDED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Fine waiting for you',
+        body: '{{name}} asked for a fine of {{amount}} on {{student}}: {{title}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உங்கள் ஒப்புதலுக்கு அபராதம்',
+        body: '{{student}}-க்கு {{amount}} அபராதம் விதிக்க {{name}} கோரியுள்ளார்: {{title}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_FINE_APPROVED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Fine approved',
+        body: 'The {{amount}} fine on {{student}} ({{title}}) was approved by {{name}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'அபராதம் ஏற்கப்பட்டது',
+        body: '{{student}}-க்கான {{amount}} அபராதத்தை ({{title}}) {{name}} ஏற்றுக்கொண்டார்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_FINE_REJECTED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Fine not approved',
+        body: 'The {{amount}} fine on {{student}} ({{title}}) was not approved by {{name}}: {{comment}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'அபராதம் நிராகரிக்கப்பட்டது',
+        body: '{{student}}-க்கான {{amount}} அபராதத்தை ({{title}}) {{name}} நிராகரித்தார்: {{comment}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.FEE_FINE_CHARGED,
+    category: 'fees',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Fine for {{student}}',
+        body: 'A fine of {{amount}} was added for {{student}}: {{title}}. Please pay by {{due_date}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}}-க்கு அபராதம்',
+        body: '{{student}}-க்கு {{amount}} அபராதம் விதிக்கப்பட்டது: {{title}}. {{due_date}}-க்குள் செலுத்தவும்.',
         sms_body: null,
       },
     },

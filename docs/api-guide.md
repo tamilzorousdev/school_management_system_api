@@ -911,7 +911,7 @@ Parents get `FEE_DUE` (category `fees`) when the school raises an invoice, and `
 
 ### Admin web
 
-`/admin/fees/heads` (CRUD; one transport head; see **Fee head details** below), `/admin/fees/plans` and `/admin/fees/plans/{classId}` (`GET`, `PUT` saves a draft of the lines: head, installment, amount, due date; see **Fee plan approval** below), `/admin/fees/installments`, `POST /admin/fees/invoices/generate` `{ class_id?, installment, due_date? }` (safe to run again), `/admin/fees/invoices` (search, `status`, `class_id`, `section_id`, `installment`, `overdue`), `/admin/fees/invoices/{id}`, `PATCH .../discount`, `POST .../cancel`, `POST .../payments`, `/admin/fees/payments` (+ `/summary`, `from`, `to`, `mode`), `/admin/fees/payments/{id}/receipt`, `/admin/fees/insights` and `/admin/students/{id}/fees`. Transport line on an invoice = stop `monthly_fee` × months since the previous installment's due date (the year start for the first one), at least 1.
+`/admin/fees/heads` (CRUD; one transport head; see **Fee head details** below), `/admin/fees/plans` and `/admin/fees/plans/{classId}` (`GET`, `PUT` saves a draft of the lines: head, installment, amount, due date; see **Fee plan approval** below), `/admin/fees/installments`, `POST /admin/fees/invoices/generate` `{ class_id?, installment, due_date? }` (safe to run again), `/admin/fees/invoices` (search, `status`, `kind`, `class_id`, `section_id`, `installment`, `overdue`), `/admin/fees/invoices/{id}`, `PATCH .../discount`, `POST .../cancel`, `POST .../payments`, `/admin/fees/payments` (+ `/summary`, `from`, `to`, `mode`), `/admin/fees/payments/{id}/receipt`, `/admin/fees/insights` and `/admin/students/{id}/fees`. Transport line on an invoice = stop `monthly_fee` × months since the previous installment's due date (the year start for the first one), at least 1.
 
 **Permissions.** Each fee action has its own permission, so a school can keep setup, collection and corrections apart:
 
@@ -923,9 +923,10 @@ Parents get `FEE_DUE` (category `fees`) when the school raises an invoice, and `
 | `fees.collect` | `POST /admin/fees/invoices/{id}/payments`, `POST /admin/fees/overdue-reminders` | Admin, AO, Accountant |
 | `fees.adjust` | Ask for: `PATCH .../discount`, `POST .../cancel`, `POST .../refunds`, `POST /admin/fees/payments/{id}/reverse`; `POST /admin/fees/requests/{id}/withdraw` | Admin, AO, Accountant |
 | `fees.audit` | `GET /admin/fees/audit-logs`, `GET /admin/fees/reconciliation` | Admin, Principal |
+| `fees.approve` | `POST /admin/fees/plans/{classId}/approve` and `/reject`, `POST /admin/fees/requests/{id}/approve` and `/reject`, `POST /admin/fees/fines/{id}/approve` and `/reject` | Admin, Principal, AO |
+| `fees.fine` | `POST /admin/fees/fines`, `POST /admin/fees/fines/{id}/withdraw` | Admin, Principal, AO, Accountant |
 
-The **Accountant** role (`ACCOUNTANT`, admin web) has `fees.view`, `fees.collect` and `fees.adjust`, plus `students.view`. An accountant can see fees, record payments and ask for discounts, refunds, cancellations, reversals, write-offs and due date changes, but cannot approve them or change fee plans and settings. Demo user: `9000000009`.
-| `fees.approve` | `POST /admin/fees/plans/{classId}/approve` and `/reject`, `POST /admin/fees/requests/{id}/approve` and `/reject` | Admin, Principal, AO |
+The **Accountant** role (`ACCOUNTANT`, admin web) has `fees.view`, `fees.collect`, `fees.adjust` and `fees.fine`, plus `students.view`. An accountant can see fees, record payments, raise fines and ask for discounts, refunds, cancellations, reversals, write-offs and due date changes, but cannot approve them or change fee plans and settings. Demo user: `9000000009`.
 
 Concessions and scholarships: creating, changing and deleting them needs `fees.configure`; giving and withdrawing them needs `fees.adjust`.
 
@@ -983,6 +984,24 @@ Notifications are sent in-app and by push only, never SMS:
 - Invoices of archived years are skipped.
 - Overdue reminders to parents also wait for the grace days.
 - To remove a late fee from an invoice, ask for a discount.
+
+**Fines (misconduct or damage on campus).** A fine is raised, approved, then billed as its own invoice.
+
+- **Fine types** (school list with a default amount): `GET /admin/fees/fine-types` (`active=true` for usable ones, `fees.view`); `POST`, `PATCH /{id}`, `DELETE /{id}` need `fees.configure`. Each type has `name`, `default_amount`, `description`, `is_active` and `fines` (how many were raised with it).
+- **Raise:** `POST /admin/fees/fines` `{ student_id, fine_type_id?, title?, amount?, incident_on?, details? }` (`fees.fine`). The type fills `title` and `amount` when they are left out; the amount can be changed. The student must be studying this year. Answers 201 with the fine, `status: pending`, number `<SCHOOL>-FIN-<year>-NNNN`.
+- Raising also writes a **disciplinary behaviour note** (`behaviour_note_id`), hidden from parents while the fine waits. Its `action_taken` follows the fine: asked, charged (with the invoice number), not approved (with the reason) or withdrawn.
+- **Approve:** `POST /admin/fees/fines/{id}/approve` `{ due_date?, comment? }` (`fees.approve`). It creates an invoice with `kind: "fine"`, installment `Fine 4 · Broke the lab microscope`, one "Fine" line, due in 7 days unless `due_date` is sent (today to the end of the year). Advance credit is used first. The behaviour note becomes visible to parents. The person who raised it cannot approve it (403 `SELF_APPROVAL`).
+- **Reject:** `POST .../reject` `{ comment }` (`fees.approve`). **Withdraw:** `POST .../withdraw`, only by the person who raised it (403 `NOT_REQUESTER`). A decided fine returns 409 `FINE_NOT_PENDING`.
+- `GET /admin/fees/fines` filters by `status`, `student_id`, `fine_type_id`; `search` matches the student, fine number and title; `sort` is `created_at`, `decided_at` or `amount`. Each fine has `fine_no`, `status`, `student`, `fine_type`, `title`, `amount`, `incident_on`, `details`, `raised_by`/`raised_at`, `decided_by`/`decided_at`/`decision_comment` and `invoice` (`id`, `invoice_no`, `due_date`, `balance`, `status`) once approved.
+- An approved fine is paid, receipted, reminded, late-fined, reversed or written off like any invoice. Every invoice now has `kind` (`fee` or `fine`); `GET /admin/fees/invoices?kind=fine` lists fine invoices, and the installments report puts all fines on one "Fines" row.
+- **Staff app** (Teacher, HOD, Principal; module 3): `GET /mobile/teacher/fine-types` (active ones), `POST /mobile/teacher/students/{id}/fines` `{ fine_type_id?, title?, amount?, incident_on?, details? }` for students of my sections (403 `NOT_YOUR_SECTION`), `GET /mobile/teacher/fines` (fines I raised, `status` filter) and `POST /mobile/teacher/fines/{id}/withdraw`.
+- **Parent app:** an approved fine shows in `GET /mobile/parent/children/{id}/fees` as an invoice with `kind: "fine"` and is paid online like any other.
+
+| Template | When | To |
+|---|---|---|
+| `FEE_FINE_APPROVAL_NEEDED` | A fine is raised | Everyone in the school with `fees.approve`, except the person who raised it |
+| `FEE_FINE_APPROVED`, `FEE_FINE_REJECTED` | A fine is decided | The person who raised it |
+| `FEE_FINE_CHARGED` | A fine is approved | The student's guardians who receive alerts |
 
 **One payment across invoices and advance credit.** `POST /admin/fees/students/{id}/payments` `{ amount, mode, reference?, paid_on?, notes? }` needs `fees.collect`. Send an `Idempotency-Key` header; a retry returns the first result with `replayed: true`.
 
