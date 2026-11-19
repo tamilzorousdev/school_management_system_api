@@ -27,6 +27,12 @@ export const TEMPLATES = {
   DIARY_REJECTED: 'DIARY_REJECTED',
   ANNOUNCEMENT: 'ANNOUNCEMENT',
   ANNOUNCEMENT_URGENT: 'ANNOUNCEMENT_URGENT',
+  ANNOUNCEMENT_UPDATED: 'ANNOUNCEMENT_UPDATED',
+  EVENT_PUBLISHED: 'EVENT_PUBLISHED',
+  EVENT_UPDATED: 'EVENT_UPDATED',
+  EVENT_CANCELLED: 'EVENT_CANCELLED',
+  EVENT_REMINDER: 'EVENT_REMINDER',
+  EVENT_RSVP_REMINDER: 'EVENT_RSVP_REMINDER',
   CHAT_MESSAGE: 'CHAT_MESSAGE',
   STAFF_LEAVE_STATUS: 'STAFF_LEAVE_STATUS',
   LEAVE_APPROVAL_NEEDED: 'LEAVE_APPROVAL_NEEDED',
@@ -975,6 +981,96 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
     text: {
       en: { title: '{{title}}', body: '{{preview}}', sms_body: null },
       ta: { title: '{{title}}', body: '{{preview}}', sms_body: null },
+    },
+  },
+  {
+    code: TEMPLATES.EVENT_PUBLISHED,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: { title: 'New event: {{title}}', body: '{{when}}{{venue}}.{{reply}}', sms_body: null },
+      ta: { title: 'புதிய நிகழ்வு: {{title}}', body: '{{when}}{{venue}}.{{reply}}', sms_body: null },
+    },
+  },
+  {
+    code: TEMPLATES.EVENT_UPDATED,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Event changed: {{title}}',
+        body: 'Now on {{when}}{{venue}}. Please check your reply.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'நிகழ்வு மாற்றம்: {{title}}',
+        body: 'இப்போது {{when}}{{venue}}. உங்கள் பதிலைச் சரிபார்க்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.EVENT_CANCELLED,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Event cancelled: {{title}}',
+        body: '{{title}} on {{when}} is cancelled.{{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'நிகழ்வு ரத்து: {{title}}',
+        body: '{{when}} நடைபெறவிருந்த {{title}} ரத்து செய்யப்பட்டது.{{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.EVENT_REMINDER,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: { title: 'Reminder: {{title}} {{lead}}', body: '{{title}}: {{when}}{{venue}}.', sms_body: null },
+      ta: { title: 'நினைவூட்டல்: {{title}}', body: '{{title}}: {{when}}{{venue}}.', sms_body: null },
+    },
+  },
+  {
+    code: TEMPLATES.EVENT_RSVP_REMINDER,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Please reply: {{title}}',
+        body: 'Tell the school if your child will attend {{title}} ({{when}}). Reply by {{deadline}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'பதில் அளிக்கவும்: {{title}}',
+        body: '{{title}} ({{when}}) நிகழ்வில் உங்கள் குழந்தை கலந்துகொள்வாரா என்று {{deadline}}க்குள் தெரிவிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.ANNOUNCEMENT_UPDATED,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: { title: 'Updated: {{title}}', body: '{{preview}}', sms_body: null },
+      ta: { title: 'மாற்றம்: {{title}}', body: '{{preview}}', sms_body: null },
     },
   },
   {

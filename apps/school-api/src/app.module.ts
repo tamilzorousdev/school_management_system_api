@@ -27,6 +27,7 @@ import { FleetOpsModule } from './modules/fleet-ops/fleet-ops.module';
 import { MeetingsModule } from './modules/meetings/meetings.module';
 import { DiaryModule } from './modules/diary/diary.module';
 import { AnnouncementsModule } from './modules/announcements/announcements.module';
+import { EventsModule } from './modules/events/events.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { MobileModule } from './modules/mobile/mobile.module';
@@ -83,6 +84,7 @@ import { UsersModule } from './modules/users/users.module';
     MeetingsModule,
     DiaryModule,
     AnnouncementsModule,
+    EventsModule,
     ChatModule,
     RealtimeModule,
     MobileModule,
