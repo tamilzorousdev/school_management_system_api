@@ -198,7 +198,8 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 | `SIGNATURE_INVALID`, `AGORA_WEBHOOK_OFF` | 401/503 | Agora webhook: wrong signature, or AGORA_WEBHOOK_SECRET is not set |
 | `DIARY_NOT_FOUND`, `DIARY_NOT_EDITABLE`, `DIARY_WRONG_STATUS` | 404/409 | Diary post not found, already published, or not in the right state for this action |
 | `NO_STUDENTS` | 409 | Diary: the class or section has no students yet |
-| `ANNOUNCEMENT_NOT_FOUND`, `ANNOUNCEMENT_NOT_EDITABLE`, `ANNOUNCEMENT_NOT_PUBLISHED` | 404/409 | Announcement not found, already sent, or not published |
+| `ANNOUNCEMENT_NOT_FOUND`, `ANNOUNCEMENT_NOT_EDITABLE`, `ANNOUNCEMENT_NOT_PUBLISHED`, `ANNOUNCEMENT_AUDIENCE_LOCKED` | 404/409 | Announcement not found, archived, not published, or its audience cannot change after sending |
+| `EVENT_NOT_FOUND`, `EVENT_RSVP_CLOSED`, `EVENT_CANCELLED`, `EVENT_NO_RSVP`, `EVENT_NOT_INVITED`, `EVENT_NOT_DRAFT`, `EVENT_NOT_PUBLISHED` | 404/409 | Event not found, replies closed, cancelled, no reply needed, child not invited, already published, or not open yet |
 | `THREAD_NOT_FOUND`, `MESSAGE_NOT_FOUND` | 404 | Not your conversation or message |
 | `NOTE_NOT_FOUND` | 404 | Meeting note is not yours (or was deleted) |
 | `MEETING_CHAT_CLOSED`, `MEETING_NOT_OVER` | 409 | Meeting chat is read-only after the meeting; the recap is ready only after it ends |
@@ -257,8 +258,8 @@ When `id_card_design` is `custom`, `GET /admin/students/{id}/id-card` and `GET /
 | Role | Sees in the admin web |
 |---|---|
 | School admin | Everything in the school, except assigning substitutes |
-| Principal | Every module read-only, staff leave approval, announcements |
-| AO (Administrative officer) | Admissions, students, staff records, attendance, fee collection, exams (view), timetable (view), announcements, bus status; **the only role that assigns substitutes**. No payroll, users and roles, staff bank details or school setup changes |
+| Principal | Every module read-only, staff leave approval, announcements, school events |
+| AO (Administrative officer) | Admissions, students, staff records, attendance, fee collection, exams (view), timetable (view), announcements, school events, bus status; **the only role that assigns substitutes**. No payroll, users and roles, staff bank details or school setup changes |
 | Transport in-charge | Buses, routes and stops, students (view) |
 
 Substitutes: `POST /admin/substitutes`, `POST /admin/substitutes/auto` and `DELETE /admin/substitutes/{id}` need `substitutes.manage` (AO only; others get `403 FORBIDDEN` and can still view the board). A substitute is set for one date and one period, only for a teacher who is on approved leave or absent that day, and only from the teachers who are free in that period (`GET /admin/substitutes/free`); anyone else returns `409 SUBSTITUTE_BUSY`.
@@ -1470,18 +1471,36 @@ Office: `GET /admin/diary` (+ `/insights`, `/{id}`), `POST /admin/diary/{id}/app
 
 ## Announcements
 
-The office writes announcements for `everyone`, `parents`, `staff`, or `classes` (parents of chosen `class_ids` / `section_ids`), as a draft, scheduled (`publish_at`), or sent now (`publish_now: true`), with an optional `expires_at`. Urgent ones (`priority: urgent`) also go by SMS when the push does not arrive.
+The office writes announcements (circulars) for `everyone`, `parents`, `staff`, `classes` (parents of chosen `class_ids` / `section_ids`) or `individuals` (parents of chosen `student_ids` and chosen staff `staff_user_ids`). Each can be a draft, scheduled (`publish_at`), or sent now (`publish_now: true`), with an optional `expires_at` and up to 5 attachments (`file_ids` from `POST /files` with purpose `announcement_attachment`; PDF, JPG, PNG or WEBP only). Urgent ones (`priority: urgent`) also go by SMS when the push does not arrive.
+
+A sent announcement can still change its title, message, urgency, expiry and files: it gets `edited_at`, readers keep their read state, and `notify_again: true` sends `ANNOUNCEMENT_UPDATED` to everyone again. Who receives it cannot change after sending (409 `ANNOUNCEMENT_AUDIENCE_LOCKED`). Delete works at any stage and removes it from every feed.
 
 Every app reads them the same way:
 
 | Call | Screen |
 |---|---|
-| `GET /me/announcements?unread=true` | Announcements sent to me this year, newest first, with `is_read` |
+| `GET /me/announcements` | Announcements sent to me this year, newest first, with `is_read`, `attachments` and `edited_at`. Filters: `unread`, `search` (title and message), `priority`, `from` / `to` (sent date), `student_id` (parents: only those sent for that child) |
 | `GET /me/announcements/unread-count` | Badge |
 | `GET /me/announcements/{id}` | One |
 | `POST /me/announcements/{id}/read` | Mark read |
 
-Office: `GET`/`POST /admin/announcements`, `GET`/`PATCH`/`DELETE /admin/announcements/{id}` (edit and delete only drafts and scheduled ones), `POST .../publish`, `POST .../archive`, `GET .../readers?state=read|unread` and `GET /admin/announcements/insights`. Permissions `announcements.view` and `announcements.manage`.
+Office: `GET`/`POST /admin/announcements`, `GET`/`PATCH`/`DELETE /admin/announcements/{id}`, `POST .../publish`, `POST .../archive`, `GET /admin/announcements/insights` and `GET .../readers` (paged; `state=read|unread`, `segment=parent|staff`, `class_id`, `search`; parent rows list the children they received it for as `students`). Permissions `announcements.view` and `announcements.manage`.
+
+## Events and RSVP
+
+The office creates school events with a title, description, `event_date`, `start_time` / `end_time` (24-hour; both empty = all day), `venue` and audience `school` or `classes` (`class_ids` / `section_ids`). `rsvp_required` asks parents to reply until `rsvp_deadline` (empty = until the event starts). Invited students are the current year's active students of the audience, so new admissions are included.
+
+Parent app (Module 8, Academic Calendar & Holidays):
+
+| Call | Screen |
+|---|---|
+| `GET /mobile/parent/events?from=&to=` | Calendar or list: events my children are invited to, newest date first. `search`, `student_id`. Each has `my_rsvps` (one per invited child, `response` null until replied), `rsvp_open`, and `status` `published` or `cancelled` with `cancel_reason` |
+| `GET /mobile/parent/events/{id}` | One event |
+| `PUT /mobile/parent/events/{id}/rsvp` | `{ "student_id": 12, "response": "attending" }` (`attending`, `not_attending`, `maybe`). Change it any time until the deadline; after it, 409 `EVENT_RSVP_CLOSED` |
+
+Notifications (push, category `announcement`, data `event_id`): `EVENT_PUBLISHED` when published, `EVENT_UPDATED` when the date, time or venue changes, `EVENT_CANCELLED`, `EVENT_REMINDER` the day before at 18:00 (not to children marked Not attending) and 2 hours before the start (to Attending and Maybe; to everyone invited when no reply is asked), and `EVENT_RSVP_REMINDER` in the last day before the reply deadline to parents who have not replied. The `event-reminders` job runs every 10 minutes and sends each reminder once.
+
+Office: `GET /admin/events` (month view with `from` / `to`; `status`, `class_id`, `upcoming`, search; sort `event_date`, `title`), `GET /admin/events/insights`, `POST /admin/events` (`publish: true` to tell parents now), `GET`/`PATCH`/`DELETE /admin/events/{id}`, `POST .../publish`, `POST .../cancel` `{ reason }`, and `GET .../responses` (every invited student with `response` or `no_response`, who replied and when, parent mobile; filters `response`, `class_id`, search). Each event has `counts` (`invited`, `attending`, `not_attending`, `maybe`, `no_response`). Permissions `events.view` and `events.manage` (Principal, AO; school admin has all).
 
 ## Chat (teacher and parent)
 

@@ -1,9 +1,12 @@
 import {
+  attachmentError,
   audienceErrors,
+  canChangeContent,
   canEdit,
   isVisible,
   preview,
   readPercent,
+  sameIds,
   statusForPublish,
   timingErrors,
 } from './announcements.logic';
@@ -63,5 +66,35 @@ describe('feed', () => {
   it('works out the read percent', () => {
     expect(readPercent(200, 50)).toBe(25);
     expect(readPercent(0, 0)).toBe(0);
+  });
+});
+
+describe('individual audience and attachments', () => {
+  it('needs at least one student or staff member', () => {
+    expect(audienceErrors('individuals', undefined, undefined, [], [])).toEqual([
+      { field: 'student_ids', message: 'Choose at least one student or staff member' },
+    ]);
+    expect(audienceErrors('individuals', undefined, undefined, [12], [])).toEqual([]);
+    expect(audienceErrors('individuals', undefined, undefined, [], [31])).toEqual([]);
+  });
+
+  it('allows only PDF and images', () => {
+    expect(attachmentError('application/pdf')).toBeNull();
+    expect(attachmentError('image/png')).toBeNull();
+    expect(attachmentError('application/vnd.openxmlformats-officedocument.wordprocessingml.document')).toBe(
+      'Attach a PDF or an image (JPG, PNG or WEBP)',
+    );
+  });
+
+  it('lets a sent announcement change its content until it is archived', () => {
+    expect(canChangeContent('published')).toBe(true);
+    expect(canChangeContent('draft')).toBe(true);
+    expect(canChangeContent('archived')).toBe(false);
+  });
+
+  it('compares target lists in any order', () => {
+    expect(sameIds([3, 1, 2], [1, 2, 3])).toBe(true);
+    expect(sameIds([1, 1, 2], [2, 1])).toBe(true);
+    expect(sameIds([1, 2], [1, 2, 4])).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { IsDateOnly } from '../../../shared/dates';
 import {
   ArrayMaxSize,
   IsArray,
@@ -17,7 +18,7 @@ import {
 import { ListQueryDto, PaginationDto, toBoolean } from '@app/common';
 import { FileDto } from '../../files/dto/file.dto';
 import { RefDto } from '../../students/dto/student-response.dto';
-import { MAX_ATTACHMENTS } from '../announcements.logic';
+import { MAX_ATTACHMENTS, MAX_INDIVIDUALS } from '../announcements.logic';
 import {
   ANNOUNCEMENT_AUDIENCES,
   ANNOUNCEMENT_PRIORITIES,
@@ -48,10 +49,35 @@ export class AnnouncementInputDto {
   @ApiProperty({
     enum: ANNOUNCEMENT_AUDIENCES,
     example: 'parents',
-    description: 'classes: parents of chosen classes or sections',
+    description:
+      'classes: parents of chosen classes or sections. individuals: parents of chosen students and chosen staff members.',
   })
-  @IsIn(ANNOUNCEMENT_AUDIENCES, { message: 'audience must be everyone, parents, staff or classes' })
+  @IsIn(ANNOUNCEMENT_AUDIENCES, { message: 'audience must be everyone, parents, staff, classes or individuals' })
   audience: AnnouncementAudience;
+
+  @ApiPropertyOptional({
+    example: [12, 15],
+    type: Number,
+    isArray: true,
+    description: 'audience=individuals: the parents of these students receive it',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_INDIVIDUALS, { message: `Choose up to ${MAX_INDIVIDUALS} students` })
+  @IsInt({ each: true })
+  student_ids?: number[];
+
+  @ApiPropertyOptional({
+    example: [31],
+    type: Number,
+    isArray: true,
+    description: 'audience=individuals: these staff members (user ids) receive it',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_INDIVIDUALS, { message: `Choose up to ${MAX_INDIVIDUALS} staff members` })
+  @IsInt({ each: true })
+  staff_user_ids?: number[];
 
   @ApiPropertyOptional({
     example: [3],
@@ -105,7 +131,12 @@ export class AnnouncementInputDto {
   @IsISO8601({ strict: true }, { message: 'expires_at must be a date and time' })
   expires_at?: string | null;
 
-  @ApiPropertyOptional({ example: [41], type: Number, isArray: true })
+  @ApiPropertyOptional({
+    example: [41],
+    type: Number,
+    isArray: true,
+    description: 'Files from POST /files (purpose announcement_attachment): PDF, JPG, PNG or WEBP',
+  })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(MAX_ATTACHMENTS, { message: `Attach up to ${MAX_ATTACHMENTS} files` })
@@ -120,6 +151,15 @@ export class AnnouncementInputDto {
   @Transform(toBoolean)
   @IsBoolean()
   publish_now?: boolean;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Editing a published announcement: true sends the update to every recipient again',
+  })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  notify_again?: boolean;
 }
 
 export class AnnouncementPublishDto {
@@ -158,6 +198,19 @@ export class AnnouncementReadersQueryDto extends PaginationDto {
   @IsOptional()
   @IsIn(['parent', 'staff'])
   segment?: 'parent' | 'staff';
+
+  @ApiPropertyOptional({ example: 6, description: 'Parents of children in this class' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  class_id?: number;
+
+  @ApiPropertyOptional({ example: 'Lakshmi', description: 'Name or mobile' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(60)
+  search?: string;
 }
 
 export class MyAnnouncementsQueryDto extends PaginationDto {
@@ -166,6 +219,30 @@ export class MyAnnouncementsQueryDto extends PaginationDto {
   @Transform(toBoolean)
   @IsBoolean()
   unread?: boolean;
+
+  @ApiPropertyOptional({ example: 'holiday', description: 'Words in the title or message' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
+  @ApiPropertyOptional({ enum: ANNOUNCEMENT_PRIORITIES })
+  @IsOptional()
+  @IsIn(ANNOUNCEMENT_PRIORITIES)
+  priority?: AnnouncementPriority;
+
+  @IsDateOnly('2026-11-01', true)
+  from?: string;
+
+  @IsDateOnly('2026-11-30', true)
+  to?: string;
+
+  @ApiPropertyOptional({ example: 12, description: 'Parents: only those received for this child' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  student_id?: number;
 }
 
 export class AnnouncementDto {
@@ -189,6 +266,16 @@ export class AnnouncementDto {
 
   @ApiProperty({ type: RefDto, isArray: true, description: 'Sections, named like 6 - A' })
   sections: RefDto[];
+
+  @ApiProperty({
+    type: RefDto,
+    isArray: true,
+    description: 'audience=individuals: chosen students, named like "Kavin (6 - A)"',
+  })
+  students: RefDto[];
+
+  @ApiProperty({ type: RefDto, isArray: true, description: 'audience=individuals: chosen staff members' })
+  staff: RefDto[];
 
   @ApiProperty({ enum: ANNOUNCEMENT_PRIORITIES })
   priority: AnnouncementPriority;
@@ -223,6 +310,12 @@ export class AnnouncementDto {
   @ApiProperty({ type: RefDto })
   academic_year: RefDto;
 
+  @ApiProperty({ nullable: true, type: Date, description: 'Last edit after it was published' })
+  edited_at: Date | null;
+
+  @ApiProperty({ type: RefDto, nullable: true })
+  edited_by: RefDto | null;
+
   @ApiProperty()
   created_at: Date;
 }
@@ -239,6 +332,13 @@ export class AnnouncementReaderDto {
 
   @ApiProperty({ nullable: true, type: Date })
   read_at: Date | null;
+
+  @ApiProperty({
+    type: RefDto,
+    isArray: true,
+    description: 'Parents: the children they received it for, named like "Kavin (6 - A)"',
+  })
+  students: RefDto[];
 }
 
 export class MyAnnouncementDto {
@@ -265,6 +365,9 @@ export class MyAnnouncementDto {
 
   @ApiProperty({ nullable: true, type: Date })
   expires_at: Date | null;
+
+  @ApiProperty({ nullable: true, type: Date, description: 'Set when the school changed it after sending' })
+  edited_at: Date | null;
 
   @ApiProperty({ example: false })
   is_read: boolean;
