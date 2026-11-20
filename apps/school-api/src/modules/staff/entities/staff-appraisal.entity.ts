@@ -1,8 +1,20 @@
 import { Column, Entity, Index } from 'typeorm';
 import { SchoolScopedEntity } from '@app/common';
 
-export const APPRAISAL_STATUSES = ['draft', 'submitted', 'reviewed', 'finalized'] as const;
+export const APPRAISAL_STATUSES = ['draft', 'submitted', 'reviewed', 'appealed', 'finalized'] as const;
 export type AppraisalStatus = (typeof APPRAISAL_STATUSES)[number];
+
+export const APPEAL_STATUSES = ['none', 'pending', 'resolved', 'rejected'] as const;
+export type AppealStatus = (typeof APPEAL_STATUSES)[number];
+
+export interface KraScoreItem {
+  kra_id?: number;
+  code: string;
+  title: string;
+  weightage: number;
+  score: number;
+  remarks?: string | null;
+}
 
 export const OVERALL_RATINGS = [
   'outstanding',
@@ -78,11 +90,41 @@ export class StaffAppraisal extends SchoolScopedEntity {
   @Column({ type: 'text', nullable: true })
   staff_remarks: string | null;
 
+  @Column({ type: 'numeric', precision: 4, scale: 1, nullable: true })
+  expected_increment_percent: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  hike_justification: string | null;
+
   @Column({ type: 'varchar', length: 30, default: 'increment' })
   recommendation: AppraisalRecommendation;
 
   @Column({ type: 'numeric', precision: 4, scale: 1, default: 0.0 })
   increment_percent: number;
+
+  @Column({ type: 'jsonb', nullable: true })
+  kra_scores: KraScoreItem[] | null;
+
+  @Column({ type: 'varchar', length: 20, default: 'none' })
+  appeal_status: AppealStatus;
+
+  @Column({ type: 'text', nullable: true })
+  appeal_reason: string | null;
+
+  @Column({ type: 'numeric', precision: 4, scale: 1, nullable: true })
+  appeal_requested_hike: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  appeal_feedback: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  appealed_at: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  appeal_resolved_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  appeal_resolved_by: number | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   finalized_at: Date | null;

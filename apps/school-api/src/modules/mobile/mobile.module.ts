@@ -45,6 +45,7 @@ import { TeacherPreviewService } from './teacher-preview.service';
 
 import { LibraryModule } from '../library/library.module';
 import { MobileParentLibraryController, MobileTeacherLibraryController } from './mobile-library.controller';
+import { MobileTeacherAppraisalsController } from './mobile-appraisals.controller';
 
 @Module({
   imports: [
@@ -90,6 +91,7 @@ import { MobileParentLibraryController, MobileTeacherLibraryController } from '.
     TeacherPreviewController,
     MobileParentLibraryController,
     MobileTeacherLibraryController,
+    MobileTeacherAppraisalsController,
   ],
   providers: [
     MobileAccessService,

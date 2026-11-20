@@ -1881,6 +1881,24 @@ Everything is under `/admin/inventory/*` (Swagger tag `Admin · Inventory`). Per
 
 `GET /me/payslips` lists the signed-in staff member's payslips for months the office has finalised (paginated, newest first): `month`, `month_label`, `gross`, `total_deductions`, `net`, `paid_days`, `lop_days` and each earning and deduction. `GET /me/payslips/{id}/pdf` downloads the PDF (`Content-Disposition: attachment`). A `PAYSLIP_READY` push arrives when a month is finalised.
 
+## Staff Performance Reviews & Appraisals (Module 3.3)
+
+Annual, term, or periodic performance evaluations for teaching and non-teaching staff.
+
+### Admin Web
+- `GET /admin/staff-appraisals` — List staff appraisals with status (`draft`, `submitted`, `reviewed`, `finalized`), rating (`outstanding`, `exceeds_expectations`, `meets_expectations`, `needs_improvement`, `unsatisfactory`), academic year, and staff filters.
+- `GET /admin/staff-appraisals/staff/:staffId/metrics?academic_year_id=...` — Pre-calculated objective performance stats for a teacher: attendance percentage, assigned periods per week, total sections taught, diary/homework count, and student exam pass percentage.
+- `GET /admin/staff-appraisals/:id` — Get full review details, criteria scores, teacher requested hike, and reviewer feedback.
+- `POST /admin/staff-appraisals` — Create a draft appraisal.
+- `PUT /admin/staff-appraisals/:id` — Update scores, reviewer remarks, and recommendations (`increment`, `promotion`, `retention`, `pip`).
+- `POST /admin/staff-appraisals/:id/finalize` — Finalize and publish appraisal to the teacher's mobile app.
+
+### Teacher Mobile App
+- `GET /mobile/teacher/appraisals` — List my appraisals (both open review cycles and finalized reviews).
+- `GET /mobile/teacher/appraisals/:id` — View detailed scorecard, approved hike, ratings, and management remarks.
+- `POST /mobile/teacher/appraisals/:id/hike-request` — Submit requested percentage hike (`expected_increment_percent`) and justification (`hike_justification`). Status moves to `submitted`.
+- `POST /mobile/teacher/appraisals/:id/remarks` — Submit teacher acknowledgment feedback (`staff_remarks`) after finalization.
+
 ## Driver app
 
 Driver and Attendant roles. `GET /mobile/driver/duty` returns my bus and its routes, each with stops in travel order (`lat`, `lng`, `geofence_radius_m`, pickup and drop times) and the students at each stop (`full_name`, `class_section`, `mode` both/pickup/drop, `passenger_ref`, and `for`: `pickup` when they only get on here, `drop` when they only get off here, `both` otherwise). A student with a separate evening stop appears at both stops. `passenger_ref` is the opaque id the bus tracking system uses; it is never the student id. Sign in as 9000000007 (driver) or 9000000008 (attendant).
