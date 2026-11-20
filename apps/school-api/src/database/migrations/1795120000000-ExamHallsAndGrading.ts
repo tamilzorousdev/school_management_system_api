@@ -74,4 +74,3 @@ export class ExamHallsAndGrading1795120000000 implements MigrationInterface {
     `);
   }
 }
-

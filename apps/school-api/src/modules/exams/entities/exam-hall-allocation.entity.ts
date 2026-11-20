@@ -38,4 +38,3 @@ export class ExamHallAllocation extends SchoolScopedEntity {
   @Column({ type: 'int', default: 1 })
   desk_order: number;
 }
-

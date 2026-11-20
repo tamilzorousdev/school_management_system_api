@@ -25,4 +25,3 @@ export class ExamHall extends SchoolScopedEntity {
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
 }
-

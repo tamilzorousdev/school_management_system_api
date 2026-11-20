@@ -24,4 +24,3 @@ export class GradingScale extends SchoolScopedEntity {
   @Column({ type: 'jsonb' })
   tiers: GradingTier[];
 }
-

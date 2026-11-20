@@ -37,4 +37,3 @@ export class ExamInvigilator extends SchoolScopedEntity {
   @Column({ type: 'varchar', length: 20, default: 'Morning' })
   session: string;
 }
-
