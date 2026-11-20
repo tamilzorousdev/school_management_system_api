@@ -187,6 +187,7 @@ const TAGS: [string, string][] = [
   ['Admin · Chat audit', 'Teacher and parent conversations, reported messages, hiding, and the audit trail'],
   ['Admin · Meetings', 'Teacher and parent video meetings (Agora, booked in the app): who with whom, status, call log'],
   ['Admin · Fleet', 'Live bus status and positions, read from the Telematics service'],
+  ['Admin · Grievances', 'Complaint and grievance submission, assignment, tracking, SLA countdown, and resolution'],
   ['Health', 'Service status'],
 ];
 
