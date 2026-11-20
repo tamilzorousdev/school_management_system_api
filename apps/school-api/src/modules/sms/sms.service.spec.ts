@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { KafkaNotifyConfig, OtpConfig, PushConfig, SmsConfig } from '../../config/configuration';
-import { KafkaNotifyService } from './kafka-notify.service';
+import { KAFKA_MAX_BATCH, KafkaNotifyService } from './kafka-notify.service';
 import { SmsService } from './sms.service';
 
 const kafkaConfig: KafkaNotifyConfig = {
@@ -183,5 +183,45 @@ describe('Kafka push', () => {
     expect(
       kafka.pushMessage({ templateId: 't', variables: {}, externalIds: ['12'], playerIds: ['sub-1'] }).playerIds,
     ).toEqual(['sub-1']);
+  });
+});
+
+describe('Kafka publishing under a large fan-out', () => {
+  function connectedKafka(failFirst = false) {
+    const kafka = new KafkaNotifyService(kafkaConfig, smsBase, otp, { driver: 'kafka' } as PushConfig);
+    const batches: number[] = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const producer = {
+      send: jest.fn(async ({ messages }: { messages: unknown[] }) => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        batches.push(messages.length);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight -= 1;
+        if (failFirst && batches.length === 1) throw new Error('broker down');
+      }),
+    };
+    Object.assign(kafka, { producer, connected: true });
+    const push = (id: number) =>
+      kafka.sendPush({ templateId: 'school_push', variables: {}, externalIds: [String(id)], playerIds: [] });
+    return { push, batches, producer, maxInFlight: () => maxInFlight };
+  }
+
+  it('keeps one send in flight and batches what waits, so the KafkaJS topic lock never piles up', async () => {
+    const { push, batches, maxInFlight } = connectedKafka();
+    const ids = Array.from({ length: 250 }, (_, i) => i + 1);
+    await expect(Promise.all(ids.map(push))).resolves.toHaveLength(250);
+    expect(maxInFlight()).toBe(1);
+    expect(batches.reduce((sum, n) => sum + n, 0)).toBe(250);
+    expect(Math.max(...batches)).toBeLessThanOrEqual(KAFKA_MAX_BATCH);
+    expect(batches.length).toBeLessThan(10);
+  });
+
+  it('fails only the batch the broker refused, so those jobs retry and the rest go out', async () => {
+    const { push } = connectedKafka(true);
+    const results = await Promise.allSettled([1, 2, 3].map(push));
+    expect(results[0].status).toBe('rejected');
+    expect(results.slice(1).every((result) => result.status === 'fulfilled')).toBe(true);
   });
 });

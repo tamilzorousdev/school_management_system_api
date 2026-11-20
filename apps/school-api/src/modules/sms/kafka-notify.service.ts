@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { Kafka, logLevel, Producer } from 'kafkajs';
+import { Kafka, logLevel, Message, Producer } from 'kafkajs';
 import {
   kafkaNotifyConfig,
   KafkaNotifyConfig,
@@ -52,6 +52,13 @@ export interface KafkaPushInput {
 export const KAFKA_OTP_TEMPLATE = 'otp';
 export const KAFKA_PUSH_TEMPLATE = 'push';
 export const KAFKA_CALL_TEMPLATE = 'call';
+export const KAFKA_MAX_BATCH = 100;
+
+interface PendingMessage {
+  message: Message;
+  resolve: () => void;
+  reject: (error: Error) => void;
+}
 
 @Injectable()
 export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
@@ -59,6 +66,8 @@ export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
   private producer?: Producer;
   private connecting?: Promise<boolean>;
   private connected = false;
+  private readonly outbox: PendingMessage[] = [];
+  private draining = false;
 
   constructor(
     @Inject(kafkaNotifyConfig.KEY) private readonly config: KafkaNotifyConfig,
@@ -110,10 +119,7 @@ export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
   async send(input: KafkaSendInput): Promise<KafkaTemplateMessage> {
     const message = this.message(input);
     if (!(await this.connect())) throw new Error('Kafka notification service is not reachable');
-    await this.producer!.send({
-      topic: this.config.topic,
-      messages: [{ key: message.to, value: JSON.stringify(message) }],
-    });
+    await this.publish({ key: message.to, value: JSON.stringify(message) });
     this.logger.log(`${message.type} ${message.templateId} published for ${message.to}`);
     return message;
   }
@@ -140,12 +146,34 @@ export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
   async sendPush(input: KafkaPushInput): Promise<KafkaPushMessage> {
     const message = this.pushMessage(input);
     if (!(await this.connect())) throw new Error('Kafka notification service is not reachable');
-    await this.producer!.send({
-      topic: this.config.topic,
-      messages: [{ key: input.externalIds[0] ?? input.templateId, value: JSON.stringify(message) }],
-    });
+    await this.publish({ key: input.externalIds[0] ?? input.templateId, value: JSON.stringify(message) });
     this.logger.log(`push ${message.templateId} published for users ${message.externalIds.join(', ')}`);
     return message;
+  }
+
+  private publish(message: Message): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.outbox.push({ message, resolve, reject });
+      void this.drain();
+    });
+  }
+
+  private async drain(): Promise<void> {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      while (this.outbox.length) {
+        const batch = this.outbox.splice(0, KAFKA_MAX_BATCH);
+        try {
+          await this.producer!.send({ topic: this.config.topic, messages: batch.map((item) => item.message) });
+          batch.forEach((item) => item.resolve());
+        } catch (error) {
+          batch.forEach((item) => item.reject(error instanceof Error ? error : new Error(String(error))));
+        }
+      }
+    } finally {
+      this.draining = false;
+    }
   }
 
   private connect(): Promise<boolean> {
