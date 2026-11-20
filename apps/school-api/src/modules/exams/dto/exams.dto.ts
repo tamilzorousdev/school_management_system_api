@@ -477,6 +477,9 @@ export class ResultRowDto {
   @ApiProperty({ example: 2, nullable: true, type: Number })
   class_rank: number | null;
 
+  @ApiPropertyOptional({ example: 94.5, nullable: true, type: Number })
+  percentile?: number | null;
+
   @ApiProperty({ type: [SubjectResultDto] })
   subjects: SubjectResultDto[];
 }
@@ -626,6 +629,9 @@ export class StudentExamResultDto {
   @ApiProperty({ example: 15 })
   class_size: number;
 
+  @ApiPropertyOptional({ example: 94.5, nullable: true, type: Number })
+  percentile?: number | null;
+
   @ApiProperty({ type: [StudentSubjectResultDto] })
   subjects: StudentSubjectResultDto[];
 }
@@ -705,6 +711,9 @@ export class RankingRowDto {
 
   @ApiProperty({ example: 2, nullable: true, type: Number })
   class_rank: number | null;
+
+  @ApiPropertyOptional({ example: 94.5, nullable: true, type: Number })
+  percentile?: number | null;
 }
 
 export class SectionRankingDto {

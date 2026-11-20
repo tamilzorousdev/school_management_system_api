@@ -29,6 +29,7 @@ export interface CardExamInput {
   section_size: number;
   class_rank: number | null;
   class_size: number;
+  percentile?: number | null;
   subjects: CardSubjectScore[];
 }
 
@@ -82,6 +83,7 @@ export interface CardOverall {
   percent: number | null;
   grade: string | null;
   result: ResultStatus;
+  percentile?: number | null;
 }
 
 export interface ReportCardBody {
@@ -192,7 +194,18 @@ export function overallOf(exams: CardExamInput[], subjects: CardSubjectRow[]): C
   const maxTotal = complete.reduce((sum, exam) => sum + exam.max_total, 0);
   const percent = percentOf(total, maxTotal);
   const result: ResultStatus = subjects.some((subject) => subject.passed === false) ? 'fail' : 'pass';
-  return { total, max_total: maxTotal, percent, grade: gradeFor(percent), result };
+  const percentiles = complete.map((e) => e.percentile).filter((p): p is number => p !== undefined && p !== null);
+  const percentile = percentiles.length
+    ? Math.round((percentiles.reduce((a, b) => a + b, 0) / percentiles.length) * 10) / 10
+    : undefined;
+  return {
+    total,
+    max_total: maxTotal,
+    percent,
+    grade: gradeFor(percent),
+    result,
+    ...(percentile !== undefined ? { percentile } : {}),
+  };
 }
 
 export function remarkFor(overall: CardOverall): string {
@@ -227,6 +240,7 @@ export function buildReportCard(exams: CardExamInput[]): ReportCardBody {
       section_size: exam.section_size,
       class_rank: exam.class_rank,
       class_size: exam.class_size,
+      percentile: exam.percentile ?? null,
     })),
     subjects,
     overall,

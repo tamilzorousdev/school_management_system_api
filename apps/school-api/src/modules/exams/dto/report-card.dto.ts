@@ -226,6 +226,9 @@ export class ReportCardColumnDto {
 
   @ApiProperty({ example: 64 })
   class_size: number;
+
+  @ApiPropertyOptional({ example: 94.5, nullable: true, type: Number })
+  percentile?: number | null;
 }
 
 export class ReportCardCellDto {
@@ -301,6 +304,9 @@ export class ReportCardOverallDto {
 
   @ApiProperty({ enum: ['pass', 'fail', 'incomplete'], example: 'pass' })
   result: ResultStatus;
+
+  @ApiPropertyOptional({ example: 94.5, nullable: true, type: Number })
+  percentile?: number | null;
 }
 
 export class ReportCardAttendanceDto {

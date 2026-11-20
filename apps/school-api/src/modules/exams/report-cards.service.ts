@@ -335,6 +335,7 @@ export class ReportCardsService {
       section_size: result.section_size,
       class_rank: result.class_rank,
       class_size: result.class_size,
+      percentile: result.percentile,
       subjects: result.subjects.map((subject) => ({
         subject_id: subject.subject_id,
         name: subject.name,

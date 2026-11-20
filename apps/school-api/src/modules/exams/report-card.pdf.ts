@@ -591,16 +591,36 @@ function summaryRow(doc: Pdf, card: ReportCardDto, layout: Layout, tableBottom: 
   const sumY = tableBottom + 12;
 
   // Rank
-  doc.font('Helvetica-Bold').fontSize(8).fillColor('#111827').text('Rank:', 80, sumY);
+  doc.font('Helvetica-Bold').fontSize(8).fillColor('#111827').text('Rank:', 50, sumY);
   const rankVal = String(card.columns[0]?.class_rank ?? card.columns[0]?.section_rank ?? 1);
   doc
     .font('Helvetica')
     .fontSize(8)
     .fillColor('#111827')
-    .text(rankVal, 110, sumY, { width: 45, align: 'center', lineBreak: false });
+    .text(rankVal, 80, sumY, { width: 35, align: 'center', lineBreak: false });
   doc
-    .moveTo(110, sumY + 10)
-    .lineTo(155, sumY + 10)
+    .moveTo(80, sumY + 10)
+    .lineTo(115, sumY + 10)
+    .lineWidth(0.8)
+    .strokeColor('#000000')
+    .stroke();
+
+  // Percentile
+  doc.font('Helvetica-Bold').fontSize(8).fillColor('#111827').text('Percentile:', 130, sumY);
+  const pVal =
+    card.overall.percentile !== null && card.overall.percentile !== undefined
+      ? `${card.overall.percentile}%`
+      : card.columns[0]?.percentile !== null && card.columns[0]?.percentile !== undefined
+        ? `${card.columns[0].percentile}%`
+        : '—';
+  doc
+    .font('Helvetica')
+    .fontSize(8)
+    .fillColor('#111827')
+    .text(pVal, 180, sumY, { width: 45, align: 'center', lineBreak: false });
+  doc
+    .moveTo(180, sumY + 10)
+    .lineTo(225, sumY + 10)
     .lineWidth(0.8)
     .strokeColor('#000000')
     .stroke();

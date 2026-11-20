@@ -36,7 +36,18 @@ import {
 import { ExamMark } from './entities/exam-mark.entity';
 import { DEFAULT_MAX_MARKS, DEFAULT_PASS_MARKS, ExamSubject } from './entities/exam-subject.entity';
 import { Exam } from './entities/exam.entity';
-import { competitionRanks, scoreStudent, SubjectScore, subjectPassed, validateMarks } from './exam-results';
+import {
+  calculatePercentiles,
+  CBSE_SCALE,
+  competitionRanks,
+  ICSE_SCALE,
+  ScaleStep,
+  scoreStudent,
+  STATE_SCALE,
+  SubjectScore,
+  subjectPassed,
+  validateMarks,
+} from './exam-results';
 
 const DEFAULT_TOPPERS = 3;
 
@@ -536,6 +547,7 @@ export class ExamsService {
       section_size: results.rows.filter((item) => item.section_id === mine.section_id).length,
       class_rank: mine.class_rank,
       class_size: results.rows.length,
+      percentile: mine.percentile ?? null,
       subjects: results.subjects.map((paper) => {
         const score = mine.subjects.find((item) => item.subject_id === paper.id)!;
         return {
@@ -682,13 +694,44 @@ export class ExamsService {
           grade: row.grade,
           result: row.result,
           class_rank: row.class_rank,
+          percentile: row.percentile ?? null,
         })),
     };
+  }
+
+  async gradingScaleFor(schoolId: number): Promise<ScaleStep[]> {
+    const [custom] = await this.dataSource.query(
+      `SELECT tiers FROM grading_scales WHERE school_id = $1 AND is_default = true AND deleted_at IS NULL LIMIT 1`,
+      [schoolId],
+    );
+    if (custom?.tiers && Array.isArray(custom.tiers) && custom.tiers.length) {
+      return custom.tiers.map(
+        (t: {
+          grade: string;
+          min_percentage: number;
+          max_percentage: number;
+          grade_point?: number;
+          description?: string;
+        }) => ({
+          grade: t.grade,
+          min: Number(t.min_percentage),
+          max: Number(t.max_percentage),
+          grade_point: t.grade_point ? Number(t.grade_point) : undefined,
+          description: t.description,
+        }),
+      );
+    }
+    const [school] = await this.dataSource.query(`SELECT board FROM schools WHERE id = $1`, [schoolId]);
+    const board = (school?.board ?? '').toUpperCase();
+    if (board === 'STATE') return STATE_SCALE;
+    if (board === 'ICSE') return ICSE_SCALE;
+    return CBSE_SCALE;
   }
 
   private async classResults(exam: Exam, classId: number): Promise<ClassResults> {
     const subjects = (await this.paperRows(exam.id)).filter((paper) => paper.class_id === classId);
     const roster = await this.roster(exam, classId);
+    const scale = await this.gradingScaleFor(exam.school_id);
     const marks = await this.marksFor(
       exam.id,
       roster.map((row) => row.student_id),
@@ -712,7 +755,7 @@ export class ExamsService {
         roll_no: student.roll_no,
         section_id: student.section_id,
         section_name: student.section_name,
-        ...scoreStudent(scores),
+        ...scoreStudent(scores, scale),
         section_rank: null,
         class_rank: null,
         subjects: scores.map((score) => ({
@@ -725,6 +768,7 @@ export class ExamsService {
     });
     const rankable = (row: ResultRowDto) => (row.result === 'incomplete' ? null : row.total);
     competitionRanks(rows.map(rankable)).forEach((rank, index) => (rows[index].class_rank = rank));
+    calculatePercentiles(rows.map(rankable)).forEach((pct, index) => (rows[index].percentile = pct));
     for (const sectionId of new Set(rows.map((row) => row.section_id))) {
       const own = rows.filter((row) => row.section_id === sectionId);
       competitionRanks(own.map(rankable)).forEach((rank, index) => (own[index].section_rank = rank));

@@ -52,6 +52,9 @@ export class QuizSubmission {
   @Column({ type: 'boolean', default: false })
   auto_submitted: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  exit_terminated: boolean;
+
   @Column({ type: 'numeric', precision: 6, scale: 2, default: 0 })
   score: number;
 

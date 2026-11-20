@@ -111,6 +111,21 @@ export class CreateQuizDto {
   @IsDateString()
   end_at: string;
 
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  expire_on_exit?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  require_camera?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  require_microphone?: boolean;
+
   @ApiProperty({ type: [QuizQuestionInputDto] })
   @IsArray()
   @ArrayMinSize(1)
@@ -158,6 +173,21 @@ export class UpdateQuizDto {
   @IsOptional()
   @IsDateString()
   end_at?: string;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  expire_on_exit?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  require_camera?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  require_microphone?: boolean;
 
   @ApiPropertyOptional({ type: [QuizQuestionInputDto] })
   @IsOptional()
@@ -216,4 +246,9 @@ export class SubmitQuizDto {
   @IsOptional()
   @IsBoolean()
   auto_submitted?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  exit_terminated?: boolean;
 }

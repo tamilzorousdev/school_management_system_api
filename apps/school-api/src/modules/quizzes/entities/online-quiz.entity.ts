@@ -67,6 +67,15 @@ export class OnlineQuiz extends SchoolScopedEntity {
   @Column({ type: 'timestamptz' })
   end_at: Date;
 
+  @Column({ type: 'boolean', default: false })
+  expire_on_exit: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  require_camera: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  require_microphone: boolean;
+
   @Column({ type: 'varchar', length: 20, default: 'draft' })
   status: QuizStatus;
 
