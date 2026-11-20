@@ -49,7 +49,7 @@ export class AppraisalsService {
     }
 
     const page = await listQuery(qb, query, {
-      searchable: ['a.appraisal_cycle', 'a.strengths', 'a.areas_for_improvement'],
+      searchable: ['a.period', 'a.strengths', 'a.areas_for_improvement'],
       sortable: { review_date: 'a.review_date', created_at: 'a.created_at' },
       defaultSort: 'review_date',
     });
