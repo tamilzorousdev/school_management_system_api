@@ -21,6 +21,7 @@ import {
   TeacherExamDto,
 } from './dto/exams.dto';
 import { ExamsService } from './exams.service';
+import { ExamHallsService } from './exam-halls.service';
 import { ReportCardsService } from './report-cards.service';
 import {
   ReportCardDto,
@@ -46,7 +47,14 @@ export class MobileTeacherExamsController {
     private readonly exams: ExamsService,
     private readonly assignments: AssignmentsService,
     private readonly cards: ReportCardsService,
+    private readonly halls: ExamHallsService,
   ) {}
+
+  @Get('invigilations')
+  @ApiOperation({ summary: 'My upcoming exam invigilation duties' })
+  invigilations(@CurrentUser() user: AuthUser) {
+    return this.halls.getTeacherInvigilations(teacherSchool(user), user.id);
+  }
 
   @Get('exams')
   @ApiOperation({
@@ -147,12 +155,35 @@ export class MobileTeacherExamsController {
 @RequireRoles(ROLES.PARENT)
 @Controller('mobile/parent/children/:id')
 export class MobileParentExamsController {
-  constructor(private readonly exams: ExamsService) {}
+  constructor(
+    private readonly exams: ExamsService,
+    private readonly halls: ExamHallsService,
+  ) {}
 
   @Get('results')
   @ApiOperation({ summary: 'Published exam results of my child, newest first: marks, %, grade and ranks' })
   @ApiEnvelope(StudentExamResultDto, { isArray: true })
   results(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
     return this.exams.childResults(user.id, id);
+  }
+
+  @Get('exams/:examId/hall-ticket')
+  @ApiOperation({ summary: 'Hall ticket / Admit card of my child for an exam' })
+  async hallTicket(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) childId: number,
+    @Param('examId', ParseIntPipe) examId: number,
+  ) {
+    const [row] = await this.exams['dataSource'].query(
+      `SELECT e.school_id
+       FROM student_guardians sg
+       JOIN guardians g ON g.id = sg.guardian_id AND g.user_id = $1 AND g.deleted_at IS NULL
+       JOIN student_enrollments e ON e.student_id = sg.student_id
+       WHERE sg.student_id = $2 AND sg.deleted_at IS NULL
+       LIMIT 1`,
+      [user.id, childId],
+    );
+    if (!row) throw AppException.notFound('Child not found', 'CHILD_NOT_FOUND');
+    return this.halls.getStudentHallTicket(Number(row.school_id), childId, examId);
   }
 }

@@ -47,6 +47,9 @@ export class QuizzesService {
       duration_minutes: dto.duration_minutes,
       start_at: start,
       end_at: end,
+      expire_on_exit: dto.expire_on_exit ?? false,
+      require_camera: dto.require_camera ?? false,
+      require_microphone: dto.require_microphone ?? false,
       status: 'draft',
     });
 
@@ -122,6 +125,9 @@ export class QuizzesService {
     if (dto.duration_minutes) quiz.duration_minutes = dto.duration_minutes;
     if (dto.start_at) quiz.start_at = new Date(dto.start_at);
     if (dto.end_at) quiz.end_at = new Date(dto.end_at);
+    if (dto.expire_on_exit !== undefined) quiz.expire_on_exit = dto.expire_on_exit;
+    if (dto.require_camera !== undefined) quiz.require_camera = dto.require_camera;
+    if (dto.require_microphone !== undefined) quiz.require_microphone = dto.require_microphone;
     if (quiz.end_at <= quiz.start_at) {
       throw AppException.badRequest('End time must be after start time', 'INVALID_QUIZ_DATES');
     }
@@ -227,6 +233,9 @@ export class QuizzesService {
     if (dto.duration_minutes) quiz.duration_minutes = dto.duration_minutes;
     if (dto.start_at) quiz.start_at = new Date(dto.start_at);
     if (dto.end_at) quiz.end_at = new Date(dto.end_at);
+    if (dto.expire_on_exit !== undefined) quiz.expire_on_exit = dto.expire_on_exit;
+    if (dto.require_camera !== undefined) quiz.require_camera = dto.require_camera;
+    if (dto.require_microphone !== undefined) quiz.require_microphone = dto.require_microphone;
     if (quiz.end_at <= quiz.start_at) {
       throw AppException.badRequest('End time must be after start time', 'INVALID_QUIZ_DATES');
     }
@@ -387,6 +396,10 @@ export class QuizzesService {
         duration_minutes: q.duration_minutes,
         start_at: q.start_at,
         end_at: q.end_at,
+        status: q.status,
+        expire_on_exit: q.expire_on_exit,
+        require_camera: q.require_camera,
+        require_microphone: q.require_microphone,
         student_state: studentState,
         submission: sub
           ? {
@@ -469,6 +482,9 @@ export class QuizzesService {
         duration_minutes: quiz.duration_minutes,
         total_marks: Number(quiz.total_marks),
         pass_marks: Number(quiz.pass_marks),
+        expire_on_exit: quiz.expire_on_exit,
+        require_camera: quiz.require_camera,
+        require_microphone: quiz.require_microphone,
       },
       submission: {
         id: sub.id,
@@ -528,13 +544,15 @@ export class QuizzesService {
     const totalMarks = Number(quiz.total_marks);
     const percentage = totalMarks > 0 ? Math.round((totalScore / totalMarks) * 1000) / 10 : 0;
     const passed = totalScore >= Number(quiz.pass_marks);
+    const isExitTerminated = dto.exit_terminated ?? false;
 
     sub.score = totalScore;
     sub.percentage = percentage;
     sub.passed = passed;
-    sub.status = 'completed';
+    sub.status = isExitTerminated ? 'expired' : 'completed';
     sub.submitted_at = new Date();
-    sub.auto_submitted = dto.auto_submitted ?? false;
+    sub.auto_submitted = dto.auto_submitted ?? isExitTerminated;
+    sub.exit_terminated = isExitTerminated;
 
     const savedSub = await this.submissions.save(sub);
 
@@ -550,6 +568,8 @@ export class QuizzesService {
       passed,
       submitted_at: savedSub.submitted_at,
       auto_submitted: savedSub.auto_submitted,
+      exit_terminated: savedSub.exit_terminated,
+      status: savedSub.status,
     };
   }
 
@@ -626,6 +646,9 @@ export class QuizzesService {
         subject: { id: quiz.subject_id, name: quiz.subject?.name ?? '' },
         total_marks: Number(quiz.total_marks),
         pass_marks: Number(quiz.pass_marks),
+        expire_on_exit: quiz.expire_on_exit,
+        require_camera: quiz.require_camera,
+        require_microphone: quiz.require_microphone,
       },
       submission: {
         id: sub.id,
