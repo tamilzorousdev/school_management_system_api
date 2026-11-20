@@ -47,6 +47,8 @@ export const PERMISSIONS = {
   DIARY_MODERATE: 'diary.moderate',
   ANNOUNCEMENTS_VIEW: 'announcements.view',
   ANNOUNCEMENTS_MANAGE: 'announcements.manage',
+  SURVEYS_VIEW: 'surveys.view',
+  SURVEYS_MANAGE: 'surveys.manage',
   EVENTS_VIEW: 'events.view',
   EVENTS_MANAGE: 'events.manage',
   CHAT_AUDIT: 'chat.audit',
@@ -173,6 +175,16 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   {
     code: PERMISSIONS.ANNOUNCEMENTS_MANAGE,
     name: 'Write, schedule, publish and archive announcements',
+    group: 'Communication',
+  },
+  {
+    code: PERMISSIONS.SURVEYS_VIEW,
+    name: 'See surveys and feedback forms, their answers and results',
+    group: 'Communication',
+  },
+  {
+    code: PERMISSIONS.SURVEYS_MANAGE,
+    name: 'Build, send, remind, extend and close surveys and feedback forms',
     group: 'Communication',
   },
   {
@@ -311,6 +323,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.EMERGENCY_VIEW,
       PERMISSIONS.EMERGENCY_SEND,
       PERMISSIONS.EMERGENCY_APPROVE,
+      PERMISSIONS.SURVEYS_VIEW,
+      PERMISSIONS.SURVEYS_MANAGE,
       PERMISSIONS.LIBRARY_VIEW,
       PERMISSIONS.GATE_VIEW,
       PERMISSIONS.GATE_APPROVE,

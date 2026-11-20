@@ -6,13 +6,11 @@ import { DataSource, In, Repository } from 'typeorm';
 import { AppException, AuthUser, listQuery, Paginated, paginate } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
-import { yearWhere } from '../../shared/year-context';
 import { PERMISSIONS, ROLES } from '../access/access.catalog';
 import { Notification } from '../notifications/entities/notification.entity';
 import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { AcademicYear } from '../setup/entities/academic-year.entity';
 import {
   CreateEmergencyDto,
   EmergencyAudienceDto,
@@ -32,15 +30,14 @@ import {
   ResendResultDto,
   ReviewEmergencyDto,
 } from './dto/emergency.dto';
+import { AudienceService } from './audience.service';
 import { EmergencyDeliveryService } from './emergency-delivery.service';
 import {
   broadcastState,
-  CandidateRow,
   EMERGENCY_TEMPLATES,
   expiryFrom,
   expiryLabel,
   expiryProblem,
-  mergeRecipients,
   MergedRecipient,
   needsApproval,
   scheduleProblem,
@@ -55,7 +52,6 @@ import {
   EmergencyMessageTemplate,
   EmergencyRecipient,
   EndReason,
-  StaffGroup,
 } from './entities/emergency.entity';
 
 const DEFAULT_CHANNELS: EmergencyChannel[] = ['push', 'sms'];
@@ -80,6 +76,7 @@ export class EmergencyService {
     @InjectRepository(EmergencyMessageTemplate) private readonly messageTemplates: Repository<EmergencyMessageTemplate>,
     @InjectRepository(Notification) private readonly notifications: Repository<Notification>,
     private readonly delivery: EmergencyDeliveryService,
+    private readonly audience: AudienceService,
     private readonly notify: NotificationsService,
     private readonly realtime: RealtimeGateway,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
@@ -141,7 +138,7 @@ export class EmergencyService {
   }
 
   async preview(schoolId: number, dto: EmergencyAudienceDto): Promise<EmergencyPreviewDto> {
-    const people = await this.resolve(schoolId, dto);
+    const people = await this.audience.resolve(schoolId, emergencyAudience(dto));
     const withApp = people.filter((person) => person.user_id).length;
     const withMobile = people.filter((person) => person.mobile).length;
     return {
@@ -171,7 +168,7 @@ export class EmergencyService {
       const problem = scheduleProblem(sendAt, now);
       if (problem) throw AppException.validation([{ field: 'send_at', message: problem }]);
     }
-    const people = await this.resolve(schoolId, dto);
+    const people = await this.audience.resolve(schoolId, emergencyAudience(dto));
     if (!people.length) throw AppException.badRequest('Nobody matches this audience', 'NO_RECIPIENTS');
     const channels = dto.channels?.length ? dto.channels : DEFAULT_CHANNELS;
     const approval = needsApproval(
@@ -525,7 +522,7 @@ export class EmergencyService {
     known: MergedRecipient[] | null,
     actorId: number | null,
   ): Promise<void> {
-    const people = known ?? (await this.resolve(broadcast.school_id, this.audienceOf(broadcast)));
+    const people = known ?? (await this.audience.resolve(broadcast.school_id, this.audienceOf(broadcast)));
     const now = new Date();
     const expiresAt =
       broadcast.expiry_value && broadcast.expiry_unit
@@ -635,7 +632,7 @@ export class EmergencyService {
   }
 
   private async askApproval(broadcast: EmergencyBroadcast, actor: AuthUser): Promise<void> {
-    const [label] = [...(await this.audienceLabels([broadcast])).values()];
+    const [label] = [...(await this.audience.labels([broadcast])).values()];
     await this.notify
       .dispatch({
         template: TEMPLATES.EMERGENCY_APPROVAL_NEEDED,
@@ -743,126 +740,6 @@ export class EmergencyService {
       title_ta: row.title_ta,
       message_ta: row.message_ta,
     };
-  }
-
-  private async resolve(schoolId: number, dto: EmergencyAudienceDto): Promise<MergedRecipient[]> {
-    const year = await this.dataSource.getRepository(AcademicYear).findOneBy(yearWhere(schoolId));
-    if (!year) throw AppException.badRequest('Set the current academic year first', 'NO_CURRENT_YEAR');
-    await this.assertInSchool(schoolId, year.id, dto);
-    const rows: CandidateRow[] = [];
-    if (dto.audience !== 'staff') rows.push(...(await this.parentRows(schoolId, year.id, dto)));
-    if (dto.audience === 'everyone' || dto.audience === 'staff') {
-      rows.push(
-        ...(await this.staffRows(schoolId, null, dto.audience === 'staff' ? (dto.staff_groups ?? null) : null)),
-      );
-    } else if (dto.include_teachers && dto.audience !== 'parents') {
-      rows.push(...(await this.staffRows(schoolId, await this.teacherIds(year.id, dto))));
-    }
-    return mergeRecipients(rows);
-  }
-
-  private parentRows(schoolId: number, yearId: number, dto: EmergencyAudienceDto): Promise<CandidateRow[]> {
-    const filters: Record<string, [string, number[] | undefined]> = {
-      classes: ['AND e.class_id = ANY($3)', dto.class_ids],
-      sections: ['AND e.section_id = ANY($3)', dto.section_ids],
-      students: ['AND s.id = ANY($3)', dto.student_ids],
-    };
-    const [filter, ids] = filters[dto.audience] ?? ['', undefined];
-    return this.dataSource.query(
-      `SELECT 'parent' AS kind, CASE WHEN u.id IS NOT NULL THEN g.user_id END AS user_id, g.id AS guardian_id,
-              g.name, COALESCE(u.mobile, g.mobile) AS mobile, u.language,
-              s.id AS student_id, concat_ws(' ', s.first_name, s.last_name) AS student_name,
-              c.name || ' - ' || sec.name AS section
-       FROM student_enrollments e
-       JOIN students s ON s.id = e.student_id AND s.deleted_at IS NULL AND s.status = 'active'
-       JOIN student_guardians sg ON sg.student_id = s.id
-       JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
-       LEFT JOIN users u ON u.id = g.user_id AND u.deleted_at IS NULL AND u.status = 'active'
-       LEFT JOIN sections sec ON sec.id = e.section_id
-       LEFT JOIN classes c ON c.id = e.class_id
-       WHERE s.school_id = $1 AND e.academic_year_id = $2 ${filter}`,
-      ids ? [schoolId, yearId, ids] : [schoolId, yearId],
-    );
-  }
-
-  private staffRows(
-    schoolId: number,
-    userIds: number[] | null,
-    groups: StaffGroup[] | null = null,
-  ): Promise<CandidateRow[]> {
-    if (userIds && !userIds.length) return Promise.resolve([]);
-    const crew = `EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
-                    WHERE ur.user_id = u.id AND r.code IN ('DRIVER', 'ATTENDANT'))`;
-    const groupSql: Record<StaffGroup, string> = {
-      teachers: `st.staff_type = 'teaching'`,
-      drivers: crew,
-      office: `(st.staff_type <> 'teaching' AND NOT ${crew})`,
-    };
-    const groupFilter = groups?.length ? `AND (${groups.map((group) => groupSql[group]).join(' OR ')})` : '';
-    return this.dataSource.query(
-      `SELECT 'staff' AS kind, u.id AS user_id, NULL::int AS guardian_id, u.name, u.mobile, u.language
-       FROM staff st JOIN users u ON u.id = st.user_id AND u.deleted_at IS NULL AND u.status = 'active'
-       WHERE st.school_id = $1 AND st.deleted_at IS NULL AND st.status <> 'resigned'
-         ${userIds ? 'AND st.user_id = ANY($2)' : ''} ${groupFilter}`,
-      userIds ? [schoolId, userIds] : [schoolId],
-    );
-  }
-
-  private async teacherIds(yearId: number, dto: EmergencyAudienceDto): Promise<number[]> {
-    const sectionQueries: Record<string, [string, number[] | undefined]> = {
-      classes: [
-        `SELECT id FROM sections WHERE class_id = ANY($1) AND academic_year_id = $2 AND deleted_at IS NULL`,
-        dto.class_ids,
-      ],
-      sections: [`SELECT id FROM sections WHERE id = ANY($1) AND academic_year_id = $2`, dto.section_ids],
-      students: [
-        `SELECT DISTINCT section_id AS id FROM student_enrollments
-         WHERE student_id = ANY($1) AND academic_year_id = $2 AND section_id IS NOT NULL`,
-        dto.student_ids,
-      ],
-    };
-    const entry = sectionQueries[dto.audience];
-    if (!entry) return [];
-    const sections: { id: number }[] = await this.dataSource.query(entry[0], [entry[1] ?? [], yearId]);
-    const sectionIds = sections.map((row) => Number(row.id));
-    if (!sectionIds.length) return [];
-    const teachers: { user_id: number }[] = await this.dataSource.query(
-      `SELECT class_teacher_user_id AS user_id FROM sections WHERE id = ANY($1) AND class_teacher_user_id IS NOT NULL
-       UNION
-       SELECT teacher_user_id FROM teacher_assignments WHERE section_id = ANY($1) AND academic_year_id = $2 AND deleted_at IS NULL`,
-      [sectionIds, yearId],
-    );
-    return teachers.map((row) => Number(row.user_id));
-  }
-
-  private async assertInSchool(schoolId: number, yearId: number, dto: EmergencyAudienceDto): Promise<void> {
-    const checks: [number[] | undefined, string, unknown[], string][] = [
-      [
-        dto.audience === 'classes' ? dto.class_ids : undefined,
-        `SELECT COUNT(*) AS total FROM classes WHERE id = ANY($1) AND school_id = $2 AND deleted_at IS NULL`,
-        [],
-        'classes',
-      ],
-      [
-        dto.audience === 'sections' ? dto.section_ids : undefined,
-        `SELECT COUNT(*) AS total FROM sections WHERE id = ANY($1) AND school_id = $2 AND academic_year_id = $3 AND deleted_at IS NULL`,
-        [yearId],
-        'sections',
-      ],
-      [
-        dto.audience === 'students' ? dto.student_ids : undefined,
-        `SELECT COUNT(*) AS total FROM students WHERE id = ANY($1) AND school_id = $2 AND deleted_at IS NULL`,
-        [],
-        'students',
-      ],
-    ];
-    for (const [ids, sql, extra, label] of checks) {
-      if (!ids?.length) continue;
-      const [row] = await this.dataSource.query(sql, [ids, schoolId, ...extra]);
-      if (Number(row?.total ?? 0) !== ids.length) {
-        throw AppException.badRequest(`Some of the chosen ${label} are not in this school`, 'AUDIENCE_INVALID');
-      }
-    }
   }
 
   private alertLive(broadcast: EmergencyBroadcast, people: MergedRecipient[]): void {
@@ -973,7 +850,7 @@ export class EmergencyService {
           >)
         : Promise.resolve([]),
       followIds.length ? this.broadcasts.findBy({ id: In(followIds) }) : Promise.resolve([]),
-      this.audienceLabels(rows),
+      this.audience.labels(rows),
     ]);
     const userRef = (id: number | null) => {
       const found = id ? users.find((user) => Number(user.id) === id) : undefined;
@@ -1043,53 +920,8 @@ export class EmergencyService {
       };
     });
   }
-
-  private async audienceLabels(rows: EmergencyBroadcast[]): Promise<Map<number, string>> {
-    const classIds = [...new Set(rows.flatMap((row) => row.class_ids ?? []))];
-    const sectionIds = [...new Set(rows.flatMap((row) => row.section_ids ?? []))];
-    const [classes, sections] = await Promise.all([
-      classIds.length
-        ? (this.dataSource.query(`SELECT id, name FROM classes WHERE id = ANY($1)`, [classIds]) as Promise<
-            { id: number; name: string }[]
-          >)
-        : Promise.resolve([]),
-      sectionIds.length
-        ? (this.dataSource.query(
-            `SELECT sec.id, c.name || ' - ' || sec.name AS name FROM sections sec JOIN classes c ON c.id = sec.class_id WHERE sec.id = ANY($1)`,
-            [sectionIds],
-          ) as Promise<{ id: number; name: string }[]>)
-        : Promise.resolve([]),
-    ]);
-    const names = (ids: number[] | null, list: { id: number; name: string }[], prefix = '') =>
-      (ids ?? []).map((id) => `${prefix}${list.find((item) => Number(item.id) === id)?.name ?? id}`).join(', ');
-    const teachers = (row: EmergencyBroadcast) => (row.include_teachers ? ' and their teachers' : '');
-    return new Map(
-      rows.map((row) => {
-        const label =
-          row.audience === 'everyone'
-            ? 'All parents and staff'
-            : row.audience === 'parents'
-              ? 'All parents'
-              : row.audience === 'staff'
-                ? staffLabel(row.staff_groups)
-                : row.audience === 'classes'
-                  ? `Parents of ${names(row.class_ids, classes, 'Class ')}${teachers(row)}`
-                  : row.audience === 'sections'
-                    ? `Parents of ${names(row.section_ids, sections)}${teachers(row)}`
-                    : `Parents of ${row.student_ids?.length ?? 0} ${row.student_ids?.length === 1 ? 'student' : 'students'}${teachers(row)}`;
-        return [row.id, label];
-      }),
-    );
-  }
 }
 
-const STAFF_GROUP_NAMES: Record<StaffGroup, string> = {
-  teachers: 'teachers',
-  drivers: 'drivers & attendants',
-  office: 'office',
-};
-
-function staffLabel(groups: StaffGroup[] | null): string {
-  if (!groups?.length || groups.length === 3) return 'All staff';
-  return `Staff: ${groups.map((group) => STAFF_GROUP_NAMES[group]).join(', ')}`;
+function emergencyAudience(dto: EmergencyAudienceDto): EmergencyAudienceDto {
+  return { ...dto, staff_groups: dto.audience === 'staff' ? dto.staff_groups : undefined };
 }

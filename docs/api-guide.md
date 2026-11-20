@@ -162,7 +162,7 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 | `CLASS_OVER_LIMIT`                                                                                                                        | 409     | Teacher assignments would give a class (section) more periods a week than `class_periods_per_week` in School setup (default 30). Changes that bring an old overload down are still allowed                                |
 | `LIMIT_BELOW_LOAD`                                                                                                                        | 409     | Staff edit: the weekly limit cannot go below the periods a week the teacher already has                                                                                                                                   |
 | `SIGNATURE_NOT_FOUND`                                                                                                                     | 400     | Signature upload: no ink found in the photo, or the signature pad is empty                                                                                                                                                |
-| `NO_RECIPIENTS`                                                                                                                           | 400     | Emergency broadcast: nobody matches the chosen audience                                                                                                                                                                   |
+| `NO_RECIPIENTS`                                                                                                                           | 400     | Nobody in the chosen audience (for surveys: nobody with the app)                                                                                                                                                          |
 | `AUDIENCE_INVALID`                                                                                                                        | 400     | Emergency broadcast: a chosen class, section or student is not in this school                                                                                                                                             |
 | `STILL_SENDING`                                                                                                                           | 409     | Emergency resend while the broadcast is still going out                                                                                                                                                                   |
 | `NOT_GROUP_CREATOR`                                                                                                                       | 403     | Group chat delete: only the person who created the group can delete it in the apps                                                                                                                                        |
@@ -216,6 +216,12 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 | `EXAM_PUBLISHED`                                                                                                                          | 409     | Results are out: teachers can no longer change marks and the exam cannot be deleted                                                                                                                                       |
 | `EXAM_EXISTS`, `CLASS_HAS_MARKS`, `SUBJECT_HAS_MARKS`, `MARKS_ABOVE_MAX`                                                                  | 409     | Exam name taken this year, or the change would lose or invalidate marks already entered                                                                                                                                   |
 | `CLASS_HAS_NO_SUBJECTS`, `NO_MARKS`                                                                                                       | 400     | Pick class subjects in School setup first, or enter marks before publishing                                                                                                                                               |
+| `SURVEY_NOT_FOUND`                                                                                                                        | 404     | Survey or feedback form not found, or in another school                                                                                                                                                                   |
+| `SURVEY_NOT_FOR_YOU`                                                                                                                      | 403     | The form was not sent to me (or not for this child)                                                                                                                                                                       |
+| `SURVEY_NOT_OPEN`, `SURVEY_CLOSED`                                                                                                        | 409     | The form is not open yet, or is closed: answers are refused                                                                                                                                                               |
+| `SURVEY_ALREADY_ANSWERED`                                                                                                                 | 409     | I answered already: show my answers read only                                                                                                                                                                             |
+| `SURVEY_ANSWER_REQUIRED`, `SURVEY_ANSWER_INVALID`                                                                                         | 400     | Highlight `errors[].field` = `answers.<question_id>`                                                                                                                                                                      |
+| `SURVEY_LOCKED`, `SURVEY_NOT_DRAFT`, `SURVEY_ANONYMOUS`                                                                                   | 409/403 | Admin web: questions cannot change after the first answer; only a draft can be sent or deleted; an anonymous form has no not-answered list                                                                                |
 
 ## Field conventions
 
@@ -1733,6 +1739,92 @@ Messages in a group use the normal thread routes (`…/chat/threads/{id}/message
 | New admin | "You are now the group admin"                                                                                               |                       | "Lakshmi is now the group admin" |
 
 **After leaving or being removed** the group stays in your list with `is_member: false`, `can_send: false`, `left_reason` (`left`/`removed`) and `left_at`; the list preview is your own notice. You see the messages up to that moment and nothing after; sending gives `403 NOT_GROUP_MEMBER` with the same "You are no longer a member" text. Hide the message box when `can_send` is false. If someone adds you back you see "… added you" and only messages from then on. Members lists show current members only. Socket events: `chat.message` (each person gets the notice in their own wording) and `chat.members_changed { thread_id, by_user_id, added_user_ids, gone_user_id }`.
+## Surveys and feedback forms
+
+The school office builds a form with its own questions, sends it to chosen parents and staff, they answer once in the app, and the office sees the results. Teacher ratings and driver ratings stay as they are. `surveys.view` lists forms, results and the Excel; `surveys.manage` builds, sends, reminds, extends and closes, and manages ready-made forms. School admin and Principal have both.
+
+**Questions.** `{ type, text, options?, is_required }`. `type` = `single_choice`, `multi_choice` (both need 2 to 10 different `options`), `rating` (1 to 5), `short_text` (up to 200 characters), `long_text` (up to 2000), `date` (`YYYY-MM-DD`), `number`. Other types take no options (400 `VALIDATION_FAILED` on `questions.<n>.options`). Up to 50 questions; sending `questions` replaces them all.
+
+**Life of a form.** `status` = `draft` → `scheduled` (sent with `send_at`) or `open` → `closed` (at `closes_at`, or Close). Send fixes the list of people at that moment, one row per person with the app; with `per_child` a parent answers once for each child in the audience ("for Arun", "for Divya"), and a teacher who is also a parent answers once more as staff. People without the app cannot answer; the preview counts them in `without_app`. When it opens everyone gets `SURVEY_NEW` (push and in-app, never SMS). Once, 24 hours before `closes_at`, people who have not answered get `SURVEY_REMINDER` (skipped for a form open for less than a day); extending the close date arms it again for the new date, and Remind now sends it at any time. The first answer locks the form (`locked: true`): its questions cannot change any more, but Extend and Close still work. Answers cannot be changed after they are sent. With `is_anonymous` the school never sees who answered what (results, Excel and the not-answered list have no names, and written answers carry no class or section); the API still keeps who answered so nobody answers twice and reminders reach only those who have not.
+
+**Audience.** The same choices as Emergency broadcast: `everyone`, `parents`, `staff`, `classes` (`class_ids`) or `sections` (`section_ids`). `staff_groups` narrows the staff part of `everyone` and `staff`: `teachers` (Teacher, HOD), `drivers` (bus crew: Driver and Attendant) and `office` (all other staff); empty means all staff.
+
+**Admin web (`/admin/surveys`).**
+
+| Call | What it does |
+|---|---|
+| `GET` | Forms of the academic year being viewed, paged: `search` (title, description), `status`, `sort=created_at|title|closes_at|sent_at` |
+| `GET /insights` | `open`, `drafts`, `answers_this_month`, `average_response_rate` (sent forms this year) |
+| `POST` `{ title, description?, audience?, class_ids?, section_ids?, staff_groups?, is_anonymous?, per_child?, questions? }` | Saves a draft (201). `audience` defaults to `parents` |
+| `PATCH /{id}` | A draft: any field. After sending: only `title`, `description` and `questions` (at least one), until the first answer (409 `SURVEY_LOCKED`); 409 `SURVEY_CLOSED` once closed |
+| `DELETE /{id}` | Drafts only (409 `SURVEY_NOT_DRAFT`: close it instead) |
+| `POST /preview` `{ audience, class_ids?, section_ids?, staff_groups?, per_child? }` | `recipients` (answer slots), `people` (with the app), `parents`, `staff`, `without_app` |
+| `POST /{id}/send` `{ send_at?, closes_at }` | Sends now, or later at `send_at` (1 minute to 60 days ahead). `closes_at` 15 minutes to 180 days after it opens. 400 `NO_RECIPIENTS`, `VALIDATION_FAILED` (`questions`, `send_at`, `closes_at`); 409 `SURVEY_NOT_DRAFT` |
+| `POST /{id}/close` | Closes now. 409 `SURVEY_CLOSED`, `SURVEY_NOT_OPEN` (a draft) |
+| `POST /{id}/extend` `{ closes_at }` | A later close date; works after answers came in. 409 `SURVEY_CLOSED` once the close date has passed |
+| `POST /{id}/remind` | Reminds everyone who has not answered: `{ reminded }` people. 409 `SURVEY_NOT_OPEN`, `SURVEY_CLOSED` |
+| `GET /{id}` | One form (shape below) |
+| `GET /{id}/results?class_id=&section_id=&role=parent|staff&search=` | `{ survey, counts, questions }` for the filters; `search` narrows written answers |
+| `GET /{id}/not-answered?page=&limit=&search=&class_id=&section_id=&role=` | Paged `{ id, name, role, student, class_section, reminded_at }`. 403 `SURVEY_ANONYMOUS` for an anonymous form |
+| `GET /{id}/export?class_id=&section_id=&role=` | Excel: an Answers sheet (one row per answer, with Name, Role, Child and Class / section unless anonymous) and a Summary sheet |
+| `GET /templates?all=`, `POST /templates`, `PATCH /templates/{id}`, `DELETE /templates/{id}` | Ready-made forms `{ id, key, title, description, questions, is_active, sort_order }`. A school starts with PTM, Event, Transport, Canteen, Annual parent satisfaction and Staff satisfaction; `is_active: false` hides one. 404 `TEMPLATE_NOT_FOUND` |
+
+A form:
+
+```json
+{ "id": 14, "title": "Annual Day feedback", "description": "Tell us what you thought.", "status": "open",
+  "audience": "classes", "class_ids": [49], "section_ids": [], "staff_groups": [], "audience_label": "Parents of Class 5",
+  "is_anonymous": false, "per_child": false, "send_at": null, "closes_at": "2026-11-25T18:00:00.000+05:30",
+  "sent_at": "2026-11-18T10:00:00.000+05:30", "closed_at": null,
+  "questions": [{ "id": 812, "type": "single_choice", "text": "How well was it organised?", "options": ["Very well", "Well", "Poorly"], "is_required": true, "sort_order": 1 }],
+  "counts": { "recipients": 13, "answered": 9, "response_rate": 69.2 }, "locked": true,
+  "created_by": { "id": 775, "name": "School Admin" }, "created_at": "2026-11-18T09:40:00.000+05:30" }
+```
+
+Results, one entry per question: `choices: [{ option, count, percent }]` for choice questions (percent of the people who answered it; a multi choice can add up to more than 100), `rating: { average, counts: { "1": n, … "5": n } }`, `number: { average, min, max }`, and `answers: [{ value, name?, class_section? }]` for text and date questions (`name` and `class_section` never come for an anonymous form). Each has `answered`, the number of answers to that question.
+
+### Flutter: `/me/surveys` (Parent, Teacher and Driver apps)
+
+Every signed-in app user can call these; a form shows only for the people it was sent to.
+
+`GET /me/surveys?state=waiting|done&role=parent|staff` returns a plain list (not paged):
+
+```json
+[{ "id": 14, "title": "Annual Day feedback", "closes_at": "2026-11-25T18:00:00.000+05:30", "question_count": 4,
+   "student": { "id": 41, "name": "Arun" }, "role": "parent", "answered_at": null }]
+```
+
+`waiting` (default) = open and not answered, closing soonest first; `done` = answered, newest first. `student` is set only for a form answered once per child, which appears once for each child: show "for Arun" and pass `student_id` to the next two calls. `role` says which app the row belongs to: `parent`, `staff`, or `null` when one family row is for a person who is both (a teacher who is also a parent, sent to everyone). Each shell passes its own `role`; the list then holds that app's rows plus the `null` ones.
+
+`GET /me/surveys/{id}?student_id=` returns `{ id, title, description, status, is_anonymous, closes_at, student, role, questions: [{ id, type, text, options, is_required, sort_order }], answered_at, my_answers }`. When `answered_at` is set, `my_answers` is `[{ question_id, value }]`: show them read only. Show the whole form read only when `status` is `closed` too.
+
+`POST /me/surveys/{id}/answers` (201, same shape as the GET, now with `my_answers`):
+
+```json
+{ "student_id": 41,
+  "answers": [
+    { "question_id": 812, "value": "Very well" },
+    { "question_id": 813, "value": ["Food", "Games"] },
+    { "question_id": 814, "value": 4 },
+    { "question_id": 815, "value": "More shade for parents please" },
+    { "question_id": 816, "value": "2026-11-15" },
+    { "question_id": 817, "value": 3 } ] }
+```
+
+`value` is text for `single_choice` (one of the options), `short_text` and `long_text`; `YYYY-MM-DD` for `date`; a list of options for `multi_choice`; 1 to 5 for `rating`; a number for `number`. Leave out an optional question, or send `null`. It can be sent once; there is no edit.
+
+| Error | HTTP | What the app does |
+|---|---|---|
+| `SURVEY_ANSWER_REQUIRED` | 400 | A required question is empty: highlight `errors[].field` (`answers.<question_id>`) |
+| `SURVEY_ANSWER_INVALID` | 400 | A value does not fit its question (not an option, rating outside 1 to 5, bad date): highlight `errors[].field` |
+| `VALIDATION_FAILED` on `student_id` | 400 | The form is answered once per child: ask which child |
+| `SURVEY_NOT_FOR_YOU` | 403 | Not sent to me, or not for this child |
+| `SURVEY_NOT_FOUND` | 404 | Gone: refresh the list |
+| `SURVEY_NOT_OPEN` | 409 | Scheduled, not open yet |
+| `SURVEY_CLOSED` | 409 | Closed: show it read only |
+| `SURVEY_ALREADY_ANSWERED` | 409 | Already answered (for example on another phone): reload and show my answers |
+
+The push is `category: "announcement"` with `template` `SURVEY_NEW` or `SURVEY_REMINDER`, `survey_id`, and `role` (`parent` or `staff`) when all of the person's rows are for one app; open `GET /me/surveys/{survey_id}`, or the list when the form is per child.
 
 ## Push notification data (tap routing)
 
@@ -1758,6 +1850,7 @@ Every push (OneSignal `additionalData`) has `category`, `template` and `notifica
 | `inventory` | INVENTORY_ASSET_ASSIGNED, INVENTORY_RETURN_DUE (to the staff member); approvals, maintenance, warranty, low stock (to the office) | `role` (`staff`, or `driver` for drivers and attendants) | My assets in the Staff or Driver app; office notices open the notifications list |
 | `system` | RESULT_PUBLISHED (`exam_id`), ACHIEVEMENT_ADDED (`achievement_id`) | `student_id` | results / achievements |
 | `alert` | EMERGENCY_BROADCAST (`broadcast_id`, `severity`) to parents and staff | — | full-screen emergency alert, then `GET /me/emergency-broadcasts/{broadcast_id}` |
+| `announcement` | SURVEY_NEW, SURVEY_REMINDER (`survey_id`, `role` when the form is for one app) to the people it was sent to | — | the form: `GET /me/surveys/{survey_id}` (a form answered once per child: list `GET /me/surveys` and pick the child) |
 | `system` | STUDENT_FEEDBACK (`feedback_id`) to the parents | `student_id` | the child's feedback |
 | `system` | TEACHER_RATED (`rating_id`, `teacher_user_id`) to the school admin | `student_id` | admin web, Teacher feedback |
 | `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips | `trip_id`, `alert_id`, `announcement_id` where present | the matching screen |
