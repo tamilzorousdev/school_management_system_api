@@ -124,6 +124,9 @@ export const TEMPLATES = {
   SIGNATURE_SET_BY_SCHOOL: 'SIGNATURE_SET_BY_SCHOOL',
   SURVEY_NEW: 'SURVEY_NEW',
   SURVEY_REMINDER: 'SURVEY_REMINDER',
+  GRIEVANCE_NEW: 'GRIEVANCE_NEW',
+  GRIEVANCE_ASSIGNED: 'GRIEVANCE_ASSIGNED',
+  GRIEVANCE_RESOLVED: 'GRIEVANCE_RESOLVED',
   ...LIBRARY_TEMPLATES,
   ...INVENTORY_TEMPLATES,
 } as const;
@@ -2367,6 +2370,63 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{student}} {{title}} வகுப்புக்கு வரவில்லை',
         body: '{{date}} அன்று {{title}} வகுப்புக்கு {{student}} வரவில்லை.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GRIEVANCE_NEW,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'New Grievance: {{ticket_no}}',
+        body: '{{complainant}} logged a {{priority}} priority grievance: "{{subject}}".',
+        sms_body: null,
+      },
+      ta: {
+        title: 'புதிய புகார்: {{ticket_no}}',
+        body: '{{complainant}} ஒரு புகாரை பதிவு செய்துள்ளார்: "{{subject}}".',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GRIEVANCE_ASSIGNED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Grievance Assigned: {{ticket_no}}',
+        body: 'You have been assigned to investigate grievance "{{subject}}".',
+        sms_body: null,
+      },
+      ta: {
+        title: 'புகார் ஒதுக்கப்பட்டது: {{ticket_no}}',
+        body: 'இந்த புகாரை விசாரிக்க உங்களுக்கு ஒதுக்கப்பட்டுள்ளது: "{{subject}}".',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GRIEVANCE_RESOLVED,
+    category: 'system',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Grievance Resolved: {{ticket_no}}',
+        body: 'Your complaint regarding "{{subject}}" has been resolved.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'புகார் தீர்க்கப்பட்டது: {{ticket_no}}',
+        body: '"{{subject}}" தொடர்பான உங்கள் புகார் தீர்க்கப்பட்டது.',
         sms_body: null,
       },
     },

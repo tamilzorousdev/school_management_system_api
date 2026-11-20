@@ -1890,3 +1890,17 @@ Driver and Attendant roles. `GET /mobile/driver/duty` returns my bus and its rou
 - Upload: `POST /files` as `multipart/form-data` with field `file` and optional `purpose` (snake_case). Images, PDF, Word, Excel and CSV; 10 MB by default.
 - The response has `url` and, for images, `thumbnail_url`. Both are signed links that work without a token until `url_expires_at` (1 hour). After that, call `GET /files/{id}` for fresh links.
 - Other records store the file `id`, never the URL.
+
+## Complaints and grievances (admin web)
+
+Everything is under `/admin/grievances/*` (Swagger tag `Admin · Grievances`). Permissions: `grievances.view`, `grievances.manage` (create, assign, change status, add notes) and `grievances.resolve` (resolve or escalate). Roles: Super Admin, Admin, Principal and AO.
+
+- `GET /admin/grievances`: Paginated list of grievances with filters (`status`, `category`, `priority`, `assigned_to`, `sla_breached`, `search`, `sort`, `order`). Each item includes SLA countdown/breach flags and linked student or bus info.
+- `GET /admin/grievances/insights`: Operational counters (`total_open`, `sla_breached`, `in_progress`, `resolved_this_month`, `avg_resolution_hours`, `by_category`).
+- `GET /admin/grievances/:id`: Detailed dossier including public timeline, attachments, and confidential internal investigation notes.
+- `POST /admin/grievances`: Log a new complaint (walk-in, phone call, or official). Generates sequential ticket number `GRV-YYYY-XXXX` and computes SLA due date.
+- `PATCH /admin/grievances/:id/assign`: Assign or reassign an investigation officer with instructions.
+- `PATCH /admin/grievances/:id/status`: Update workflow status (`submitted`, `acknowledged`, `in_progress`, `action_taken`, `resolved`, `reopened`, `closed`, `escalated`).
+- `POST /admin/grievances/:id/notes`: Post an update or confidential internal note to the investigation log.
+- `POST /admin/grievances/:id/resolve`: Resolve the grievance with final summary and optional notification.
+- `POST /admin/grievances/:id/escalate`: Escalate ticket directly to Principal review with mandatory justification.

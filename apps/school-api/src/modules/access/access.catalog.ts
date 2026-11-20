@@ -68,6 +68,9 @@ export const PERMISSIONS = {
   INVENTORY_STOCK: 'inventory.stock',
   INVENTORY_APPROVE: 'inventory.approve',
   INVENTORY_AUDIT: 'inventory.audit',
+  GRIEVANCES_VIEW: 'grievances.view',
+  GRIEVANCES_MANAGE: 'grievances.manage',
+  GRIEVANCES_RESOLVE: 'grievances.resolve',
 } as const;
 
 export interface PermissionDefinition {
@@ -236,6 +239,21 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     group: 'Inventory',
   },
   { code: PERMISSIONS.INVENTORY_AUDIT, name: 'Run asset verifications and stock counts', group: 'Inventory' },
+  {
+    code: PERMISSIONS.GRIEVANCES_VIEW,
+    name: 'See grievances, complaints, investigation timeline and SLA status',
+    group: 'Communication',
+  },
+  {
+    code: PERMISSIONS.GRIEVANCES_MANAGE,
+    name: 'Log complaints, assign grievance officers, update status and add notes',
+    group: 'Communication',
+  },
+  {
+    code: PERMISSIONS.GRIEVANCES_RESOLVE,
+    name: 'Resolve grievances with final summary or escalate to executive review',
+    group: 'Communication',
+  },
 ];
 
 export const ROLES = {
@@ -331,6 +349,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GATE_MANAGE,
       PERMISSIONS.INVENTORY_VIEW,
       PERMISSIONS.INVENTORY_APPROVE,
+      PERMISSIONS.GRIEVANCES_VIEW,
+      PERMISSIONS.GRIEVANCES_MANAGE,
+      PERMISSIONS.GRIEVANCES_RESOLVE,
     ],
   },
   {
@@ -382,6 +403,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GATE_MANAGE,
       PERMISSIONS.INVENTORY_VIEW,
       PERMISSIONS.INVENTORY_APPROVE,
+      PERMISSIONS.GRIEVANCES_VIEW,
+      PERMISSIONS.GRIEVANCES_MANAGE,
+      PERMISSIONS.GRIEVANCES_RESOLVE,
     ],
   },
   {
