@@ -122,6 +122,8 @@ export const TEMPLATES = {
   BUS_PASS_ACTIVE: 'BUS_PASS_ACTIVE',
   PARENT_SIGNATURE_CHANGED: 'PARENT_SIGNATURE_CHANGED',
   SIGNATURE_SET_BY_SCHOOL: 'SIGNATURE_SET_BY_SCHOOL',
+  SURVEY_NEW: 'SURVEY_NEW',
+  SURVEY_REMINDER: 'SURVEY_REMINDER',
   ...LIBRARY_TEMPLATES,
   ...INVENTORY_TEMPLATES,
 } as const;
@@ -142,6 +144,44 @@ export interface TemplateDefinition {
 }
 
 export const TEMPLATE_CATALOG: TemplateDefinition[] = [
+  {
+    code: TEMPLATES.SURVEY_NEW,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'New form: {{title}}',
+        body: 'The school would like your answers. Please fill it in by {{closes}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'புதிய படிவம்: {{title}}',
+        body: 'பள்ளி உங்கள் பதில்களை எதிர்பார்க்கிறது. {{closes}} க்குள் நிரப்பவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.SURVEY_REMINDER,
+    category: 'announcement',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Reminder: {{title}}',
+        body: 'This form closes on {{closes}}. Please answer it if you have not yet.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'நினைவூட்டல்: {{title}}',
+        body: 'இந்தப் படிவம் {{closes}} அன்று மூடப்படும். இன்னும் பதிலளிக்கவில்லை என்றால் பதிலளிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
   {
     code: TEMPLATES.TRANSPORT_CHANGED,
     category: 'transport',

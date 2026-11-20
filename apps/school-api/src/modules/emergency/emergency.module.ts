@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Notification } from '../notifications/entities/notification.entity';
 import { RealtimeModule } from '../realtime/realtime.module';
+import { AudienceService } from './audience.service';
 import { EmergencyController, MeEmergencyController } from './emergency.controller';
 import { EmergencyDeliveryService } from './emergency-delivery.service';
 import { EmergencyService } from './emergency.service';
@@ -13,6 +14,7 @@ import { EmergencyBroadcast, EmergencyMessageTemplate, EmergencyRecipient } from
     RealtimeModule,
   ],
   controllers: [EmergencyController, MeEmergencyController],
-  providers: [EmergencyService, EmergencyDeliveryService],
+  providers: [EmergencyService, EmergencyDeliveryService, AudienceService],
+  exports: [AudienceService],
 })
 export class EmergencyModule {}
