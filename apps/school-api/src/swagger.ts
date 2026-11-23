@@ -195,6 +195,30 @@ const TAGS: [string, string][] = [
     'Mobile · Driver · Module 5: My Profile & Vehicle',
     'My details, licence and badge, duty clearance checks and documents, my bus with its details and documents; edit my contact details and photo',
   ],
+  [
+    'Mobile · Office · Module 1: Home & Wings',
+    'AO home: my scope (wing AO or head AO), wing cards with attendance today, fee dues and gate passes waiting',
+  ],
+  [
+    'Mobile · Office · Module 2: Classes, Sections & Students',
+    'Drill down: wing to classes, class to sections (class teacher, toppers), section to students with flags',
+  ],
+  [
+    'Mobile · Office · Module 3: Student History',
+    'Full student history: profile, family, bus, attendance, fees, exams with rank, every year and a timeline',
+  ],
+  [
+    'Mobile · Office · Module 4: Gate Pass Approvals',
+    'Gate passes waiting in my wings; approve or reject (first answer wins with the class teacher)',
+  ],
+  [
+    'Admin · Office',
+    'AO office: wings and AO assignment, wing to class to section to student drill-down, full student history, AO monitor',
+  ],
+  [
+    'Me · Staff profile',
+    'Any staff member (teacher, AO, office): my profile and photo, education qualifications, documents, bank (masked, View to reveal), check-in, attendance and leave',
+  ],
   ['Integrations', 'Machine-to-machine webhooks such as biometric punches (X-Device-Key)'],
   ['Admin · Admissions', 'Applications: applied, approved, rejected, enrolled'],
   ['Admin · Parents and guardians', 'Parents with their children'],
@@ -228,7 +252,7 @@ const SIGN_IN_FLOW = `### Mobile app: sign-in and role switch (read first)
 
 One Flutter app for Parent, Staff (teacher) and Driver. One sign-in per person; one token works for every role they have.
 
-1. **Mobile number screen**: \`POST /auth/otp/request\` with \`{ "mobile": "9791543989", "app": "mobile" }\`. A number with no Parent, Teacher, HOD, Driver or Attendant role gets **403 APP_NOT_ALLOWED** and no SMS is sent. Admin-only users (super admin, principal, AO) cannot use the mobile app. **Android:** also send \`"app_hash": "Xy12AbCd3Ef"\` (the app's 11-character SMS Retriever hash) so the app reads the OTP from the SMS by itself; leave it out on iOS.
+1. **Mobile number screen**: \`POST /auth/otp/request\` with \`{ "mobile": "9791543989", "app": "mobile" }\`. A number with no Parent, Teacher, HOD, Driver or Attendant role gets **403 APP_NOT_ALLOWED** and no SMS is sent. Admin-only users (super admin, principal) cannot use the mobile app; an AO gets the \`office\` app. **Android:** also send \`"app_hash": "Xy12AbCd3Ef"\` (the app's 11-character SMS Retriever hash) so the app reads the OTP from the SMS by itself; leave it out on iOS.
 2. **OTP screen**: \`POST /auth/otp/verify\` with \`{ "mobile", "otp", "client": { "app": "mobile", "platform": "android" } }\`. Save \`access_token\` and \`refresh_token\`; read \`data.user.mobile_apps\` and \`data.user.sections\`. **Resend OTP** button (after \`resend_in\` seconds): \`POST /auth/otp/resend\` with the same body as step 1 (including \`app_hash\` on Android); too early gives **429 OTP_RESEND_TOO_SOON**.
 3. **Where to go next** (decide from \`mobile_apps\`):
 
@@ -237,6 +261,7 @@ One Flutter app for Parent, Staff (teacher) and Driver. One sign-in per person; 
 | \`["parent"]\` | Parent home directly, no chooser |
 | \`["staff"]\` | Staff home directly |
 | \`["driver"]\` | Driver home directly |
+| \`["office"]\` | Office home directly (AO) |
 | two or more, e.g. \`["staff", "parent"]\` | Chooser screen: one button per item in \`sections\` (use \`label\`), then open that home |
 
 4. **Switch role** later from the profile menu ("Switch to Parent / Staff"): no new OTP and no new token. The same \`access_token\` calls \`/mobile/parent/*\`, \`/mobile/teacher/*\` or \`/mobile/driver/*\`; each endpoint checks the role. Remember the last choice on the phone and call \`GET /me\` on app start to rebuild the chooser.
@@ -355,7 +380,7 @@ const AUDIENCES: AudienceConfig[] = [
     jsonSlug: 'mobile',
     title: 'Tamilzorous School Management API · Mobile app',
     intro:
-      'Routes for the Flutter app (Parent, Staff and Driver): `/mobile/parent|teacher|driver/*`, plus sign-in, `/me` and files.',
+      'Routes for the Flutter app (Parent, Staff, Driver and Office): `/mobile/parent|teacher|driver|office/*`, plus sign-in, `/me` and files.',
     owns: /^\/api\/v\d+\/mobile\//,
   },
   {
@@ -387,6 +412,16 @@ const AUDIENCES: AudienceConfig[] = [
       'Routes for the Driver and Attendant mobile app: Modules 1 to 5 (home and duty, trips and live tracking, student boarding, safety and SOS, my profile and vehicle), plus sign-in, `/me` and files.',
     owns: /^\/api\/v\d+\/mobile\/driver\//,
     stripPrefix: 'Mobile · Driver · ',
+  },
+  {
+    slug: 'mobile-office',
+    path: 'api/docs/mobile/office',
+    jsonSlug: 'mobile-office',
+    title: 'Tamilzorous School Management API · Mobile · Office App',
+    intro:
+      'Routes for the AO (administrative officer) in the mobile app: Modules 1 to 4 (home and wings, classes and students, student history, gate pass approvals), plus sign-in, `/me` and files. A wing AO sees only their wings; the head AO sees the whole school.',
+    owns: /^\/api\/v\d+\/mobile\/office\//,
+    stripPrefix: 'Mobile · Office · ',
   },
 ];
 
@@ -433,6 +468,13 @@ const SWAGGER_CUSTOM_CSS = `
 }
 .swagger-group-banner.driver-group:hover {
   background: #fef3c7;
+}
+.swagger-group-banner.office-group {
+  border-left-color: #8b5cf6;
+  background: #faf5ff;
+}
+.swagger-group-banner.office-group:hover {
+  background: #f3e8ff;
 }
 .swagger-group-banner.core-group {
   border-left-color: #6366f1;
@@ -497,6 +539,13 @@ const SWAGGER_CUSTOM_CSS = `
   border-radius: 4px;
   transition: opacity 0.2s;
 }
+.opblock-tag-section.in-group-office {
+  border-left: 3px solid #8b5cf6;
+  margin-left: 12px;
+  padding-left: 10px;
+  border-radius: 4px;
+  transition: opacity 0.2s;
+}
 .opblock-tag-section.in-group-core {
   border-left: 3px solid #6366f1;
   margin-left: 12px;
@@ -549,6 +598,16 @@ const SWAGGER_CUSTOM_JS = `
         match: function(tag) { return tag.indexOf('Driver') !== -1; }
       },
       {
+        id: 'group-office',
+        className: 'office-group',
+        inGroupClass: 'in-group-office',
+        icon: '🏫',
+        title: 'Mobile · Office App (AO)',
+        badge: '4 Modules',
+        desc: 'Home and wings, Classes and students, Student history, Gate pass approvals',
+        match: function(tag) { return tag.indexOf('Office') !== -1 && tag.indexOf('Admin') === -1; }
+      },
+      {
         id: 'group-core',
         className: 'core-group',
         inGroupClass: 'in-group-core',
@@ -557,7 +616,7 @@ const SWAGGER_CUSTOM_JS = `
         badge: 'Auth & Files',
         desc: 'OTP sign-in, token refresh, user profile, notifications, announcements and file uploads',
         match: function(tag) {
-          return ['Auth', 'Me', 'Me · Notifications', 'Me · Announcements', 'Me · Emergency', 'Me · Visitors', 'Me · Surveys', 'Me · Appraisals', 'Files', 'Health'].indexOf(tag) !== -1;
+          return ['Auth', 'Me', 'Me · Notifications', 'Me · Announcements', 'Me · Emergency', 'Me · Visitors', 'Me · Surveys', 'Me · Appraisals', 'Me · Staff profile', 'Files', 'Health'].indexOf(tag) !== -1;
         }
       }
     ];
@@ -708,6 +767,7 @@ export function setupSwagger(app: INestApplication): void {
     { name: 'Mobile · Teacher App (Modules 1 - 13)', url: '/api/docs/mobile-teacher-json' },
     { name: 'Mobile · Parent App (Modules 1 - 10)', url: '/api/docs/mobile-parent-json' },
     { name: 'Mobile · Driver App (Modules 1 - 5)', url: '/api/docs/mobile-driver-json' },
+    { name: 'Mobile · Office App (Modules 1 - 4)', url: '/api/docs/mobile-office-json' },
   ];
 
   for (const audience of AUDIENCES) {

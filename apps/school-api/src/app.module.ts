@@ -59,6 +59,9 @@ import { StudentImportModule } from './modules/student-import/student-import.mod
 import { StudentRecordsModule } from './modules/student-records/student-records.module';
 import { UsersModule } from './modules/users/users.module';
 import { GrievancesModule } from './modules/grievances/grievances.module';
+import { OfficeModule } from './modules/office/office.module';
+import { OfficeScopeModule } from './modules/office/office-scope.module';
+import { WingScopeInterceptor } from './modules/office/wing-scope.interceptor';
 import { AlumniModule } from './modules/alumni/alumni.module';
 
 @Module({
@@ -117,12 +120,15 @@ import { AlumniModule } from './modules/alumni/alumni.module';
     FilesModule,
     JobsModule,
     GrievancesModule,
+    OfficeScopeModule,
+    OfficeModule,
     AlumniModule,
   ],
   providers: [
     { provide: APP_GUARD, useExisting: JwtAuthGuard },
     { provide: APP_GUARD, useExisting: PermissionsGuard },
     { provide: APP_INTERCEPTOR, useClass: YearContextInterceptor },
+    { provide: APP_INTERCEPTOR, useExisting: WingScopeInterceptor },
   ],
 })
 export class AppModule {}

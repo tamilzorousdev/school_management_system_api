@@ -37,4 +37,10 @@ export const DEMO_SCHOOL_USERS: SeedUser[] = [
   { name: 'Divya Shankar', mobile: '9000000010', roles: [ROLES.ACCOUNTANT] },
   { name: 'Muniyandi Raja', mobile: '9000000011', roles: [ROLES.GATE_INCHARGE], language: 'ta' },
   { name: 'Muthu Kumar', mobile: '9000000012', roles: [ROLES.STORE_KEEPER] },
+  { name: 'Meena Rajan', mobile: '9000000013', roles: [ROLES.AO] },
+  { name: 'Ravi Shankar', mobile: '9000000014', roles: [ROLES.AO] },
+  { name: 'Saranya Devi', mobile: '9000000021', roles: [ROLES.AO] },
+  { name: 'Gopal Krishnan', mobile: '9000000022', roles: [ROLES.AO] },
+  { name: 'Hema Malini', mobile: '9000000023', roles: [ROLES.AO] },
+  { name: 'Suresh Babu', mobile: '9000000024', roles: [ROLES.AO] },
 ];

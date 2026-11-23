@@ -135,6 +135,8 @@ export const TEMPLATES = {
   GRIEVANCE_NEW: 'GRIEVANCE_NEW',
   GRIEVANCE_ASSIGNED: 'GRIEVANCE_ASSIGNED',
   GRIEVANCE_RESOLVED: 'GRIEVANCE_RESOLVED',
+  GATE_PASS_ESCALATED: 'GATE_PASS_ESCALATED',
+  OFFICE_REMINDER: 'OFFICE_REMINDER',
   ALUMNI_SUBMISSION: 'ALUMNI_SUBMISSION',
   ...LIBRARY_TEMPLATES,
   ...INVENTORY_TEMPLATES,
@@ -2149,6 +2151,44 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: 'வெளியேறும் அனுமதி கோரிக்கை: {{student}}',
         body: '{{student}} ({{class_section}}) {{date}} அன்று {{from}} முதல் வெளியேற: {{reason}}. செயலியில் அனுமதிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_PASS_ESCALATED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Gate pass waiting {{minutes}} min: {{student}}',
+        body: '{{student}} ({{class_section}}) wants to leave from {{from}}: {{reason}}. {{wing}} has not answered. Please decide.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'வெளியேறும் அனுமதி {{minutes}} நிமிடம் காத்திருக்கிறது: {{student}}',
+        body: '{{student}} ({{class_section}}) {{from}} முதல் வெளியேற: {{reason}}. {{wing}} இன்னும் பதில் தரவில்லை. முடிவு செய்யவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.OFFICE_REMINDER,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{count}} items waiting for you',
+        body: '{{by}} reminded you: {{count}} approvals are waiting ({{overdue}} overdue). Please clear them today.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{count}} கோரிக்கைகள் உங்களுக்காக காத்திருக்கின்றன',
+        body: '{{by}} நினைவூட்டினார்: {{count}} ஒப்புதல்கள் காத்திருக்கின்றன ({{overdue}} தாமதம்). இன்றே முடிக்கவும்.',
         sms_body: null,
       },
     },

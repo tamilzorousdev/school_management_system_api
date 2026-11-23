@@ -19,6 +19,7 @@ import { SubstitutesModule } from '../substitutes/substitutes.module';
 import { TimetableModule } from '../timetable/timetable.module';
 import { TrackingModule } from '../tracking/tracking.module';
 import { TransportModule } from '../transport/transport.module';
+import { MeStaffController } from './me-staff.controller';
 import { MobileAccessService } from './mobile-access.service';
 import { MobileParentMeetingsController, MobileTeacherMeetingsController } from './mobile-meetings.controller';
 import {
@@ -70,6 +71,7 @@ import { MobileParentLibraryController, MobileTeacherLibraryController } from '.
     LibraryModule,
   ],
   controllers: [
+    MeStaffController,
     MobileTeacherFinesController,
     MobileParentChildController,
     MobileTeacherController,

@@ -46,6 +46,6 @@ import { ReportCardsService } from './report-cards.service';
     MobileParentReportCardController,
   ],
   providers: [ExamsService, ReportCardsService, ExamHallsService],
-  exports: [ExamsService, ExamHallsService],
+  exports: [ExamsService, ExamHallsService, ReportCardsService],
 })
 export class ExamsModule {}

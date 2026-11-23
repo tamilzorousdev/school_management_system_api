@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { STOP_FOR_TRIP_SQL } from '../transport/transport.logic';
 import { InjectRepository } from '@nestjs/typeorm';
+import { WingScopeService } from '../office/wing-scope.service';
 import { DataSource, Repository } from 'typeorm';
 import { AppException } from '@app/common';
 import { appConfig, AppConfig, telematicsConfig, TelematicsConfig } from '../../config/configuration';
@@ -41,6 +42,7 @@ export class TripEventsService {
     private readonly alerts: FleetAlertsService,
     private readonly maintenance: MaintenanceService,
     private readonly dataSource: DataSource,
+    private readonly wings: WingScopeService,
     @Inject(telematicsConfig.KEY) private readonly config: TelematicsConfig,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
@@ -184,13 +186,14 @@ export class TripEventsService {
     }
     const missing = (await this.tripsService.riders(trip)).filter((rider) => !rider.boarded && !rider.away_today);
     if (!missing.length) return 0;
-    const teachers: { student_id: number; class_teacher_user_id: number | null }[] = await this.dataSource.query(
-      `SELECT e.student_id, sec.class_teacher_user_id FROM student_enrollments e
+    const teachers: { student_id: number; class_id: number; class_teacher_user_id: number | null }[] =
+      await this.dataSource.query(
+        `SELECT e.student_id, e.class_id, sec.class_teacher_user_id FROM student_enrollments e
        JOIN sections sec ON sec.id = e.section_id
        JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current
        WHERE e.student_id = ANY($1)`,
-      [missing.map((rider) => rider.student_id)],
-    );
+        [missing.map((rider) => rider.student_id)],
+      );
     const bySection = new Map<number, { section: string; names: string[] }>();
     for (const rider of missing) {
       const teacher = teachers.find((row) => Number(row.student_id) === rider.student_id)?.class_teacher_user_id;
@@ -208,7 +211,35 @@ export class TripEventsService {
         names: group.names.join(', '),
       });
     }
+    sent += await this.tellWingAos(trip, bus, missing, teachers);
     await this.trips.update(trip.id, { not_boarded_sent_at: new Date() });
+    return sent;
+  }
+
+  private async tellWingAos(
+    trip: TransportTrip,
+    bus: string,
+    missing: { student_id: number; full_name: string; class_section?: string | null }[],
+    enrolments: { student_id: number; class_id: number }[],
+  ): Promise<number> {
+    const byAo = new Map<number, string[]>();
+    for (const rider of missing) {
+      const classId = enrolments.find((row) => Number(row.student_id) === rider.student_id)?.class_id;
+      if (!classId) continue;
+      const aos = await this.wings.aoUsersForClass(trip.school_id, Number(classId));
+      const label = rider.class_section ? `${rider.full_name} (${rider.class_section})` : rider.full_name;
+      for (const ao of aos) byAo.set(ao, [...(byAo.get(ao) ?? []), label]);
+    }
+    let sent = 0;
+    for (const [aoId, names] of byAo) {
+      sent += await this.send('TRIP_NOT_BOARDED', [aoId], {
+        bus,
+        section: 'your wing',
+        count: String(names.length),
+        names: names.join(', '),
+        role: 'office',
+      });
+    }
     return sent;
   }
 

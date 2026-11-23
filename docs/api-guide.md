@@ -40,8 +40,10 @@ Send the app on both calls: `"app": "mobile"` in `/auth/otp/request` and `"clien
 
 | `app`              | Who can sign in                                                     |
 | ------------------ | ------------------------------------------------------------------- |
-| `mobile` (Flutter) | Users with a Parent, Teacher, HOD, Driver or Attendant role         |
+| `mobile` (Flutter) | Users with a Parent, Teacher, HOD, Driver, Attendant or AO role     |
 | `admin` (web)      | Users with Super admin, Admin, Principal, AO or Transport in-charge |
+
+An AO gets `mobile_apps: ["office"]` and opens the **Office** home in the app (see *AO office: wings* below).
 
 Anyone else gets `403 APP_NOT_ALLOWED` at the OTP request, so no SMS is sent.
 
@@ -87,6 +89,9 @@ In development the OTP is always `123456` and no SMS is sent. Demo users (all sc
 | 9000000009               | Librarian                                                             |
 | 9000000010               | Accountant                                                            |
 | 9000000011               | Gate in-charge (Tamil)                                                |
+| 9000000013               | AO for Pre-primary and Primary (wing AO)                              |
+| 9000000014               | AO for Secondary and Higher Secondary (wing AO)                       |
+| 9000000021 to 9000000024 | AOs: Primary + Secondary + Higher; Primary + Secondary; Higher only; Secondary only |
 | 9000000401 to 9000000406 | Teachers: Tamil, English, Social Science, PE, Computer Science, Hindi |
 
 ## Response format
@@ -921,6 +926,50 @@ New role **Gate in-charge** (`GATE_INCHARGE`, Staff app; demo 9000000009). Permi
 | `GET/POST /admin/gate/blocklist` · `PATCH/DELETE /{id}`                                                                | Blocked people (name, mobile, reason)                                                                                                                                                                                                                                            |
 | `GET /admin/gate/staff?search=`                                                                                        | Host picker                                                                                                                                                                                                                                                                      |
 | `GET /me/visitors` · `POST /me/visitors/{id}/decision`                                                                 | Visitors waiting to meet me: `{ allow, note? }` (any staff, admin web or Staff app)                                                                                                                                                                                              |
+
+**Wings and gate passes**: a new pass goes to the class teacher, the admin, the principal and only the AOs of that student's wing (plus the head AO). A wing AO sees and decides passes of their wings only (`403 OUTSIDE_YOUR_WING`, opening one by id gives `404 GATE_PASS_NOT_FOUND`). A pass still waiting after `office_escalate_minutes` (gate settings, default 30) is sent to the head AO (`GATE_PASS_ESCALATED`) and shows `escalated_to_head_ao: true`; it stays pending and anyone allowed can still decide it.
+
+## AO office: wings
+
+A school is split into **wings** (for example Pre-primary LKG–UKG, Primary 1–5, Secondary 6–10, Higher Secondary 11–12). A wing is a grade range (`-1` LKG, `0` UKG, `1` to `12`) or an exact list of classes (`class_ids`, for a school with two boards). A class can be in one wing only (`409 WING_OVERLAP`).
+
+- **Wing AO**: an AO with one or more wings. Everything tied to a class is limited to their wings: student list, every `/admin/students/{id}/…` route, gate passes, the office drill-down. A student outside their wings is `404 STUDENT_NOT_FOUND`.
+- **Head AO**: an AO with no wing today. Sees the whole school and the **AO monitor**.
+- Cover during leave: an AO's wing can have `valid_from` / `valid_to`; it counts only between those dates.
+- Admin and principal are never limited. Permissions: `office.view` (drill-down, student history), `office.wings` (wing setup: admin, principal), `office.monitor` (AO monitor: head AO, principal, admin).
+
+| Call (admin web, `/admin/office`) | Use |
+| --- | --- |
+| `GET me` | `is_limited`, `is_head_ao`, `can_monitor`, `wings` I see, `today` |
+| `GET dashboard` | AO home: `attendance` today, `students`, `staff_on_leave` (school), `fees` (`collected_today`, `collected_month`, `due`, `defaulters`, `top_defaulters`), `pending` and the oldest 5 `pending_items`, `exams` (latest published exam per class with `average` and top 3), `alerts` (`low_attendance`, `passes_on_hold`, `health_alerts`), and `aos` (AO cards, only for the head AO, principal, admin; otherwise null). All limited to my wings |
+| `GET wings` | Wing cards: `range_label`, `aos`, `class_count`, `section_count`, `student_count`, `boys`, `girls`, `attendance` (`sections_marked`, `sections_total`, `present`, `absent`, `percent`), `fee_due`, `pending_gate_passes`; `unassigned_classes` for the head AO |
+| `GET wings/{id}/classes` | Class cards with `class_teachers` and `last_exam_average` (404 `WING_NOT_FOUND`) |
+| `GET classes/{id}/sections` | Section cards: `class_teacher`, attendance today, `fee_defaulters`, `fee_due`, `last_exam`, `last_exam_average`, top 3 `toppers` (404 `CLASS_NOT_FOUND`) |
+| `GET sections/{id}/students` | Students with `today`, `attendance_percent`, `fee_due`, `fee_status`, `last_exam_percent`, `rank`, `transport`, `flags` (`fee_due`, `low_attendance` below 75%, `health_alert`, `pass_on_hold`). `filter` = `all`, `absent_today`, `fee_due`, `low_attendance`; `sort` = `roll_no`, `name`, `attendance`, `fee_due`, `last_exam`; `search` |
+| `GET students/{id}` | Full student history: `student`, `current` (class-section, roll, class teacher, wing), `guardians`, `transport`, `flags`, `attendance`, `fees`, `exams` (with `section_rank`, `class_rank`), `years`, `counts`, `health`, `report_card_pdf_path`. Every open is logged for the head AO |
+| `GET students/{id}/documents` | Documents, view only: `type`, `title`, `status`, `remarks`, `created_at`, `verified_at`, `mime_type`, signed `url` and `thumbnail_url`. Each open is logged |
+| `GET students/{id}/timeline` | Newest first, paged: `admission`, `enrolment`, `attendance`, `leave`, `fee_invoice`, `fee_payment`, `exam`, `gate`, `behaviour`, `achievement`, `transport`, `document`, `library`; `type` filters one kind |
+| `GET wing-setup` · `POST wing-setup/wings` · `PATCH/DELETE wing-setup/wings/{id}` | Wings with classes and AOs; add `{ name, from_grade, to_grade, class_ids?, board?, sort_order? }` |
+| `PUT wing-setup/aos/{userId}` | `{ wings: [{ wing_id, valid_from?, valid_to?, note? }] }`; an empty list makes the AO the head AO (404 `AO_NOT_FOUND`) |
+| `GET monitor` | `summary` (pending, fees today and this month, attendance marked, open grievances, `unassigned_wings`) and one card per AO: `last_active_at`, `inactive` (2 days), `pending` (`gate_passes`, `fee_requests`, `leave_requests`, `grievances`, `total`, `overdue`: 24 hours, or a gate pass past its escalation time), `fees_collected_today`/`_month`, `fee_due`, `attendance`, `flags`. A wing AO gets 403 `HEAD_AO_ONLY` |
+| `GET monitor/aos/{userId}` · `POST …/remind` | One AO: `pending` (oldest first, `age_hours`) and the latest 60 actions; Remind pushes `OFFICE_REMINDER` (409 `NOTHING_PENDING`) |
+
+**Office app (Flutter, role AO)**: `GET /mobile/office/home` (`me`, `wings`, `pending_gate_passes`), `GET /mobile/office/dashboard` (same as above), `GET /mobile/office/students/{id}/documents`, `GET /mobile/office/students/{id}/report-card/pdf` (`term_id`/`exam_id` optional; the student response gives it as `report_card_pdf_path`), `GET /mobile/office/wings/{id}/classes`, `/classes/{id}/sections`, `/sections/{id}/students`, `/students/{id}`, `/students/{id}/timeline` (same shapes as above), `GET /mobile/office/gate-passes` (waiting in my wings), `GET /mobile/office/gate-passes/{id}`, `POST /mobile/office/gate-passes/{id}/decision` `{ approve, note? }` (first answer wins with the class teacher: 409 `PASS_ALREADY_DECIDED`). Pushes for the AO carry `role: "office"`. Swagger: `/api/docs/mobile/office`.
+
+## My staff profile (any staff: teacher, AO, office)
+
+Shared `/me/staff/*` routes (Swagger tag `Me · Staff profile`, in both docs). 404 `STAFF_NOT_FOUND` when the user has no staff record.
+
+| Call | Use |
+| --- | --- |
+| `GET profile` · `PATCH profile` | Profile with `photo_url` and `editable`. The person can change only `photo_file_id` (upload with `POST /files`, image only), `email`, `language`, `address`, `emergency_contact_name`, `emergency_contact_mobile`; anything else is 400 |
+| `GET/POST qualifications` · `PATCH/DELETE qualifications/{id}` | Own education: `degree`, `specialization`, `institution`, `year_completed`; each call returns the full list |
+| `GET/POST documents` · `DELETE documents/{id}` | Own documents `{ type, title?, file_id }`; new ones are `pending` until the office checks them; a checked one cannot be removed (409 `DOCUMENT_ALREADY_CHECKED`) |
+| `GET bank` · `POST bank/reveal` | Accounts with `account_masked` / `pan_masked` and `account_no`/`pan` null; reveal (the View button) returns them in full and is logged. Only the office changes bank details |
+| `GET/POST check-in`, `POST check-out`, `GET attendance?month=` | Same as the teacher app |
+| `GET leave-balances`, `GET/POST leaves`, `POST leaves/{id}/cancel` | Same as the teacher app |
+
+Payslips: `GET /me/payslips`.
 
 ## Class performance, special classes and extra classes
 

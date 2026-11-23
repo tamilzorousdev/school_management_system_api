@@ -12,6 +12,7 @@ import { Staff } from './entities/staff.entity';
 import { TeacherAssignmentChange } from './entities/teacher-assignment-change.entity';
 import { TeacherAssignment } from './entities/teacher-assignment.entity';
 import { StaffController, TeacherAssignmentsController } from './staff.controller';
+import { MyStaffService } from './my-staff.service';
 import { StaffService } from './staff.service';
 
 @Module({
@@ -30,7 +31,7 @@ import { StaffService } from './staff.service';
     SignaturesModule,
   ],
   controllers: [StaffController, TeacherAssignmentsController],
-  providers: [StaffService, AssignmentsService],
-  exports: [StaffService, AssignmentsService],
+  providers: [StaffService, AssignmentsService, MyStaffService],
+  exports: [StaffService, AssignmentsService, MyStaffService],
 })
 export class StaffModule {}

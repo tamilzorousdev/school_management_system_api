@@ -28,6 +28,7 @@ import { Student } from './entities/student.entity';
 import { FilesService } from '../files/files.service';
 import { GuardiansService, Invite } from './guardians.service';
 import { viewingYearId, yearClause, yearWhere } from '../../shared/year-context';
+import { wingClause } from '../../shared/wing-context';
 
 type ListedStudent = Student & {
   current?: StudentEnrollment | null;
@@ -172,7 +173,8 @@ export class StudentsService {
       .leftJoinAndMapOne('s.current_section', Section, 'sec', 'sec.id = e.section_id')
       .leftJoinAndSelect('s.guardian_links', 'gl')
       .leftJoinAndSelect('gl.guardian', 'g')
-      .where('s.school_id = :schoolId', { schoolId });
+      .where('s.school_id = :schoolId', { schoolId })
+      .andWhere(wingClause('e.class_id'));
     if (viewingYearId()) qb.andWhere('e.id IS NOT NULL');
 
     if (query.status) qb.andWhere('s.status = :status', { status: query.status });

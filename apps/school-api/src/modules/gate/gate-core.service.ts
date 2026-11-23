@@ -115,6 +115,7 @@ export class GateCoreService {
     return {
       grace_minutes: row.grace_minutes,
       emergency_wait_minutes: row.emergency_wait_minutes,
+      office_escalate_minutes: row.office_escalate_minutes,
       visitor_photo_required: row.visitor_photo_required,
       visitor_id_required: row.visitor_id_required,
       visitor_checkout_time: row.visitor_checkout_time,
@@ -128,6 +129,7 @@ export class GateCoreService {
     for (const key of [
       'grace_minutes',
       'emergency_wait_minutes',
+      'office_escalate_minutes',
       'visitor_photo_required',
       'visitor_id_required',
       'visitor_checkout_time',
@@ -376,6 +378,7 @@ export class GateCoreService {
         id_proof_kind: row.id_proof_kind,
         id_proof_last4: row.id_proof_last4,
         escalated: Boolean(row.escalated_at),
+        escalated_to_head_ao: Boolean(row.office_escalated_at),
         qr_token: live ? this.qr.gate('p', row.id, row.qr_version) : null,
         code: live ? row.code : null,
         created_at: row.created_at,
