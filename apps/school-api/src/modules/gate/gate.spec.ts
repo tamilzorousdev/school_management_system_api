@@ -1,6 +1,11 @@
+import 'reflect-metadata';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
+import { PassRequestDto } from './dto/gate.dto';
 import {
   blockedMatch,
   codeLocked,
+  collectorError,
   isLateFor,
   newCode,
   passVerdict,
@@ -103,5 +108,42 @@ describe('helpers', () => {
     expect(codeLocked([now, now, now, now], now)).toBe(false);
     expect(codeLocked([now, now, now, now, now], now)).toBe(true);
     expect(codeLocked([0, 0, 0, 0, 0], now)).toBe(false);
+  });
+});
+
+describe('collector rule', () => {
+  const base = { pass_date: '2026-11-19', from_time: '11:00', reason: 'Meet the principal' };
+  const errorsOf = (body: object) =>
+    validateSync(plainToInstance(PassRequestDto, body), { whitelist: true, forbidNonWhitelisted: true }).map(
+      (error) => error.property,
+    );
+
+  it('needs a collector only for a pickup pass', () => {
+    expect(collectorError('pickup', false)).not.toBeNull();
+    expect(collectorError('pickup', true)).toBeNull();
+    expect(collectorError('visit', false)).toBeNull();
+    expect(collectorError('visit', true)).toBeNull();
+  });
+
+  it('accepts a visit pass without a collector', () => {
+    expect(errorsOf({ ...base, pass_type: 'visit' })).toEqual([]);
+    expect(errorsOf({ ...base, pass_type: 'visit', pickup: null })).toEqual([]);
+  });
+
+  it('still checks a collector sent with a visit pass', () => {
+    expect(errorsOf({ ...base, pass_type: 'visit', pickup: { kind: 'guardian' } })).toEqual(['pickup']);
+    expect(errorsOf({ ...base, pass_type: 'visit', pickup: { kind: 'guardian', guardian_id: 3 } })).toEqual([]);
+  });
+
+  it('refuses a pickup pass without a collector, with or without pass_type', () => {
+    expect(errorsOf({ ...base, pass_type: 'pickup' })).toEqual(['pickup']);
+    expect(errorsOf(base)).toEqual(['pickup']);
+    expect(errorsOf({ ...base, pickup: { kind: 'authorised', authorised_id: 2 } })).toEqual([]);
+  });
+
+  it('refuses an unknown pass_type', () => {
+    expect(errorsOf({ ...base, pass_type: 'party', pickup: { kind: 'guardian', guardian_id: 3 } })).toEqual([
+      'pass_type',
+    ]);
   });
 });

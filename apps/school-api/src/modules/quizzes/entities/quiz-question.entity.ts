@@ -10,6 +10,8 @@ import {
 } from 'typeorm';
 import { OnlineQuiz } from './online-quiz.entity';
 
+import { QuestionType } from '../quiz-questions.logic';
+
 export interface QuizOption {
   key: string;
   text: string;
@@ -37,8 +39,11 @@ export class QuizQuestion {
   @Column({ type: 'jsonb' })
   options: QuizOption[];
 
-  @Column({ type: 'varchar', length: 10 })
+  @Column({ type: 'varchar', length: 20 })
   correct_option: string;
+
+  @Column({ type: 'varchar', length: 20, default: 'single_choice' })
+  question_type: QuestionType;
 
   @Column({ type: 'text', nullable: true })
   explanation: string | null;

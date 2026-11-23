@@ -1,6 +1,6 @@
 import { createHmac, randomInt } from 'crypto';
 import { safeEqual } from '../../shared/crypto';
-import { ConsentStatus, PassStatus, VisitStatus } from './entities/gate.entity';
+import { ConsentStatus, PassStatus, PassType, VisitStatus } from './entities/gate.entity';
 
 export const GATE_QR_PREFIX = 'TZG1';
 export const MAX_CODE_TRIES = 5;
@@ -88,6 +88,10 @@ export function newCode(taken: Set<string>): string {
 export function toMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number) as [number, number];
   return hours * 60 + minutes;
+}
+
+export function collectorError(passType: PassType, hasCollector: boolean): string | null {
+  return passType === 'pickup' && !hasCollector ? 'Choose who will collect the student' : null;
 }
 
 export function passVerdict(

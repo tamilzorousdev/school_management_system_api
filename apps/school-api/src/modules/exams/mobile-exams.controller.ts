@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpStatus, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Inject, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   ApiEnvelope,
@@ -9,9 +9,12 @@ import {
   RequireRoles,
   ResponseMessage,
 } from '@app/common';
+import { appConfig, AppConfig } from '../../config/configuration';
+import { todayIn } from '../../shared/dates';
 import { ROLES } from '../access/access.catalog';
 import { AssignmentsService } from '../staff/assignments.service';
 import {
+  ChildExamDto,
   MarksQueryDto,
   MarksSheetDto,
   RankingQueryDto,
@@ -158,7 +161,19 @@ export class MobileParentExamsController {
   constructor(
     private readonly exams: ExamsService,
     private readonly halls: ExamHallsService,
+    @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
+
+  @Get('exams')
+  @ApiOperation({
+    summary: 'All exams of my child in one list: upcoming, ongoing, awaiting results and published results',
+    description:
+      'Newest first. Each exam has its paper timetable, a phase, whether the hall ticket is useful now (before and during the exam) and, once published, the full result.',
+  })
+  @ApiEnvelope(ChildExamDto, { isArray: true })
+  childExams(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.exams.childExams(user.id, id, todayIn(this.app.timeZone));
+  }
 
   @Get('results')
   @ApiOperation({ summary: 'Published exam results of my child, newest first: marks, %, grade and ranks' })
@@ -174,16 +189,7 @@ export class MobileParentExamsController {
     @Param('id', ParseIntPipe) childId: number,
     @Param('examId', ParseIntPipe) examId: number,
   ) {
-    const [row] = await this.exams['dataSource'].query(
-      `SELECT e.school_id
-       FROM student_guardians sg
-       JOIN guardians g ON g.id = sg.guardian_id AND g.user_id = $1 AND g.deleted_at IS NULL
-       JOIN student_enrollments e ON e.student_id = sg.student_id
-       WHERE sg.student_id = $2 AND sg.deleted_at IS NULL
-       LIMIT 1`,
-      [user.id, childId],
-    );
-    if (!row) throw AppException.notFound('Child not found', 'CHILD_NOT_FOUND');
-    return this.halls.getStudentHallTicket(Number(row.school_id), childId, examId);
+    const schoolId = await this.exams.childSchool(user.id, childId);
+    return this.halls.getStudentHallTicket(schoolId, childId, examId);
   }
 }

@@ -60,7 +60,7 @@ export class TeacherQuizzesController {
     return this.quizzes.update(teacherSchool(user), user.id, id, dto);
   }
 
-  @Post(':id/submit-approval')
+  @Post(':id/submit-for-approval')
   @ResponseMessage('Quiz submitted for approval')
   @ApiOperation({ summary: 'Submit quiz draft to Principal / Admin for approval' })
   @ApiEnvelope(Object, { message: 'Quiz submitted for approval' })
@@ -83,7 +83,9 @@ export class TeacherQuizzesController {
   @ApiOperation({ summary: 'Analytics for this quiz: completion rate, average score, question accuracy' })
   @ApiEnvelope(Object)
   @ApiErrors(HttpStatus.NOT_FOUND)
-  analytics(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
-    return this.quizzes.getQuizAnalytics(teacherSchool(user), id);
+  async analytics(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    const schoolId = teacherSchool(user);
+    await this.quizzes.getTeacherQuiz(schoolId, user.id, id);
+    return this.quizzes.getQuizAnalytics(schoolId, id);
   }
 }

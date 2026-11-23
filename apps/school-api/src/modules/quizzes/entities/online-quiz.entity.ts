@@ -55,8 +55,8 @@ export class OnlineQuiz extends SchoolScopedEntity {
   @Column({ type: 'numeric', precision: 6, scale: 2, default: 0 })
   total_marks: number;
 
-  @Column({ type: 'numeric', precision: 6, scale: 2, default: 0 })
-  pass_marks: number;
+  @Column({ type: 'numeric', precision: 6, scale: 2, nullable: true })
+  pass_marks: number | null;
 
   @Column({ type: 'int', default: 30 })
   duration_minutes: number;

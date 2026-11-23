@@ -83,7 +83,7 @@ export class StudentLeaveService {
 
   private async notifyClassTeacher(leave: StudentLeave): Promise<void> {
     const [row] = await this.dataSource.query(
-      `SELECT sec.class_teacher_user_id AS teacher_id, c.name || ' - ' || sec.name AS class_name,
+      `SELECT sec.id AS section_id, sec.class_teacher_user_id AS teacher_id, c.name || ' - ' || sec.name AS class_name,
               trim(s.first_name || ' ' || COALESCE(s.last_name, '')) AS student
        FROM student_enrollments e
        JOIN academic_years y ON y.id = e.academic_year_id AND ${yearClause('y')}
@@ -93,11 +93,19 @@ export class StudentLeaveService {
        WHERE e.student_id = $1 LIMIT 1`,
       [leave.student_id],
     );
-    if (!row?.teacher_id) return;
+    if (!row) {
+      this.logger.warn(`Leave request ${leave.id}: student ${leave.student_id} has no enrolment in the viewed year`);
+      return;
+    }
+    const recipients = row.teacher_id ? [Number(row.teacher_id)] : await this.sectionTeachers(Number(row.section_id));
+    if (!recipients.length) {
+      this.logger.warn(`Leave request ${leave.id}: section ${row.section_id} has no class teacher, nobody was told`);
+      return;
+    }
     await this.notifications
       .dispatch({
         template: TEMPLATES.STUDENT_LEAVE_REQUEST,
-        audience: { user_ids: [Number(row.teacher_id)] },
+        audience: { user_ids: recipients },
         data: {
           student: row.student,
           class: row.class_name,
@@ -189,6 +197,14 @@ export class StudentLeaveService {
     const saved = await this.leaves.save(leave);
     await this.notifyParents(saved);
     return (await this.present(schoolId, [saved]))[0];
+  }
+
+  private async sectionTeachers(sectionId: number): Promise<number[]> {
+    const rows: { teacher_user_id: number }[] = await this.dataSource.query(
+      `SELECT DISTINCT teacher_user_id FROM timetable_slots WHERE section_id = $1 AND teacher_user_id IS NOT NULL`,
+      [sectionId],
+    );
+    return rows.map((row) => Number(row.teacher_user_id));
   }
 
   private async notifyParents(leave: StudentLeave): Promise<void> {

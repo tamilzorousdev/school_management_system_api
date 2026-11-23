@@ -348,9 +348,9 @@ export async function seedDemoGate(manager: EntityManager, school: School): Prom
       `${pass.pass_no} · ${plan.reason}`,
     );
     if (plan.consent) {
-      event('consent_asked', created, refs, gate, pass.pickup_name);
-      event('consent_approved', at(plan.date, shift(plan.from, 3)), refs, null, pass.pickup_name);
-      event('consent_verified', at(plan.date, shift(plan.from, 8)), refs, gate, pass.pickup_name, 'code');
+      event('consent_asked', created, refs, gate, pass.pickup_name ?? '');
+      event('consent_approved', at(plan.date, shift(plan.from, 3)), refs, null, pass.pickup_name ?? '');
+      event('consent_verified', at(plan.date, shift(plan.from, 8)), refs, gate, pass.pickup_name ?? '', 'code');
     }
     if (decided && plan.status !== 'cancelled') {
       event(plan.status === 'rejected' ? 'pass_rejected' : 'pass_approved', decidedAt, refs, decider, pass.pass_no);

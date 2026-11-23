@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
@@ -39,6 +39,20 @@ export class QuizzesController {
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   update(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateQuizDto) {
     return this.quizzes.adminUpdate(schoolId, id, dto);
+  }
+
+  @Delete(':id')
+  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @ResponseMessage('Quiz deleted')
+  @ApiOperation({
+    summary: 'Delete a quiz in any state, including one that is live',
+    description:
+      'For a quiz created by mistake. The quiz disappears for teachers and parents at once and students can no longer open or submit it. The records are kept (soft delete). `attempts` says how many students had already started it.',
+  })
+  @ApiEnvelope(Object, { message: 'Quiz deleted' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  remove(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.quizzes.adminDelete(schoolId, id);
   }
 
   @Post(':id/approve')

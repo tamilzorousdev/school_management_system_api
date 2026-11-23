@@ -22,7 +22,7 @@ export class QuizAnswer {
   @JoinColumn({ name: 'question_id' })
   question?: QuizQuestion;
 
-  @Column({ type: 'varchar', length: 10, nullable: true })
+  @Column({ type: 'varchar', length: 20, nullable: true })
   selected_option: string | null;
 
   @Column({ type: 'boolean', default: false })
