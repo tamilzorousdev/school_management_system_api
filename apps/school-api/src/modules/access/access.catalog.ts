@@ -71,6 +71,10 @@ export const PERMISSIONS = {
   GRIEVANCES_VIEW: 'grievances.view',
   GRIEVANCES_MANAGE: 'grievances.manage',
   GRIEVANCES_RESOLVE: 'grievances.resolve',
+  GALLERY_VIEW: 'gallery.view',
+  GALLERY_MANAGE: 'gallery.manage',
+  GALLERY_CONFIGURE: 'gallery.configure',
+  GALLERY_AUDIT: 'gallery.audit',
 } as const;
 
 export interface PermissionDefinition {
@@ -190,6 +194,22 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     name: 'Build, send, remind, extend and close surveys and feedback forms',
     group: 'Communication',
   },
+  {
+    code: PERMISSIONS.GALLERY_VIEW,
+    name: 'See every gallery album, photo and video, the gallery dashboard and reports',
+    group: 'Gallery',
+  },
+  {
+    code: PERMISSIONS.GALLERY_MANAGE,
+    name: 'Create, publish, edit and delete albums and media in every gallery, restore from Trash',
+    group: 'Gallery',
+  },
+  {
+    code: PERMISSIONS.GALLERY_CONFIGURE,
+    name: 'Change gallery settings, retention policies and holds, run and pause the cleanup, delete for good',
+    group: 'Gallery',
+  },
+  { code: PERMISSIONS.GALLERY_AUDIT, name: 'See the gallery audit log', group: 'Gallery' },
   {
     code: PERMISSIONS.CHAT_AUDIT,
     name: 'Read teacher and parent chats, see flagged messages and hide them',
@@ -353,6 +373,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GRIEVANCES_VIEW,
       PERMISSIONS.GRIEVANCES_MANAGE,
       PERMISSIONS.GRIEVANCES_RESOLVE,
+      PERMISSIONS.GALLERY_VIEW,
+      PERMISSIONS.GALLERY_MANAGE,
+      PERMISSIONS.GALLERY_AUDIT,
     ],
   },
   {
@@ -407,6 +430,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GRIEVANCES_VIEW,
       PERMISSIONS.GRIEVANCES_MANAGE,
       PERMISSIONS.GRIEVANCES_RESOLVE,
+      PERMISSIONS.GALLERY_VIEW,
+      PERMISSIONS.GALLERY_MANAGE,
     ],
   },
   {

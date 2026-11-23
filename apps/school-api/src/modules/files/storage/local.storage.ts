@@ -6,9 +6,14 @@ import { storageConfig, StorageConfig } from '../../../config/configuration';
 
 export const FILE_STORAGE = Symbol('FILE_STORAGE');
 
+export interface ByteRange {
+  start: number;
+  end: number;
+}
+
 export interface FileStorage {
   put(key: string, content: Buffer): Promise<void>;
-  read(key: string): Promise<ReadStream>;
+  read(key: string, range?: ByteRange): Promise<ReadStream>;
   remove(key: string): Promise<void>;
 }
 
@@ -26,10 +31,10 @@ export class LocalFileStorage implements FileStorage {
     await writeFile(path, content);
   }
 
-  async read(key: string): Promise<ReadStream> {
+  async read(key: string, range?: ByteRange): Promise<ReadStream> {
     const path = this.path(key);
     await stat(path);
-    return createReadStream(path);
+    return createReadStream(path, range);
   }
 
   async remove(key: string): Promise<void> {
