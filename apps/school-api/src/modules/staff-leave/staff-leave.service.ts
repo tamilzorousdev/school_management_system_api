@@ -8,6 +8,7 @@ import { addDays, holidaySet, workingDays } from '../../shared/school-days';
 import { PERMISSIONS, ROLES } from '../access/access.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AcademicYear } from '../setup/entities/academic-year.entity';
+import { departmentHodUserId } from '../staff/department-hod';
 import { Staff } from '../staff/entities/staff.entity';
 import {
   LeaveBalanceDto,
@@ -274,16 +275,8 @@ export class StaffLeaveService {
   }
 
   private async hodFor(staff: Staff, user: AuthUser): Promise<number | null> {
-    if (user.roles.includes(ROLES.HOD) || user.roles.includes(ROLES.PRINCIPAL) || !staff.department) return null;
-    const [row] = await this.dataSource.query(
-      `SELECT st.user_id FROM staff st
-       JOIN user_roles ur ON ur.user_id = st.user_id JOIN roles r ON r.id = ur.role_id AND r.code = $3
-       WHERE st.school_id = $1 AND LOWER(st.department) = LOWER($2) AND st.user_id <> $4
-         AND st.deleted_at IS NULL AND st.status = 'active'
-       ORDER BY st.joining_date LIMIT 1`,
-      [staff.school_id, staff.department, ROLES.HOD, user.id],
-    );
-    return row ? Number(row.user_id) : null;
+    if (user.roles.includes(ROLES.HOD) || user.roles.includes(ROLES.PRINCIPAL)) return null;
+    return departmentHodUserId(this.dataSource, staff.school_id, staff.department, user.id);
   }
 
   private async notifyApprovers(leave: StaffLeave, name: string, typeName: string): Promise<void> {

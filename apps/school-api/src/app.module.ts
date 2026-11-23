@@ -8,6 +8,7 @@ import { DatabaseModule } from './database/database.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EmergencyModule } from './modules/emergency/emergency.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
+import { AppraisalsModule } from './modules/appraisals/appraisals.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { PerformanceModule } from './modules/performance/performance.module';
 import { AccessModule } from './modules/access/access.module';
@@ -91,6 +92,7 @@ import { GrievancesModule } from './modules/grievances/grievances.module';
     FeedbackModule,
     EmergencyModule,
     SurveysModule,
+    AppraisalsModule,
     AchievementsModule,
     AppBannersModule,
     MeetingsModule,
