@@ -16,5 +16,5 @@ runSeed('Demo Appraisals Seed', async (manager) => {
     return;
   }
   await seedDemoAppraisals(manager, school);
-  console.log(`Staff appraisals seeded for school ${school.code} (#${school.id})`);
+  console.log(`Appraisal groups, KRAs and a draft cycle seeded for school ${school.code} (#${school.id})`);
 });
