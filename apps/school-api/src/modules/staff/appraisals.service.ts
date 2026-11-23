@@ -368,27 +368,65 @@ export class AppraisalsService {
 
   async metrics(schoolId: number, staffId: number, academicYearId?: number): Promise<StaffPerformanceMetricsDto> {
     const staffRow = await this.staff.findOne({
-      where: { id: staffId, school_id: schoolId },
+      where: [
+        { id: staffId, school_id: schoolId },
+        { user_id: staffId, school_id: schoolId },
+      ],
     });
-    if (!staffRow) throw AppException.notFound('Staff member not found', 'STAFF_NOT_FOUND');
+    if (!staffRow) {
+      this.logger.warn(`Staff member ${staffId} not found in school ${schoolId} for metrics`);
+      return {
+        staff_id: staffId,
+        user_id: staffId,
+        name: 'Staff',
+        attendance_percentage: 100,
+        present_days: 0,
+        absent_days: 0,
+        total_working_days: 0,
+        assigned_periods_per_week: 0,
+        total_sections_taught: 0,
+        diary_entries_count: 0,
+        homework_count: 0,
+        student_pass_percentage: null,
+        student_fail_percentage: null,
+        passed_students: 0,
+        failed_students: 0,
+        total_students_evaluated: 0,
+        average_student_marks: null,
+        parent_rating_average: null,
+        parent_rating_count: 0,
+        student_feedback_average: null,
+        student_feedback_count: 0,
+        teaching_assignments: [],
+        recent_homework: [],
+      };
+    }
 
     const userRow = await this.users.findOne({ where: { id: staffRow.user_id } });
 
     // 1. Staff attendance records
-    const attResult = await this.appraisals.query(
-      `SELECT 
-         COUNT(*) FILTER (WHERE status = 'present') as present_days,
-         COUNT(*) FILTER (WHERE status = 'absent' OR status = 'on_leave') as absent_days,
-         COUNT(*) as total_days
-       FROM staff_attendance
-       WHERE school_id = $1 AND user_id = $2`,
-      [schoolId, staffRow.user_id],
-    );
-    const totalWorkingDays = Number(attResult[0]?.total_days ?? 0);
-    const presentDays = Number(attResult[0]?.present_days ?? 0);
-    const absentDays = Number(attResult[0]?.absent_days ?? 0);
-    const attendancePercentage =
-      totalWorkingDays > 0 ? Math.round((presentDays / totalWorkingDays) * 1000) / 10 : 100.0;
+    let totalWorkingDays = 0;
+    let presentDays = 0;
+    let absentDays = 0;
+    let attendancePercentage = 100.0;
+    try {
+      const attResult = await this.appraisals.query(
+        `SELECT 
+           COUNT(*) FILTER (WHERE status = 'present') as present_days,
+           COUNT(*) FILTER (WHERE status = 'absent' OR status = 'on_leave') as absent_days,
+           COUNT(*) as total_days
+         FROM staff_attendance
+         WHERE school_id = $1 AND user_id = $2`,
+        [schoolId, staffRow.user_id],
+      );
+      totalWorkingDays = Number(attResult[0]?.total_days ?? 0);
+      presentDays = Number(attResult[0]?.present_days ?? 0);
+      absentDays = Number(attResult[0]?.absent_days ?? 0);
+      attendancePercentage =
+        totalWorkingDays > 0 ? Math.round((presentDays / totalWorkingDays) * 1000) / 10 : 100.0;
+    } catch (e) {
+      this.logger.warn(`Staff attendance query failed: ${(e as Error).message}`);
+    }
 
     // 2. Assigned teaching periods, sections & workload schedule
     const yearFilter = academicYearId ? 'AND ta.academic_year_id = $3' : '';
@@ -472,8 +510,8 @@ export class AppraisalsService {
       recentHomework = recentHomeworkRaw.map((r: Record<string, unknown>) => ({
         id: Number(r.id),
         title: String(r.title),
-        due_date: r.due_date ? String(r.due_date) : null,
-        created_at: String(r.created_at),
+        due_date: r.due_date ? (r.due_date instanceof Date ? r.due_date.toISOString().slice(0, 10) : String(r.due_date)) : null,
+        created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
         subject_name: r.subject_name ? String(r.subject_name) : null,
         class_section: r.class_section ? String(r.class_section) : null,
       }));

@@ -64,9 +64,10 @@ export class QuizQuestionInputDto {
 }
 
 export class CreateQuizDto {
-  @ApiProperty({ example: 1 })
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
   @IsInt()
-  academic_year_id: number;
+  academic_year_id?: number;
 
   @ApiProperty({ example: 2 })
   @IsInt()
@@ -75,6 +76,11 @@ export class CreateQuizDto {
   @ApiProperty({ example: 3 })
   @IsInt()
   section_id: number;
+
+  @ApiPropertyOptional({ example: 45, description: 'Teacher user ID (optional for admin)' })
+  @IsOptional()
+  @IsInt()
+  teacher_user_id?: number;
 
   @ApiProperty({ example: 'Unit 1 Science Quiz' })
   @IsString()
@@ -125,6 +131,11 @@ export class CreateQuizDto {
   @IsOptional()
   @IsBoolean()
   require_microphone?: boolean;
+
+  @ApiPropertyOptional({ example: 'approved', enum: ['draft', 'approved'] })
+  @IsOptional()
+  @IsIn(['draft', 'approved'])
+  status?: QuizStatus;
 
   @ApiProperty({ type: [QuizQuestionInputDto] })
   @IsArray()
@@ -189,6 +200,11 @@ export class UpdateQuizDto {
   @IsBoolean()
   require_microphone?: boolean;
 
+  @ApiPropertyOptional({ example: 'approved', enum: ['draft', 'approved'] })
+  @IsOptional()
+  @IsIn(['draft', 'approved'])
+  status?: QuizStatus;
+
   @ApiPropertyOptional({ type: [QuizQuestionInputDto] })
   @IsOptional()
   @IsArray()
@@ -203,6 +219,18 @@ export class RejectQuizDto {
   @IsString()
   @Length(3, 500)
   reason: string;
+}
+
+export class UpdateQuizPermissionsDto {
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  allow_all_teachers?: boolean;
+
+  @ApiPropertyOptional({ example: [10, 15] })
+  @IsOptional()
+  @IsArray()
+  permitted_user_ids?: number[];
 }
 
 export class QuizQueryDto extends ListQueryDto {
