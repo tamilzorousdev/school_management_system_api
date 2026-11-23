@@ -24,9 +24,7 @@ import { TeacherAppService } from './teacher-app.service';
 import { TeacherInsightsService } from './teacher-insights.service';
 import { BankDetailsDto, QualificationDto, StaffDocumentDto } from '../staff/dto/staff-response.dto';
 import { StaffService } from '../staff/staff.service';
-import { AppraisalsService } from '../staff/appraisals.service';
 import { SignatureResponseDto, UpdateSignatureDto } from '../exams/dto/report-card.dto';
-import { StaffAppraisalCommentDto, StaffAppraisalDto } from '../staff/dto/staff-appraisal.dto';
 import { HolidaysService } from '../setup/holidays.service';
 import { HolidayQueryDto, MobileHolidayOverviewDto } from '../setup/dto/setup.dto';
 import { TEACHER_MODULE_TAGS } from './teacher-modules.catalog';
@@ -161,7 +159,6 @@ export class MobileTeacherController {
     private readonly insights: TeacherInsightsService,
     private readonly staff: StaffService,
     private readonly holidaysService: HolidaysService,
-    private readonly appraisalsService: AppraisalsService,
   ) {}
 
   @Get('classes')
@@ -243,45 +240,6 @@ export class MobileTeacherController {
   @ApiErrors(HttpStatus.NOT_FOUND)
   bank(@CurrentUser() user: AuthUser) {
     return this.staff.getBankByUserId(this.access.teacherSchool(user), user.id);
-  }
-
-  @Get('appraisals')
-  @ApiTags(TEACHER_MODULE_TAGS.MODULE_1)
-  @ApiOperation({
-    summary: 'My performance reviews and appraisals, newest first',
-    description: 'Evaluations, scores across teaching, student outcomes, discipline, conduct, and overall rating.',
-  })
-  @ApiEnvelope(StaffAppraisalDto, { isArray: true })
-  appraisals(@CurrentUser() user: AuthUser) {
-    return this.appraisalsService.myAppraisals(this.access.teacherSchool(user), user.id);
-  }
-
-  @Get('appraisals/:id')
-  @ApiTags(TEACHER_MODULE_TAGS.MODULE_1)
-  @ApiOperation({
-    summary: 'Details of one of my performance reviews by ID',
-    description: 'Metrics breakdown, scores, reviewer remarks, goals, strengths, and recommended increment.',
-  })
-  @ApiEnvelope(StaffAppraisalDto)
-  @ApiErrors(HttpStatus.NOT_FOUND)
-  appraisal(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
-    return this.appraisalsService.myAppraisal(this.access.teacherSchool(user), user.id, id);
-  }
-
-  @Post('appraisals/:id/comments')
-  @ApiTags(TEACHER_MODULE_TAGS.MODULE_1)
-  @ResponseMessage('Appraisal comments submitted')
-  @ApiOperation({
-    summary: 'Add my comments / self-acknowledgement to a finalized appraisal',
-  })
-  @ApiEnvelope(StaffAppraisalDto, { message: 'Appraisal comments submitted' })
-  @ApiErrors(HttpStatus.NOT_FOUND)
-  addAppraisalComment(
-    @CurrentUser() user: AuthUser,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: StaffAppraisalCommentDto,
-  ) {
-    return this.appraisalsService.addStaffRemarks(this.access.teacherSchool(user), user.id, id, dto);
   }
 
   @Get('holidays')

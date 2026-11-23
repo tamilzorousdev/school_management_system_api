@@ -9,6 +9,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EmergencyModule } from './modules/emergency/emergency.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
 import { GalleryModule } from './modules/gallery/gallery.module';
+import { AppraisalsModule } from './modules/appraisals/appraisals.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { PerformanceModule } from './modules/performance/performance.module';
 import { AccessModule } from './modules/access/access.module';
@@ -40,6 +41,7 @@ import { CrewModule } from './modules/crew/crew.module';
 import { StaffAttendanceModule } from './modules/staff-attendance/staff-attendance.module';
 import { StaffLeaveModule } from './modules/staff-leave/staff-leave.module';
 import { TimetableModule } from './modules/timetable/timetable.module';
+import { AcademicsModule } from './modules/academics/academics.module';
 import { SubstitutesModule } from './modules/substitutes/substitutes.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { FeesModule } from './modules/fees/fees.module';
@@ -57,6 +59,7 @@ import { StudentImportModule } from './modules/student-import/student-import.mod
 import { StudentRecordsModule } from './modules/student-records/student-records.module';
 import { UsersModule } from './modules/users/users.module';
 import { GrievancesModule } from './modules/grievances/grievances.module';
+import { AlumniModule } from './modules/alumni/alumni.module';
 
 @Module({
   imports: [
@@ -77,6 +80,7 @@ import { GrievancesModule } from './modules/grievances/grievances.module';
     StaffAttendanceModule,
     StaffLeaveModule,
     TimetableModule,
+    AcademicsModule,
     SubstitutesModule,
     PayrollModule,
     FeesModule,
@@ -93,6 +97,7 @@ import { GrievancesModule } from './modules/grievances/grievances.module';
     EmergencyModule,
     SurveysModule,
     GalleryModule,
+    AppraisalsModule,
     AchievementsModule,
     AppBannersModule,
     MeetingsModule,
@@ -112,6 +117,7 @@ import { GrievancesModule } from './modules/grievances/grievances.module';
     FilesModule,
     JobsModule,
     GrievancesModule,
+    AlumniModule,
   ],
   providers: [
     { provide: APP_GUARD, useExisting: JwtAuthGuard },

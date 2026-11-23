@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpStatus, Param, ParseIntPipe, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpStatus, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
@@ -83,6 +83,19 @@ export class TimetableController {
   @ApiErrors(HttpStatus.NOT_FOUND)
   clearSlot(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Query() query: SlotQueryDto) {
     return this.timetable.clearSlot(schoolId, id, query.day_of_week, query.period_no);
+  }
+
+  @Post('sections/:id/auto-generate')
+  @RequirePermissions(PERMISSIONS.TIMETABLE_MANAGE)
+  @ResponseMessage('Timetable automatically generated')
+  @ApiOperation({
+    summary: 'Auto-generate timetable for a section with clash detection',
+    description: 'Uses constraint satisfaction algorithm to allocate required subject periods without clashes.',
+  })
+  @ApiEnvelope(SectionTimetableDto, { message: 'Timetable automatically generated' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  autoGenerate(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.timetable.autoGenerate(schoolId, id);
   }
 
   @Get('teachers/:userId')

@@ -281,9 +281,15 @@ export class StudentsService {
       [id],
     );
     const links = (student.guardian_links ?? []).filter((link) => link.guardian && !link.guardian.deleted_at);
+    const [alumni] = (await this.dataSource.query(
+      `SELECT id FROM alumni WHERE school_id = $1 AND student_id = $2 AND deleted_at IS NULL LIMIT 1`,
+      [schoolId, id],
+    )) as { id: number }[];
 
     return {
       ...this.toListItem(listed, siblings.length, todayIn(this.app.timeZone)),
+      left_on: student.left_on ?? null,
+      alumni_id: alumni ? Number(alumni.id) : null,
       blood_group: student.blood_group,
       address_line: student.address_line,
       city: student.city,
@@ -334,7 +340,13 @@ export class StudentsService {
   }
 
   async update(schoolId: number, id: number, dto: UpdateStudentDto): Promise<StudentDetailDto> {
-    await this.find(schoolId, id);
+    const student = await this.find(schoolId, id);
+    if (dto.status === 'alumni' && student.status !== 'alumni') {
+      throw AppException.badRequest(
+        'Students become alumni automatically: when a TC is issued, or when they pass out of the final class at year close.',
+        'ALUMNI_STATUS_MANAGED',
+      );
+    }
     if (Object.keys(dto).length) await this.students.update(id, dto);
     return this.get(schoolId, id);
   }

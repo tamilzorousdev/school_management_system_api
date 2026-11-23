@@ -19,6 +19,6 @@ import { MeetingsService } from './meetings.service';
   ],
   controllers: [MeetingsController, AgoraWebhookController],
   providers: [MeetingsService, MeetingRecordsService, AgoraTokenService],
-  exports: [MeetingsService, MeetingRecordsService],
+  exports: [MeetingsService, MeetingRecordsService, AgoraTokenService],
 })
 export class MeetingsModule {}

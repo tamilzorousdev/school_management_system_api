@@ -1978,21 +1978,48 @@ Everything is under `/admin/inventory/*` (Swagger tag `Admin · Inventory`). Per
 
 ## Staff Performance Reviews & Appraisals (Module 3.3)
 
-Annual, term, or periodic performance evaluations for teaching and non-teaching staff.
+The school appraises staff once (or more) a year in **cycles**. Staff are placed in **appraisal groups** (teams) for the academic year; each group has its **own KRA set** (Key Result Areas, weights adding up to 100). Flow: the office opens a cycle → each person scores themselves in the Staff app → the **HOD** of their department scores → the **Principal** gives the final score and publishes → the person acknowledges or appeals.
 
-### Admin Web
-- `GET /admin/staff-appraisals` — List staff appraisals with status (`draft`, `submitted`, `reviewed`, `finalized`), rating (`outstanding`, `exceeds_expectations`, `meets_expectations`, `needs_improvement`, `unsatisfactory`), academic year, and staff filters.
-- `GET /admin/staff-appraisals/staff/:staffId/metrics?academic_year_id=...` — Pre-calculated objective performance stats for a teacher: attendance percentage, assigned periods per week, total sections taught, diary/homework count, and student exam pass percentage.
-- `GET /admin/staff-appraisals/:id` — Get full review details, criteria scores, teacher requested hike, and reviewer feedback.
-- `POST /admin/staff-appraisals` — Create a draft appraisal.
-- `PUT /admin/staff-appraisals/:id` — Update scores, reviewer remarks, and recommendations (`increment`, `promotion`, `retention`, `pip`).
-- `POST /admin/staff-appraisals/:id/finalize` — Finalize and publish appraisal to the teacher's mobile app.
+Permissions: `appraisals.view` (see everything), `appraisals.configure` (groups, KRAs, cycles), `appraisals.finalize` (final score, publish, appeals). Principal: all three; AO: view + configure; Admin: all. The Staff app routes are `/me/*` and work for every staff member (office staff too).
 
-### Teacher Mobile App
-- `GET /mobile/teacher/appraisals` — List my appraisals (both open review cycles and finalized reviews).
-- `GET /mobile/teacher/appraisals/:id` — View detailed scorecard, approved hike, ratings, and management remarks.
-- `POST /mobile/teacher/appraisals/:id/hike-request` — Submit requested percentage hike (`expected_increment_percent`) and justification (`hike_justification`). Status moves to `submitted`.
-- `POST /mobile/teacher/appraisals/:id/remarks` — Submit teacher acknowledgment feedback (`staff_remarks`) after finalization.
+**Groups.** `rules` = `{ staff_types: ['teaching'|'non_teaching'], departments: [], designations: [], roles: ['TEACHER', 'HOD', …] }`: every kind that has values must match; within a kind any value matches (case-insensitive). People can also be **included** or **excluded** by hand. A person goes to the group they are included in, else the first matching group by `sort_order`, else the `is_default` group (the catch-all, which needs no rules). `GET …/members` shows who is in the group today and who also matches it but sits in another group.
+
+**KRAs.** `{ code, title, description?, category, weightage_percent, max_score (2–10, default 5), scoring_mode: manual|auto, auto_metric?, auto_target? }`. Auto KRAs are scored from school data of the academic year: `attendance_percent` (staff check-in), `exam_pass_percent` (published exams of the classes and subjects taught), `parent_rating` (average stars, Parent app), `parent_good_behaviour_percent`, `homework_count` (published diary homework), `driver_rating`. Auto score = `min(max_score, value ÷ auto_target × max_score)`; the default target is 100 for percentages, 5 for ratings and 60 for homework. When there is no data the person scores it by hand.
+
+**Percent and rating.** KRA % = score ÷ max_score × 100; overall % = Σ KRA % × weight ÷ 100 — computed on the server for self, HOD and final. Rating on the final %: ≥92 `outstanding`, ≥76 `exceeds_expectations`, ≥60 `meets_expectations`, ≥40 `needs_improvement`, else `unsatisfactory`. `suggested_increment` comes from the cycle's `increment_bands`; the Principal sets `increment_percent`. Recommendation defaults to `pip` for the two lowest ratings, else `increment`.
+
+**Steps (`stage`).** `self_pending` → `hod_pending` (skipped when the department has no HOD, or the person is an HOD or the Principal) → `principal_pending` → `published` → `completed` (acknowledged) or `appealed` → `completed` (appeal decided). At `self_due_at` the reviews still at `self_pending` move on with `self_missed = true`. Reminders: staff 24 h before `self_due_at`, HODs 24 h before `hod_due_at` (or on demand with `/remind`). Push templates: `APPRAISAL_SELF_OPEN`, `APPRAISAL_SELF_REMINDER`, `APPRAISAL_HOD_REVIEW`, `APPRAISAL_HOD_REMINDER`, `APPRAISAL_PUBLISHED`, `APPRAISAL_APPEAL_RAISED` (Principal), `APPRAISAL_APPEAL_DECIDED`; `data.appraisal_id` opens the appraisal (`category: approval`).
+
+### Admin web
+| Call | What it does |
+|---|---|
+| `GET /admin/appraisal-groups` | Groups of the year being viewed with their KRAs, `member_count`, `weight_total` |
+| `POST /admin/appraisal-groups` `{ name, description?, rules?, is_default?, sort_order?, starter_kras?: teaching\|staff\|none }` | New group in the current year (409 `GROUP_NAME_TAKEN`) |
+| `PATCH /admin/appraisal-groups/{id}`, `DELETE …/{id}` | Edit; delete is refused while a cycle that is not closed uses it (409 `GROUP_IN_USE`) |
+| `GET /admin/appraisal-groups/{id}/members`, `PUT …/members` `{ include_staff_ids, exclude_staff_ids }` | Who is in the group; people always in / never in |
+| `PUT /admin/appraisal-groups/{id}/kras` `{ kras: [...] }` | Replace the KRA set; 400 when weights do not add up to 100, a code repeats or an auto KRA has no metric. Open appraisals keep the KRAs they started with |
+| `POST /admin/appraisal-groups/copy-year` `{ from_academic_year_id, to_academic_year_id }` | Copy groups, people and KRAs to another year (same names skipped; 409 `YEAR_NOT_WRITABLE`) |
+| `GET /admin/appraisal-cycles`, `POST`, `GET/PATCH/DELETE …/{id}` | Cycles `{ title, description?, group_ids, self_opens_at?, self_due_at, hod_due_at, final_due_at, appeal_days?, increment_bands? }`; edits only while draft/scheduled (409 `CYCLE_LOCKED`) |
+| `POST …/{id}/open` | Opens now (or schedules for `self_opens_at`): one appraisal per person with the KRAs of their group and the HOD of their department. 409 `GROUP_KRAS_INCOMPLETE`, `CYCLE_NOT_DRAFT`; 400 `NO_RECIPIENTS` |
+| `POST …/{id}/close`, `…/extend` `{ self_due_at?, hod_due_at?, final_due_at? }`, `…/remind` | Close (staff and HODs can no longer change scores), move deadlines later, remind |
+| `GET …/{id}/insights`, `GET …/{id}/export` | Counts per step, average final %, ratings; Excel (summary + KRA scores) |
+| `GET /admin/appraisals?cycle_id=&group_id=&stage=&rating=&search=&sort=name\|final_percent\|stage\|created_at` | Appraisals of the year being viewed |
+| `GET /admin/appraisals/{id}` | Self, HOD, auto and final score per KRA, evidence (signed links), appeals |
+| `GET /admin/appraisals/staff/{staffId}/dossier?academic_year_id=` | Facts for the review: attendance, classes with pass %, homework, parent and driver ratings |
+| `PUT /admin/appraisals/{id}/final` `{ scores?: [{ kra_id, score, override_reason? }], recommendation?, increment_percent?, strengths?, improvements?, goals?, principal_remarks? }` | Principal step; changing a proposed score (HOD, else auto, else self) needs `override_reason` |
+| `POST /admin/appraisals/{id}/publish`, `POST /admin/appraisals/publish` `{ ids }` | Publish one or many (missing final scores take the proposed score) |
+| `GET /admin/appraisals/appeals?status=`, `POST /admin/appraisals/appeals/{id}/decide` `{ decision: accept\|reject, note, scores?, increment_percent? }` | Appeals (409 `APPEAL_DECIDED`) |
+
+### Staff app (`/me`)
+| Call | What it does |
+|---|---|
+| `GET /me/appraisals` | My appraisals, newest first. `hod_percent`, `final_percent`, `rating` stay empty until published |
+| `GET /me/appraisals/{id}` | My KRAs (weights, max score, auto value), my self scores and comments, evidence; the result once published; `appeal_until` |
+| `PUT /me/appraisals/{id}/self`, `POST …/self/submit` `{ scores: [{ kra_id, score?, comment? }], expected_increment_percent?, hike_justification?, file_ids? }` | Save / send my self-appraisal (every manual KRA needs a score; errors on `scores.<kra_id>`). 409 `APPRAISAL_NOT_IN_STAGE`, `CYCLE_NOT_OPEN` |
+| `POST /me/appraisals/{id}/acknowledge` `{ remarks? }`, `POST …/appeal` `{ reason, requested_increment? }` | Accept or appeal the published result (409 `APPEAL_WINDOW_CLOSED`) |
+| `GET /me/appraisal-reviews?state=pending\|done`, `GET/PUT …/{id}`, `POST …/{id}/submit` `{ scores, remarks? }` | HOD: reviews of my department (403 `NOT_YOUR_REVIEW`) |
+
+Reviews made with the earlier appraisal screens were moved into a closed "Earlier reviews" cycle (`is_legacy: true`); the earlier KRAs became an "All staff" group. The routes `admin/staff-appraisals/*`, `admin/staff-kra-configs/*` and `mobile/teacher/appraisals/*` are gone.
 
 ## Driver app
 
@@ -2018,3 +2045,41 @@ Everything is under `/admin/grievances/*` (Swagger tag `Admin · Grievances`). P
 - `POST /admin/grievances/:id/notes`: Post an update or confidential internal note to the investigation log.
 - `POST /admin/grievances/:id/resolve`: Resolve the grievance with final summary and optional notification.
 - `POST /admin/grievances/:id/escalate`: Escalate ticket directly to Principal review with mandatory justification.
+
+## Alumni records (admin web)
+
+Admin endpoints are under `/admin/alumni/*` (Swagger tag `Admin · Alumni`). Permissions: `alumni.view` (list, profile, reports) and `alumni.manage` (edit, update links, approve submissions). Staff never create alumni by hand: students become alumni when they leave. School admin and Principal have both; the AO has `alumni.view`.
+
+**How people become alumni.**
+- **Automatically at year close.** When an academic year stops being current (another year is created as current, or made current), every student in the final class (the class with the highest `grade_level`) whose enrolment is still `studying` passes out:
+  - the student's `status` becomes `alumni` and `left_on` is the year's end date;
+  - the enrolment becomes `completed`;
+  - an alumni record is made (`source: pass_out`, `exit_type: graduated`, batch = year of the end date), with their class history, final percent, grade and result, and the primary guardian's mobile, email and address as starting contact details.
+  - Students marked `detained` in promotion stay. Fee dues do not block pass-out; they stay on the student. Running it twice does nothing extra.
+- **When a TC is issued.** `POST /admin/students/:id/exit` (transferred or withdrawn) also creates the alumni record in the same transaction (`source: converted`), using the TC for exit type, leaving date, TC number and last class, plus class history and results. Students who already had a TC before this module were added once by the migration `AlumniFromTransferCertificates`.
+- **Self-registration:** the public form below, for people who left before the school used this system; staff approve it first.
+- `PATCH /admin/students/:id` with `status: alumni` is refused with `400 ALUMNI_STATUS_MANAGED`. `GET /admin/students/:id` now returns `left_on` and `alumni_id`.
+
+**Endpoints.**
+- `GET /admin/alumni`: paginated list. Filters `batch_year`, `source` (`pass_out`, `converted`, `registered`, `self`), `exit_type` (`graduated`, `transferred`, `withdrawn`), `occupation_status` (`higher_studies`, `employed`, `self_employed`, `seeking`, `other`, `unknown`), `status` (`active`, `inactive`), `reachable` (consent plus a mobile or email), `city`. Search covers name, alumni no, admission no, mobile, email, institution, organisation and city. Sort: `name`, `batch_year` (default), `left_on`, `final_percent`, `alumni_no`, `created_at`.
+- `GET /admin/alumni/insights`: `total`, `active`, `reachable`, `latest_batch`, `pending_submissions`, `by_occupation`, `by_batch` (last six).
+- `GET /admin/alumni/batches`: `[{ batch_year, count }]`, newest first.
+- `GET /admin/alumni/pass-out-preview?academic_year_id=`: the final class, who will pass out when that year closes (with percent and unpaid fees), and how many are detained or already alumni. Defaults to the current year.
+- `GET /admin/alumni/export`: Excel file with the list filters.
+- `GET /admin/alumni/:id`: profile with `academic_history` (rows with `source: system` were copied from school records and are read-only; `manual` rows are editable), `timeline` (every change as `{ field: [before, after] }`) and `pending_submissions`.
+- `PATCH /admin/alumni/:id`: update the profile; every changed field is written to the timeline.
+- `PUT /admin/alumni/:id/academic-history { rows }`: replaces the manual rows.
+- `PATCH /admin/alumni/:id/status { status, note? }`: `inactive` means do not contact.
+- `DELETE /admin/alumni/:id`: soft delete; the student keeps `alumni` status.
+- `POST /admin/alumni/:id/update-link`: returns `{ path, expires_at }`. Prefix `path` with the admin web address and send it to the alumnus. It lasts 14 days, works once, and replaces earlier links.
+- `GET /admin/alumni/submissions?status=&type=`: self-registrations and self-updates. Updates carry `changes` (`[current, submitted]`); registrations carry `possible_matches` (same mobile, or same first name and batch).
+- `POST /admin/alumni/submissions/:id/approve { alumni_id? }`: a registration creates a record (`source: self`), or with `alumni_id` merges its contact and career details into that record; an update applies its changes. `409 SUBMISSION_CLOSED` if already handled.
+- `POST /admin/alumni/submissions/:id/reject { note }`.
+
+**Public endpoints (no sign-in, Swagger tag `Public · Alumni`).**
+- `GET /public/alumni/schools/:code`: school name and logo for the form header.
+- `POST /public/alumni/schools/:code/register`: `first_name`, `batch_year` and a `mobile` or `email` are required, plus optional identity, contact and career fields. Responds with `{ id }`.
+- `GET /public/alumni/update/:token`: the alumnus's contact and career details.
+- `POST /public/alumni/update/:token`: sends changed contact and career details for approval and uses up the link. `400 NO_CHANGES` if nothing changed.
+- Only contact and career fields can be changed this way; staff notes, results and history cannot. Unknown fields are refused. Limits: three pending submissions per mobile (`409 SUBMISSION_PENDING`) and 50 public submissions per school per hour (`429 TOO_MANY_SUBMISSIONS`). Expired or used links give `404 LINK_INVALID`.
+- Admins and the Principal get an `ALUMNI_SUBMISSION` notification for each new submission.

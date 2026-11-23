@@ -1,117 +1,11 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Param,
-  ParseIntPipe,
-  Post,
-  Put,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiErrors, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { ApiPdf, pdfFile } from '../../shared/pdf-response';
 import { PERMISSIONS } from '../access/access.catalog';
-import {
-  AssignInvigilatorDto,
-  AutoAllocateHallsDto,
-  CreateExamHallDto,
-  SaveGradingScaleDto,
-  UpdateExamHallDto,
-} from './dto/halls.dto';
+import { AssignInvigilatorDto, AutoAllocateHallsDto } from './dto/halls.dto';
 import { ExamHallsService } from './exam-halls.service';
-
-@ApiTags('Admin · Exam Halls')
-@ApiBearerAuth()
-@ApiSchoolHeader()
-@ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
-@Controller('admin/exams/halls')
-export class ExamHallsController {
-  constructor(private readonly halls: ExamHallsService) {}
-
-  @Get()
-  @RequirePermissions(PERMISSIONS.EXAMS_VIEW)
-  @ApiOperation({ summary: 'List all physical exam halls and rooms with capacities' })
-  list(@SchoolId() schoolId: number) {
-    return this.halls.listHalls(schoolId);
-  }
-
-  @Post()
-  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
-  @ResponseMessage('Exam hall created')
-  @ApiOperation({ summary: 'Create a new exam hall / room' })
-  create(@SchoolId() schoolId: number, @Body() dto: CreateExamHallDto) {
-    return this.halls.createHall(schoolId, dto);
-  }
-
-  @Get(':hallId')
-  @RequirePermissions(PERMISSIONS.EXAMS_VIEW)
-  @ApiOperation({ summary: 'Get details of an exam hall' })
-  get(@SchoolId() schoolId: number, @Param('hallId', ParseIntPipe) hallId: number) {
-    return this.halls.getHall(schoolId, hallId);
-  }
-
-  @Put(':hallId')
-  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
-  @ResponseMessage('Exam hall updated')
-  @ApiOperation({ summary: 'Update an exam hall' })
-  update(@SchoolId() schoolId: number, @Param('hallId', ParseIntPipe) hallId: number, @Body() dto: UpdateExamHallDto) {
-    return this.halls.updateHall(schoolId, hallId, dto);
-  }
-
-  @Delete(':hallId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
-  @ApiOperation({ summary: 'Delete an exam hall' })
-  delete(@SchoolId() schoolId: number, @Param('hallId', ParseIntPipe) hallId: number) {
-    return this.halls.deleteHall(schoolId, hallId);
-  }
-}
-
-@ApiTags('Admin · Exam Grading Scales')
-@ApiBearerAuth()
-@ApiSchoolHeader()
-@ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
-@Controller('admin/exams/grading-scales')
-export class ExamGradingScalesController {
-  constructor(private readonly halls: ExamHallsService) {}
-
-  @Get()
-  @RequirePermissions(PERMISSIONS.EXAMS_VIEW)
-  @ApiOperation({ summary: 'List grading scales configured for the school' })
-  list(@SchoolId() schoolId: number) {
-    return this.halls.listGradingScales(schoolId);
-  }
-
-  @Post()
-  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
-  @ResponseMessage('Grading scale saved')
-  @ApiOperation({ summary: 'Create or update a grading scale (CBSE, State, ICSE, Custom)' })
-  save(@SchoolId() schoolId: number, @Body() dto: SaveGradingScaleDto) {
-    return this.halls.saveGradingScale(schoolId, dto);
-  }
-
-  @Put(':scaleId/set-default')
-  @HttpCode(HttpStatus.OK)
-  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
-  @ResponseMessage('Default grading scale updated')
-  @ApiOperation({ summary: 'Set default grading scale for the school' })
-  setDefault(@SchoolId() schoolId: number, @Param('scaleId', ParseIntPipe) scaleId: number) {
-    return this.halls.setDefaultGradingScale(schoolId, scaleId);
-  }
-
-  @Delete(':scaleId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
-  @ApiOperation({ summary: 'Delete a grading scale' })
-  delete(@SchoolId() schoolId: number, @Param('scaleId', ParseIntPipe) scaleId: number) {
-    return this.halls.deleteGradingScale(schoolId, scaleId);
-  }
-}
 
 @ApiTags('Admin · Exam Seating & Invigilation')
 @ApiBearerAuth()

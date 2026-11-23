@@ -13,7 +13,7 @@ import { SchoolClass } from '../../setup/entities/school-class.entity';
 import { Section } from '../../setup/entities/section.entity';
 import { Student } from './student.entity';
 
-export const ENROLLMENT_STATUSES = ['studying', 'promoted', 'detained', 'left'] as const;
+export const ENROLLMENT_STATUSES = ['studying', 'promoted', 'detained', 'left', 'completed'] as const;
 export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number];
 
 @Entity('student_enrollments')

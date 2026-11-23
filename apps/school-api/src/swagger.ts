@@ -30,6 +30,14 @@ const TAGS: [string, string][] = [
   ['Me · Emergency', 'Emergency alerts sent to me (Parent, Staff and Driver apps) and the "I have seen this" button'],
   ['Me · Visitors', 'Visitors waiting at the gate to meet me: allow or decline'],
   [
+    'Me · Appraisals',
+    'Staff app: my appraisals (self-appraisal, result, acknowledge, appeal) and, for an HOD, the team reviews waiting for my scores',
+  ],
+  [
+    'Admin · Appraisals',
+    'Appraisal groups and their KRAs for each academic year, appraisal cycles, the Principal review, publishing and appeals',
+  ],
+  [
     'Admin · Gate & visitors',
     'Gate passes, emergency releases, authorised pickups, visitors, blocked list, live gate board, gate log and reports',
   ],
@@ -204,6 +212,11 @@ const TAGS: [string, string][] = [
   ['Admin · Meetings', 'Teacher and parent video meetings (Agora, booked in the app): who with whom, status, call log'],
   ['Admin · Fleet', 'Live bus status and positions, read from the Telematics service'],
   ['Admin · Grievances', 'Complaint and grievance submission, assignment, tracking, SLA countdown, and resolution'],
+  [
+    'Admin · Alumni',
+    'Alumni records: automatic pass-out at year close, conversion of students who left, registration, profiles, academic history, reports and self-service approvals',
+  ],
+  ['Public · Alumni', 'Alumni self-registration form and personal update links (no sign-in)'],
   ['Health', 'Service status'],
 ];
 
@@ -544,7 +557,7 @@ const SWAGGER_CUSTOM_JS = `
         badge: 'Auth & Files',
         desc: 'OTP sign-in, token refresh, user profile, notifications, announcements and file uploads',
         match: function(tag) {
-          return ['Auth', 'Me', 'Me · Notifications', 'Me · Announcements', 'Me · Emergency', 'Me · Visitors', 'Files', 'Health'].indexOf(tag) !== -1;
+          return ['Auth', 'Me', 'Me · Notifications', 'Me · Announcements', 'Me · Emergency', 'Me · Visitors', 'Me · Surveys', 'Me · Appraisals', 'Files', 'Health'].indexOf(tag) !== -1;
         }
       }
     ];

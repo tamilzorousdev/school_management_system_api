@@ -33,6 +33,8 @@ import {
   ToppersQueryDto,
   UpdateExamDto,
 } from './dto/exams.dto';
+import { CreateExamHallDto, SaveGradingScaleDto, UpdateExamHallDto } from './dto/halls.dto';
+import { ExamHallsService } from './exam-halls.service';
 import { ExamsService } from './exams.service';
 
 @ApiTags('Admin · Exams')
@@ -41,7 +43,10 @@ import { ExamsService } from './exams.service';
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
 @Controller('admin/exams')
 export class ExamsController {
-  constructor(private readonly exams: ExamsService) {}
+  constructor(
+    private readonly exams: ExamsService,
+    private readonly halls: ExamHallsService,
+  ) {}
 
   @Get()
   @RequirePermissions(PERMISSIONS.EXAMS_VIEW)
@@ -66,6 +71,81 @@ export class ExamsController {
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
   create(@SchoolId() schoolId: number, @Body() dto: ExamInputDto) {
     return this.exams.create(schoolId, dto);
+  }
+
+  // === STATIC SUB-ROUTES (Must precede :id to avoid ParseIntPipe 400 conflicts) ===
+  @Get('halls')
+  @RequirePermissions(PERMISSIONS.EXAMS_VIEW)
+  @ApiOperation({ summary: 'List physical exam halls and rooms with capacities' })
+  listHalls(@SchoolId() schoolId: number) {
+    return this.halls.listHalls(schoolId);
+  }
+
+  @Post('halls')
+  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @ResponseMessage('Exam hall created')
+  @ApiOperation({ summary: 'Create a new exam hall / room' })
+  createHall(@SchoolId() schoolId: number, @Body() dto: CreateExamHallDto) {
+    return this.halls.createHall(schoolId, dto);
+  }
+
+  @Get('halls/:hallId')
+  @RequirePermissions(PERMISSIONS.EXAMS_VIEW)
+  @ApiOperation({ summary: 'Get details of an exam hall' })
+  getHall(@SchoolId() schoolId: number, @Param('hallId', ParseIntPipe) hallId: number) {
+    return this.halls.getHall(schoolId, hallId);
+  }
+
+  @Put('halls/:hallId')
+  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @ResponseMessage('Exam hall updated')
+  @ApiOperation({ summary: 'Update an exam hall' })
+  updateHall(
+    @SchoolId() schoolId: number,
+    @Param('hallId', ParseIntPipe) hallId: number,
+    @Body() dto: UpdateExamHallDto,
+  ) {
+    return this.halls.updateHall(schoolId, hallId, dto);
+  }
+
+  @Delete('halls/:hallId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @ApiOperation({ summary: 'Delete an exam hall' })
+  deleteHall(@SchoolId() schoolId: number, @Param('hallId', ParseIntPipe) hallId: number) {
+    return this.halls.deleteHall(schoolId, hallId);
+  }
+
+  @Get('grading-scales')
+  @RequirePermissions(PERMISSIONS.EXAMS_VIEW)
+  @ApiOperation({ summary: 'List grading scales configured for the school' })
+  listGradingScales(@SchoolId() schoolId: number) {
+    return this.halls.listGradingScales(schoolId);
+  }
+
+  @Post('grading-scales')
+  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @ResponseMessage('Grading scale saved')
+  @ApiOperation({ summary: 'Create or update a grading scale (CBSE, State, ICSE, Custom)' })
+  saveGradingScale(@SchoolId() schoolId: number, @Body() dto: SaveGradingScaleDto) {
+    return this.halls.saveGradingScale(schoolId, dto);
+  }
+
+  @Put('grading-scales/:scaleId/set-default')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @ResponseMessage('Default grading scale updated')
+  @ApiOperation({ summary: 'Set default grading scale for the school' })
+  setDefaultGradingScale(@SchoolId() schoolId: number, @Param('scaleId', ParseIntPipe) scaleId: number) {
+    return this.halls.setDefaultGradingScale(schoolId, scaleId);
+  }
+
+  @Delete('grading-scales/:scaleId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @ApiOperation({ summary: 'Delete a grading scale' })
+  deleteGradingScale(@SchoolId() schoolId: number, @Param('scaleId', ParseIntPipe) scaleId: number) {
+    return this.halls.deleteGradingScale(schoolId, scaleId);
   }
 
   @Get(':id')

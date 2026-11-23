@@ -49,6 +49,9 @@ export const PERMISSIONS = {
   ANNOUNCEMENTS_MANAGE: 'announcements.manage',
   SURVEYS_VIEW: 'surveys.view',
   SURVEYS_MANAGE: 'surveys.manage',
+  APPRAISALS_VIEW: 'appraisals.view',
+  APPRAISALS_CONFIGURE: 'appraisals.configure',
+  APPRAISALS_FINALIZE: 'appraisals.finalize',
   EVENTS_VIEW: 'events.view',
   EVENTS_MANAGE: 'events.manage',
   CHAT_AUDIT: 'chat.audit',
@@ -75,6 +78,8 @@ export const PERMISSIONS = {
   GALLERY_MANAGE: 'gallery.manage',
   GALLERY_CONFIGURE: 'gallery.configure',
   GALLERY_AUDIT: 'gallery.audit',
+  ALUMNI_VIEW: 'alumni.view',
+  ALUMNI_MANAGE: 'alumni.manage',
 } as const;
 
 export interface PermissionDefinition {
@@ -92,6 +97,12 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { code: PERMISSIONS.PLATFORM_SCHOOLS, name: 'Create schools and switch between them', group: 'Platform' },
   { code: PERMISSIONS.STUDENTS_VIEW, name: 'View students, parents and guardians', group: 'Students' },
   { code: PERMISSIONS.STUDENTS_MANAGE, name: 'Edit students, guardians, classes and roll numbers', group: 'Students' },
+  { code: PERMISSIONS.ALUMNI_VIEW, name: 'View alumni records, batches and reports', group: 'Students' },
+  {
+    code: PERMISSIONS.ALUMNI_MANAGE,
+    name: 'Register and update alumni, and approve alumni self-service submissions',
+    group: 'Students',
+  },
   { code: PERMISSIONS.ADMISSIONS_MANAGE, name: 'Take applications, approve, reject and enrol', group: 'Students' },
   { code: PERMISSIONS.STAFF_VIEW, name: 'View staff, teacher profiles and assignments', group: 'Staff' },
   { code: PERMISSIONS.STAFF_MANAGE, name: 'Add and edit staff, verify documents, assign teachers', group: 'Staff' },
@@ -210,6 +221,21 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     group: 'Gallery',
   },
   { code: PERMISSIONS.GALLERY_AUDIT, name: 'See the gallery audit log', group: 'Gallery' },
+  {
+    code: PERMISSIONS.APPRAISALS_VIEW,
+    name: 'See appraisal groups, KRAs, cycles and every staff appraisal',
+    group: 'Staff',
+  },
+  {
+    code: PERMISSIONS.APPRAISALS_CONFIGURE,
+    name: 'Set up appraisal groups, their KRAs and appraisal cycles for the academic year',
+    group: 'Staff',
+  },
+  {
+    code: PERMISSIONS.APPRAISALS_FINALIZE,
+    name: 'Give the final appraisal score, publish results and decide appeals',
+    group: 'Staff',
+  },
   {
     code: PERMISSIONS.CHAT_AUDIT,
     name: 'Read teacher and parent chats, see flagged messages and hide them',
@@ -335,7 +361,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.SCHOOLS_VIEW,
       PERMISSIONS.STUDENTS_VIEW,
       PERMISSIONS.STAFF_VIEW,
-      PERMISSIONS.STAFF_MANAGE,
+      PERMISSIONS.APPRAISALS_VIEW,
+      PERMISSIONS.APPRAISALS_CONFIGURE,
+      PERMISSIONS.APPRAISALS_FINALIZE,
       PERMISSIONS.ATTENDANCE_VIEW,
       PERMISSIONS.LEAVE_APPROVE,
       PERMISSIONS.TIMETABLE_VIEW,
@@ -347,6 +375,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.ACCOUNTS_VIEW,
       PERMISSIONS.ACCOUNTS_APPROVE,
       PERMISSIONS.EXAMS_VIEW,
+      PERMISSIONS.EXAMS_MANAGE,
       PERMISSIONS.FEEDBACK_VIEW,
       PERMISSIONS.NOTIFICATIONS_VIEW,
       PERMISSIONS.NOTIFICATIONS_SEND,
@@ -376,6 +405,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GALLERY_VIEW,
       PERMISSIONS.GALLERY_MANAGE,
       PERMISSIONS.GALLERY_AUDIT,
+      PERMISSIONS.ALUMNI_VIEW,
+      PERMISSIONS.ALUMNI_MANAGE,
     ],
   },
   {
@@ -391,6 +422,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.ADMISSIONS_MANAGE,
       PERMISSIONS.STAFF_VIEW,
       PERMISSIONS.STAFF_MANAGE,
+      PERMISSIONS.APPRAISALS_VIEW,
+      PERMISSIONS.APPRAISALS_CONFIGURE,
       PERMISSIONS.ATTENDANCE_VIEW,
       PERMISSIONS.ATTENDANCE_MANAGE,
       PERMISSIONS.TIMETABLE_VIEW,
@@ -432,6 +465,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GRIEVANCES_RESOLVE,
       PERMISSIONS.GALLERY_VIEW,
       PERMISSIONS.GALLERY_MANAGE,
+      PERMISSIONS.ALUMNI_VIEW,
     ],
   },
   {
