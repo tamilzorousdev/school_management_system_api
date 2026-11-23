@@ -11,7 +11,7 @@ import { ExamInvigilator } from './entities/exam-invigilator.entity';
 import { GradingScale } from './entities/grading-scale.entity';
 import { ExamHallsService } from './exam-halls.service';
 import { ExamsController, StudentResultsController } from './exams.controller';
-import { ExamHallsController, ExamGradingScalesController, ExamSeatingController } from './exam-halls.controller';
+import { ExamSeatingController } from './exam-halls.controller';
 import { ExamsService } from './exams.service';
 import { MobileParentExamsController, MobileTeacherExamsController } from './mobile-exams.controller';
 import {
@@ -37,8 +37,6 @@ import { ReportCardsService } from './report-cards.service';
   ],
   controllers: [
     ExamsController,
-    ExamHallsController,
-    ExamGradingScalesController,
     ExamSeatingController,
     StudentResultsController,
     StudentReportCardController,

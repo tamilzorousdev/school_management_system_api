@@ -131,7 +131,7 @@ export class ExamHallsService {
     if (!exam) throw AppException.notFound('Exam not found', 'EXAM_NOT_FOUND');
 
     const classRows: { class_id: number }[] = await this.dataSource.query(
-      `SELECT DISTINCT class_id FROM exam_subjects WHERE exam_id = $1 AND deleted_at IS NULL`,
+      `SELECT DISTINCT class_id FROM exam_subjects WHERE exam_id = $1`,
       [examId],
     );
     if (!classRows.length) throw AppException.badRequest('No classes configured for this exam', 'NO_CLASSES');
@@ -293,7 +293,7 @@ export class ExamHallsService {
   async listInvigilators(schoolId: number, examId: number) {
     return this.dataSource.query(
       `SELECT i.id, i.exam_id, i.hall_id, h.name as hall_name,
-              i.teacher_user_id, u.name as teacher_name, u.phone as teacher_phone,
+              i.teacher_user_id, u.name as teacher_name, u.mobile as teacher_phone,
               i.exam_date, i.session
        FROM exam_invigilators i
        JOIN exam_halls h ON h.id = i.hall_id
@@ -377,7 +377,7 @@ export class ExamHallsService {
       `SELECT es.id, es.exam_date, es.max_marks, es.pass_marks, s.name as subject_name, s.code as subject_code
        FROM exam_subjects es
        JOIN subjects s ON s.id = es.subject_id
-       WHERE es.exam_id = $1 AND es.class_id = $2 AND es.deleted_at IS NULL
+       WHERE es.exam_id = $1 AND es.class_id = $2
        ORDER BY es.exam_date ASC NULLS LAST, s.name ASC`,
       [examId, student.class_id],
     );

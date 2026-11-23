@@ -40,6 +40,7 @@ import { CrewModule } from './modules/crew/crew.module';
 import { StaffAttendanceModule } from './modules/staff-attendance/staff-attendance.module';
 import { StaffLeaveModule } from './modules/staff-leave/staff-leave.module';
 import { TimetableModule } from './modules/timetable/timetable.module';
+import { AcademicsModule } from './modules/academics/academics.module';
 import { SubstitutesModule } from './modules/substitutes/substitutes.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { FeesModule } from './modules/fees/fees.module';
@@ -77,6 +78,7 @@ import { GrievancesModule } from './modules/grievances/grievances.module';
     StaffAttendanceModule,
     StaffLeaveModule,
     TimetableModule,
+    AcademicsModule,
     SubstitutesModule,
     PayrollModule,
     FeesModule,

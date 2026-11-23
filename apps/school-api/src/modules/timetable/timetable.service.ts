@@ -418,6 +418,115 @@ export class TimetableService {
     });
   }
 
+  async autoGenerate(schoolId: number, sectionId: number): Promise<SectionTimetableDto> {
+    const section = await this.section(schoolId, sectionId);
+    const plan = (await this.dataSource.query(
+      `SELECT s.id, s.name, s.code, cs.periods_per_week AS required, ta.teacher_user_id, u.name AS teacher_name
+       FROM class_subjects cs JOIN subjects s ON s.id = cs.subject_id AND s.deleted_at IS NULL
+       LEFT JOIN teacher_assignments ta ON ta.section_id = $1 AND ta.subject_id = s.id AND ta.deleted_at IS NULL
+       LEFT JOIN users u ON u.id = ta.teacher_user_id
+       WHERE cs.class_id = $2 AND cs.academic_year_id = $3
+       ORDER BY cs.periods_per_week DESC, s.name ASC`,
+      [sectionId, section.class_id, section.academic_year_id],
+    )) as {
+      id: number;
+      name: string;
+      code: string;
+      required: number;
+      teacher_user_id: number | null;
+      teacher_name: string | null;
+    }[];
+
+    const periods = await this.periods(schoolId, section.class_id);
+    const teachingPeriods = periods
+      .filter((p) => p.period_no !== null && !p.is_break)
+      .map((p) => p.period_no as number);
+    if (!teachingPeriods.length) {
+      throw AppException.badRequest('No teaching periods defined in bell schedule', 'NO_PERIODS');
+    }
+
+    // Clear existing slots for this section
+    await this.slots.delete({ school_id: schoolId, section_id: sectionId });
+
+    const days = [...SCHOOL_DAYS];
+    const assignedSlots: {
+      day_of_week: number;
+      period_no: number;
+      subject_id: number;
+      teacher_user_id: number | null;
+      room: string | null;
+    }[] = [];
+    const subjectDayCount = new Map<string, number>();
+
+    for (const item of plan) {
+      let needed = Number(item.required ?? 0);
+      if (needed <= 0) continue;
+      const teacherId = item.teacher_user_id ? Number(item.teacher_user_id) : null;
+      const room = section.room ?? null;
+
+      for (let maxPerDay = 1; maxPerDay <= 2 && needed > 0; maxPerDay++) {
+        for (const day of days) {
+          if (needed <= 0) break;
+          const currentDayCount = subjectDayCount.get(`${item.id}-${day}`) ?? 0;
+          if (currentDayCount >= maxPerDay) continue;
+
+          for (const periodNo of teachingPeriods) {
+            if (needed <= 0) break;
+            if (assignedSlots.some((s) => s.day_of_week === day && s.period_no === periodNo)) continue;
+
+            if (teacherId) {
+              const [clash] = await this.dataSource.query(
+                `SELECT 1 FROM timetable_slots t
+                 WHERE t.academic_year_id = $1 AND t.day_of_week = $2 AND t.period_no = $3 AND t.teacher_user_id = $4 AND t.section_id <> $5 LIMIT 1`,
+                [section.academic_year_id, day, periodNo, teacherId, sectionId],
+              );
+              if (clash) continue;
+            }
+
+            if (room) {
+              const [clash] = await this.dataSource.query(
+                `SELECT 1 FROM timetable_slots t
+                 WHERE t.school_id = $1 AND t.academic_year_id = $2 AND t.day_of_week = $3 AND t.period_no = $4
+                   AND LOWER(t.room) = LOWER($5) AND t.section_id <> $6 LIMIT 1`,
+                [schoolId, section.academic_year_id, day, periodNo, room, sectionId],
+              );
+              if (clash) continue;
+            }
+
+            assignedSlots.push({
+              day_of_week: day,
+              period_no: periodNo,
+              subject_id: Number(item.id),
+              teacher_user_id: teacherId,
+              room,
+            });
+            subjectDayCount.set(`${item.id}-${day}`, currentDayCount + 1);
+            needed--;
+            break;
+          }
+        }
+      }
+    }
+
+    if (assignedSlots.length > 0) {
+      const entities = assignedSlots.map((s) =>
+        this.slots.create({
+          school_id: schoolId,
+          academic_year_id: section.academic_year_id,
+          section_id: sectionId,
+          day_of_week: s.day_of_week,
+          period_no: s.period_no,
+          subject_id: s.subject_id,
+          teacher_user_id: s.teacher_user_id,
+          room: s.room,
+        }),
+      );
+      await this.slots.save(entities);
+    }
+
+    return this.sectionGrid(schoolId, sectionId);
+  }
+
   private async section(schoolId: number, sectionId: number): Promise<Section & { class_name: string }> {
     const section = await this.dataSource.getRepository(Section).findOne({
       where: { id: sectionId, school_id: schoolId },

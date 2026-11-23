@@ -188,9 +188,7 @@ export class QuizzesService {
       );
       if (!rows.length) return false;
       const perm = rows[0];
-      const permittedIds: number[] = Array.isArray(perm.permitted_user_ids)
-        ? perm.permitted_user_ids.map(Number)
-        : [];
+      const permittedIds: number[] = Array.isArray(perm.permitted_user_ids) ? perm.permitted_user_ids.map(Number) : [];
 
       if (permittedIds.includes(user.id)) return true;
 
@@ -221,9 +219,7 @@ export class QuizzesService {
       );
       if (rows.length) {
         allowAllTeachers = Boolean(rows[0].allow_all_teachers);
-        permittedUserIds = Array.isArray(rows[0].permitted_user_ids)
-          ? rows[0].permitted_user_ids.map(Number)
-          : [];
+        permittedUserIds = Array.isArray(rows[0].permitted_user_ids) ? rows[0].permitted_user_ids.map(Number) : [];
       }
     } catch (e) {
       this.logger.warn(`Failed to fetch quiz permissions: ${(e as Error).message}`);
@@ -257,11 +253,9 @@ export class QuizzesService {
         [schoolId],
       );
 
-      staffList = staffRows.map((r: any) => {
+      staffList = staffRows.map((r: Record<string, unknown>) => {
         const userId = Number(r.user_id);
-        const hasPermission =
-          permittedUserIds.includes(userId) ||
-          (allowAllTeachers && r.staff_type === 'teaching');
+        const hasPermission = permittedUserIds.includes(userId) || (allowAllTeachers && r.staff_type === 'teaching');
         return {
           staff_id: Number(r.staff_id),
           user_id: userId,
@@ -288,11 +282,7 @@ export class QuizzesService {
     };
   }
 
-  async updateQuizPermissions(
-    schoolId: number,
-    adminUser: AuthUser,
-    dto: UpdateQuizPermissionsDto,
-  ) {
+  async updateQuizPermissions(schoolId: number, adminUser: AuthUser, dto: UpdateQuizPermissionsDto) {
     const isManager =
       adminUser.roles.includes(ROLES.SUPER_ADMIN) ||
       adminUser.roles.includes(ROLES.ADMIN) ||
@@ -833,7 +823,7 @@ export class QuizzesService {
     sub: QuizSubmission,
   ): Promise<void> {
     const rows: { user_id: number; student_name: string }[] = await this.dataSource.query(
-      `SELECT DISTINCT g.user_id, s.full_name AS student_name FROM guardians g
+      `SELECT DISTINCT g.user_id, TRIM(CONCAT(s.first_name, ' ', COALESCE(s.last_name, ''))) AS student_name FROM guardians g
        JOIN student_guardians sg ON sg.guardian_id = g.id
        JOIN students s ON s.id = sg.student_id
        WHERE s.id = $1 AND g.user_id IS NOT NULL`,
@@ -926,10 +916,10 @@ export class QuizzesService {
     if (!quiz) throw AppException.notFound('Quiz not found', 'QUIZ_NOT_FOUND');
 
     const enrolledStudents: { id: number; full_name: string; roll_number: string }[] = await this.dataSource.query(
-      `SELECT s.id, s.full_name, e.roll_number FROM students s
+      `SELECT s.id, TRIM(CONCAT(s.first_name, ' ', COALESCE(s.last_name, ''))) AS full_name, e.roll_no AS roll_number FROM students s
        JOIN student_enrollments e ON e.student_id = s.id
        WHERE e.section_id = $1 AND e.academic_year_id = $2
-       ORDER BY e.roll_number ASC, s.full_name ASC`,
+       ORDER BY e.roll_no ASC, s.first_name ASC`,
       [quiz.section_id, quiz.academic_year_id],
     );
 
@@ -951,6 +941,9 @@ export class QuizzesService {
     let expiredCount = 0;
     let totalScoreSum = 0;
     let highestScore = 0;
+    let lowestScore = Infinity;
+    let passCount = 0;
+    let failCount = 0;
 
     const studentRoster = enrolledStudents.map((st) => {
       const sub = subMap.get(st.id);
@@ -959,8 +952,12 @@ export class QuizzesService {
         status = sub.status;
         if (sub.status === 'completed') {
           completedCount++;
-          totalScoreSum += Number(sub.score);
-          if (Number(sub.score) > highestScore) highestScore = Number(sub.score);
+          const score = Number(sub.score);
+          totalScoreSum += score;
+          if (score > highestScore) highestScore = score;
+          if (score < lowestScore) lowestScore = score;
+          if (sub.passed) passCount++;
+          else failCount++;
         } else if (sub.status === 'in_progress') {
           inProgressCount++;
         }
@@ -982,26 +979,46 @@ export class QuizzesService {
       };
     });
 
+    if (lowestScore === Infinity) lowestScore = 0;
     const averageScore = completedCount > 0 ? Math.round((totalScoreSum / completedCount) * 10) / 10 : 0;
+    const passPercentage = completedCount > 0 ? Math.round((passCount / completedCount) * 100) : 0;
 
     const questionStats = (quiz.questions ?? []).map((q) => {
       const qAnswers = answers.filter((a) => a.question_id === q.id);
       const correctCount = qAnswers.filter((a) => a.is_correct).length;
       const totalAnswers = qAnswers.length;
-      const accuracyPercent = totalAnswers > 0 ? Math.round((correctCount / totalAnswers) * 100) : 0;
+      const successRate = totalAnswers > 0 ? Math.round((correctCount / totalAnswers) * 100) : 0;
 
       return {
         question_id: q.id,
         sequence: q.sequence,
         question_text: q.question_text,
+        marks: Number(q.marks),
         correct_option: q.correct_option,
         total_answers: totalAnswers,
+        total_attempts: totalAnswers,
         correct_count: correctCount,
-        accuracy_percent: accuracyPercent,
+        accuracy_percent: successRate,
+        success_rate: successRate,
       };
     });
 
     return {
+      quiz_id: quiz.id,
+      title: quiz.title,
+      total_students: enrolledStudents.length,
+      total_submissions: subs.length,
+      completed_count: completedCount,
+      expired_count: expiredCount,
+      average_score: averageScore,
+      highest_score: highestScore,
+      lowest_score: lowestScore,
+      pass_count: passCount,
+      fail_count: failCount,
+      pass_percentage: passPercentage,
+      question_stats: questionStats,
+
+      // Nested metadata for any consumers
       quiz: {
         id: quiz.id,
         title: quiz.title,
@@ -1019,8 +1036,8 @@ export class QuizzesService {
         expired_count: expiredCount,
         average_score: averageScore,
         highest_score: highestScore,
-        pass_percent:
-          completedCount > 0 ? Math.round((studentRoster.filter((r) => r.passed).length / completedCount) * 100) : 0,
+        lowest_score: lowestScore,
+        pass_percent: passPercentage,
       },
       students: studentRoster,
       questions: questionStats,
