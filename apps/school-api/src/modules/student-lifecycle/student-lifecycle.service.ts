@@ -32,6 +32,7 @@ import { GroupResult, groupResults, studentResults } from './promotion-results';
 import { tcPdf } from './pdf/tc.pdf';
 import { rupees } from '../payroll/payroll.calc';
 import { yearClause, yearWhere } from '../../shared/year-context';
+import { AlumniRecordsService } from '../alumni/alumni-records.service';
 
 interface CardRow {
   id: number;
@@ -76,6 +77,7 @@ export class StudentLifecycleService {
     private readonly qr: QrTokens,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
+    private readonly alumni: AlumniRecordsService,
   ) {}
 
   async idCard(schoolId: number, studentId: number, requestedDesign?: string): Promise<{ name: string; pdf: Buffer }> {
@@ -160,7 +162,12 @@ export class StudentLifecycleService {
     };
   }
 
-  async exit(schoolId: number, studentId: number, dto: StudentExitDto): Promise<TransferCertificateDto> {
+  async exit(
+    schoolId: number,
+    studentId: number,
+    dto: StudentExitDto,
+    actor: { id: number | null; name: string | null } = { id: null, name: null },
+  ): Promise<TransferCertificateDto> {
     const saved = await this.dataSource.transaction(async (manager) => {
       const student = await manager.findOneBy(Student, { id: studentId, school_id: schoolId });
       if (!student) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
@@ -207,7 +214,7 @@ export class StudentLifecycleService {
       }
       await manager.update(Student, studentId, { status: dto.exit_type, left_on: dto.leaving_date });
       if (enrollment) await manager.update(StudentEnrollment, enrollment.id, { status: 'left', roll_no: null });
-      return manager.save(
+      const certificate = await manager.save(
         manager.create(TransferCertificate, {
           school_id: schoolId,
           student_id: studentId,
@@ -225,6 +232,8 @@ export class StudentLifecycleService {
           section_name: enrollment?.section?.name ?? null,
         }),
       );
+      await this.alumni.convert(manager, schoolId, studentId, actor);
+      return certificate;
     });
     return this.presentCertificate(saved);
   }

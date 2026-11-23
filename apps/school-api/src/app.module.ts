@@ -58,6 +58,7 @@ import { StudentImportModule } from './modules/student-import/student-import.mod
 import { StudentRecordsModule } from './modules/student-records/student-records.module';
 import { UsersModule } from './modules/users/users.module';
 import { GrievancesModule } from './modules/grievances/grievances.module';
+import { AlumniModule } from './modules/alumni/alumni.module';
 
 @Module({
   imports: [
@@ -114,6 +115,7 @@ import { GrievancesModule } from './modules/grievances/grievances.module';
     FilesModule,
     JobsModule,
     GrievancesModule,
+    AlumniModule,
   ],
   providers: [
     { provide: APP_GUARD, useExisting: JwtAuthGuard },

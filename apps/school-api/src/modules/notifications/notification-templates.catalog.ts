@@ -134,6 +134,7 @@ export const TEMPLATES = {
   GRIEVANCE_NEW: 'GRIEVANCE_NEW',
   GRIEVANCE_ASSIGNED: 'GRIEVANCE_ASSIGNED',
   GRIEVANCE_RESOLVED: 'GRIEVANCE_RESOLVED',
+  ALUMNI_SUBMISSION: 'ALUMNI_SUBMISSION',
   ...LIBRARY_TEMPLATES,
   ...INVENTORY_TEMPLATES,
 } as const;
@@ -2510,6 +2511,25 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{student}} {{title}} வகுப்புக்கு வரவில்லை',
         body: '{{date}} அன்று {{title}} வகுப்புக்கு {{student}} வரவில்லை.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.ALUMNI_SUBMISSION,
+    category: 'system',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Alumni details to review',
+        body: '{{name}} {{kind}}. Review it under Alumni → Submissions.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'முன்னாள் மாணவர் விவரங்கள் சரிபார்க்க',
+        body: '{{name}} அனுப்பிய விவரங்களை Alumni → Submissions பகுதியில் சரிபார்க்கவும்.',
         sms_body: null,
       },
     },

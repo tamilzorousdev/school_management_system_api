@@ -8,6 +8,7 @@ import { seedDemoDay4 } from './demo-day4';
 import { seedDemoDay5 } from './demo-day5';
 import { seedDemoDiary } from './demo-diary';
 import { seedDemoAppraisals } from './demo-appraisals';
+import { seedDemoAlumni } from './demo-alumni';
 import { seedDemoExams } from './demo-exams';
 import { seedDemoFeedback } from './demo-feedback';
 import { seedDemoFees } from './demo-fees';
@@ -72,4 +73,5 @@ runSeed('Demo seed', async (manager) => {
   await seedDemoInventory(manager, school);
   await seedDemoCrewAssets(manager, school);
   await seedDemoAppraisals(manager, school);
+  await seedDemoAlumni(manager, school);
 });

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ApiEnvelope, ApiErrors, RequirePermissions, ResponseMessage } from '@app/common';
+import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiPdf, pdfFile } from '../../shared/pdf-response';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS } from '../access/access.catalog';
@@ -84,12 +84,18 @@ export class StudentLifecycleController {
   @ResponseMessage('Student marked as left and TC issued')
   @ApiOperation({
     summary: 'Transfer or withdraw a student and issue a transfer certificate',
-    description: 'Sets the student status, frees the roll number and generates the TC number.',
+    description:
+      'Sets the student status, frees the roll number, generates the TC number and adds the student to alumni with their class history.',
   })
   @ApiEnvelope(TransferCertificateDto, { status: HttpStatus.CREATED, message: 'Student marked as left and TC issued' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
-  exit(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: StudentExitDto) {
-    return this.lifecycle.exit(schoolId, id, dto);
+  exit(
+    @SchoolId() schoolId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: StudentExitDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.lifecycle.exit(schoolId, id, dto, { id: user.id, name: user.name });
   }
 
   @Get('students/:id/tc')
