@@ -269,7 +269,7 @@ export class GallerySettingsService {
     );
     if (Number(usage.albums) > 0) {
       throw AppException.conflict(
-        `${usage.albums} albums use this category. Switch it off instead, or move the albums first.`,
+        `${Number(usage.albums) === 1 ? '1 album uses' : `${usage.albums} albums use`} this category. Switch it off instead, or move the albums first.`,
         'CATEGORY_IN_USE',
       );
     }
