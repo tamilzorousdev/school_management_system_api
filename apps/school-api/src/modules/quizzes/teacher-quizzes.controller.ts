@@ -22,7 +22,7 @@ const teacherSchool = (user: AuthUser): number => {
 @ApiTags(TEACHER_MODULE_TAGS.MODULE_5)
 @ApiBearerAuth()
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
-@RequireRoles(ROLES.TEACHER, ROLES.HOD, ROLES.PRINCIPAL)
+@RequireRoles(ROLES.TEACHER, ROLES.HOD, ROLES.PRINCIPAL, ROLES.ADMIN, ROLES.SUPER_ADMIN)
 @Controller('mobile/teacher/quizzes')
 export class TeacherQuizzesController {
   constructor(private readonly quizzes: QuizzesService) {}
@@ -38,9 +38,17 @@ export class TeacherQuizzesController {
   @ResponseMessage('Quiz draft created')
   @ApiOperation({ summary: 'Create a new quiz draft with question bank' })
   @ApiEnvelope(Object, { status: HttpStatus.CREATED, message: 'Quiz draft created' })
-  @ApiErrors(HttpStatus.BAD_REQUEST)
-  create(@CurrentUser() user: AuthUser, @Body() dto: CreateQuizDto) {
-    return this.quizzes.create(teacherSchool(user), user.id, dto);
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN)
+  async create(@CurrentUser() user: AuthUser, @Body() dto: CreateQuizDto) {
+    const schoolId = teacherSchool(user);
+    const canCreate = await this.quizzes.canUserCreateQuiz(schoolId, user);
+    if (!canCreate) {
+      throw AppException.forbidden(
+        'Online test creation permission is not granted by Admin or Principal',
+        'QUIZ_CREATION_NOT_PERMITTED',
+      );
+    }
+    return this.quizzes.create(schoolId, user.id, dto, user);
   }
 
   @Get(':id')

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { AuthUser } from '@app/common';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AssignmentsService } from '../staff/assignments.service';
@@ -36,6 +37,7 @@ describe('QuizzesService', () => {
     save: jest.fn().mockImplementation((sub) => Promise.resolve({ id: 100, ...sub })),
     findOne: jest.fn(),
     find: jest.fn(),
+    delete: jest.fn().mockResolvedValue({ affected: 1 }),
   };
 
   const mockAnswerRepo = {
@@ -207,6 +209,22 @@ describe('QuizzesService', () => {
       mockAssignments.teacherClasses.mockResolvedValue([{ section_id: 3, is_class_teacher: true, subjects: [] }]);
       mockDataSource.query.mockResolvedValue([{ id: 7 }]);
       await expect(service.create(1, 10, { ...dto, subject_id: 7 })).resolves.toBeDefined();
+    });
+
+    it('does not tie an admin or a permitted non-teaching staff member to their own classes', async () => {
+      const admin = { id: 2, roles: ['ADMIN'], permissions: [] } as unknown as AuthUser;
+      const staff = { id: 3, roles: ['STAFF'], permissions: [] } as unknown as AuthUser;
+      mockDataSource.query.mockResolvedValue([{ id: 7 }]);
+
+      await expect(service.create(1, 2, { ...dto, section_id: 99, subject_id: 7 }, admin)).resolves.toBeDefined();
+      await expect(service.create(1, 3, { ...dto, section_id: 99, subject_id: 7 }, staff)).resolves.toBeDefined();
+    });
+
+    it('still ties a teacher to the classes they teach', async () => {
+      const teacher = { id: 4, roles: ['TEACHER'], permissions: [] } as unknown as AuthUser;
+      await expect(service.create(1, 4, { ...dto, section_id: 99 }, teacher)).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'NOT_YOUR_SECTION' }),
+      });
     });
 
     it('refuses an unknown subject', async () => {
@@ -468,6 +486,102 @@ describe('QuizzesService', () => {
 
       expect(res.score).toBe(0);
       expect(res.auto_submitted).toBe(true);
+    });
+  });
+
+  describe('adminCreate and adminDelete', () => {
+    it('allows admin / principal to create an approved quiz and notify parents', async () => {
+      mockQuizRepo.save.mockImplementation((quiz) => Promise.resolve({ id: 5, ...quiz }));
+      mockQuizRepo.findOne.mockResolvedValue({
+        id: 5,
+        status: 'approved',
+        total_marks: 5,
+        title: 'Mid-term Science Test',
+        questions: [{ id: 20 }],
+      });
+      mockDataSource.query.mockResolvedValue([{ user_id: 101 }]);
+
+      const adminUser = {
+        id: 2,
+        school_id: 1,
+        roles: ['ADMIN'],
+        permissions: ['exams.manage'],
+      } as unknown as AuthUser;
+
+      const dto = {
+        academic_year_id: 1,
+        subject_id: 10,
+        section_id: 20,
+        title: 'Mid-term Science Test',
+        duration_minutes: 45,
+        start_at: OPENS,
+        end_at: CLOSES,
+        questions: [
+          {
+            sequence: 1,
+            question_text: 'What is photosynthesis?',
+            options: [
+              { key: 'A', text: 'Process by which plants make food' },
+              { key: 'B', text: 'Respiration in animals' },
+            ],
+            correct_option: 'A',
+            marks: 5,
+          },
+        ],
+      };
+
+      const result = await service.adminCreate(1, adminUser, dto);
+      expect(result).toBeDefined();
+      expect(result.id).toBe(5);
+      expect(result.status).toBe('approved');
+      expect(mockQuizRepo.save).toHaveBeenCalled();
+    });
+
+    it('allows admin to delete a quiz without removing its records', async () => {
+      mockQuizRepo.findOne.mockResolvedValue({ id: 5, school_id: 1, title: 'Wrong', status: 'approved' });
+      mockDataSource.query.mockResolvedValue([]);
+      await service.adminDelete(1, 5);
+      expect(mockQuizRepo.softDelete).toHaveBeenCalledWith(5);
+    });
+  });
+
+  describe('quiz permissions', () => {
+    it('always allows admin and principal to create quizzes', async () => {
+      const admin = { id: 1, roles: ['ADMIN'], permissions: [] } as unknown as AuthUser;
+      const principal = { id: 2, roles: ['PRINCIPAL'], permissions: [] } as unknown as AuthUser;
+      expect(await service.canUserCreateQuiz(1, admin)).toBe(true);
+      expect(await service.canUserCreateQuiz(1, principal)).toBe(true);
+    });
+
+    it('allows staff in permitted_user_ids to create quizzes', async () => {
+      mockDataSource.query.mockResolvedValueOnce([{ allow_all_teachers: false, permitted_user_ids: [15, 20] }]);
+      const permittedStaff = { id: 20, roles: ['STAFF'], permissions: [] } as unknown as AuthUser;
+      expect(await service.canUserCreateQuiz(1, permittedStaff)).toBe(true);
+
+      mockDataSource.query.mockResolvedValueOnce([{ allow_all_teachers: false, permitted_user_ids: [15, 20] }]);
+      const otherStaff = { id: 99, roles: ['STAFF'], permissions: [] } as unknown as AuthUser;
+      expect(await service.canUserCreateQuiz(1, otherStaff)).toBe(false);
+    });
+
+    it('allows all teachers when allow_all_teachers is true', async () => {
+      mockDataSource.query.mockResolvedValueOnce([{ allow_all_teachers: true, permitted_user_ids: [] }]);
+      const teacher = { id: 45, roles: ['TEACHER'], permissions: [] } as unknown as AuthUser;
+      expect(await service.canUserCreateQuiz(1, teacher)).toBe(true);
+    });
+
+    it('updates quiz permissions when requested by admin', async () => {
+      mockDataSource.query
+        .mockResolvedValueOnce([]) // insert query
+        .mockResolvedValueOnce([{ allow_all_teachers: true, permitted_user_ids: [10] }]) // fetch perm
+        .mockResolvedValueOnce([]); // fetch staff
+      const admin = { id: 1, roles: ['ADMIN'], permissions: ['exams.manage'] } as unknown as AuthUser;
+
+      const res = await service.updateQuizPermissions(1, admin, {
+        allow_all_teachers: true,
+        permitted_user_ids: [10],
+      });
+      expect(res.allow_all_teachers).toBe(true);
+      expect(mockDataSource.query).toHaveBeenCalled();
     });
   });
 });

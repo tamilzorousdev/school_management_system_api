@@ -124,6 +124,16 @@ export const TEMPLATES = {
   SIGNATURE_SET_BY_SCHOOL: 'SIGNATURE_SET_BY_SCHOOL',
   SURVEY_NEW: 'SURVEY_NEW',
   SURVEY_REMINDER: 'SURVEY_REMINDER',
+  APPRAISAL_SELF_OPEN: 'APPRAISAL_SELF_OPEN',
+  APPRAISAL_SELF_REMINDER: 'APPRAISAL_SELF_REMINDER',
+  APPRAISAL_HOD_REVIEW: 'APPRAISAL_HOD_REVIEW',
+  APPRAISAL_HOD_REMINDER: 'APPRAISAL_HOD_REMINDER',
+  APPRAISAL_PUBLISHED: 'APPRAISAL_PUBLISHED',
+  APPRAISAL_APPEAL_RAISED: 'APPRAISAL_APPEAL_RAISED',
+  APPRAISAL_APPEAL_DECIDED: 'APPRAISAL_APPEAL_DECIDED',
+  GRIEVANCE_NEW: 'GRIEVANCE_NEW',
+  GRIEVANCE_ASSIGNED: 'GRIEVANCE_ASSIGNED',
+  GRIEVANCE_RESOLVED: 'GRIEVANCE_RESOLVED',
   ...LIBRARY_TEMPLATES,
   ...INVENTORY_TEMPLATES,
 } as const;
@@ -178,6 +188,139 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: 'நினைவூட்டல்: {{title}}',
         body: 'இந்தப் படிவம் {{closes}} அன்று மூடப்படும். இன்னும் பதிலளிக்கவில்லை என்றால் பதிலளிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.APPRAISAL_SELF_OPEN,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Self-appraisal open: {{title}}',
+        body: 'Score yourself on each of your KRAs by {{due}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'சுய மதிப்பீடு திறக்கப்பட்டது: {{title}}',
+        body: 'உங்கள் ஒவ்வொரு KRA-க்கும் {{due}} க்குள் உங்களை மதிப்பிடவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.APPRAISAL_SELF_REMINDER,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Reminder: self-appraisal due {{due}}',
+        body: 'Your self-appraisal for {{title}} is not sent yet.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'நினைவூட்டல்: சுய மதிப்பீடு {{due}}',
+        body: '{{title}} க்கான உங்கள் சுய மதிப்பீடு இன்னும் அனுப்பப்படவில்லை.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.APPRAISAL_HOD_REVIEW,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Appraisal to review: {{staff_name}}',
+        body: 'Give your scores for {{staff_name}} ({{title}}) by {{due}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'மதிப்பாய்வு செய்ய வேண்டியது: {{staff_name}}',
+        body: '{{staff_name}} ({{title}}) க்கு {{due}} க்குள் உங்கள் மதிப்பெண்களை வழங்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.APPRAISAL_HOD_REMINDER,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Reminder: {{count}} appraisals to review',
+        body: 'Your team reviews for {{title}} are due {{due}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'நினைவூட்டல்: {{count}} மதிப்பாய்வுகள் நிலுவையில்',
+        body: '{{title}} க்கான உங்கள் குழு மதிப்பாய்வுகள் {{due}} க்குள் முடிக்கப்பட வேண்டும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.APPRAISAL_PUBLISHED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Your appraisal result is ready',
+        body: '{{title}}: {{percent}}% ({{rating}}). Open it to acknowledge or appeal.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உங்கள் மதிப்பீட்டு முடிவு தயார்',
+        body: '{{title}}: {{percent}}% ({{rating}}). ஏற்றுக்கொள்ள அல்லது மேல்முறையீடு செய்ய திறக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.APPRAISAL_APPEAL_RAISED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Appraisal appeal: {{staff_name}}',
+        body: '{{staff_name}} appealed the {{title}} result.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'மதிப்பீட்டு மேல்முறையீடு: {{staff_name}}',
+        body: '{{staff_name}} {{title}} முடிவுக்கு மேல்முறையீடு செய்துள்ளார்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.APPRAISAL_APPEAL_DECIDED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Appeal {{decision}}',
+        body: 'Your appeal on {{title}} was {{decision}}. Final score {{percent}}%.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'மேல்முறையீடு {{decision}}',
+        body: '{{title}} மீதான உங்கள் மேல்முறையீடு {{decision}}. இறுதி மதிப்பெண் {{percent}}%.',
         sms_body: null,
       },
     },
@@ -2367,6 +2510,63 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: '{{student}} {{title}} வகுப்புக்கு வரவில்லை',
         body: '{{date}} அன்று {{title}} வகுப்புக்கு {{student}} வரவில்லை.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GRIEVANCE_NEW,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'New Grievance: {{ticket_no}}',
+        body: '{{complainant}} logged a {{priority}} priority grievance: "{{subject}}".',
+        sms_body: null,
+      },
+      ta: {
+        title: 'புதிய புகார்: {{ticket_no}}',
+        body: '{{complainant}} ஒரு புகாரை பதிவு செய்துள்ளார்: "{{subject}}".',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GRIEVANCE_ASSIGNED,
+    category: 'alert',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Grievance Assigned: {{ticket_no}}',
+        body: 'You have been assigned to investigate grievance "{{subject}}".',
+        sms_body: null,
+      },
+      ta: {
+        title: 'புகார் ஒதுக்கப்பட்டது: {{ticket_no}}',
+        body: 'இந்த புகாரை விசாரிக்க உங்களுக்கு ஒதுக்கப்பட்டுள்ளது: "{{subject}}".',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GRIEVANCE_RESOLVED,
+    category: 'system',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Grievance Resolved: {{ticket_no}}',
+        body: 'Your complaint regarding "{{subject}}" has been resolved.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'புகார் தீர்க்கப்பட்டது: {{ticket_no}}',
+        body: '"{{subject}}" தொடர்பான உங்கள் புகார் தீர்க்கப்பட்டது.',
         sms_body: null,
       },
     },

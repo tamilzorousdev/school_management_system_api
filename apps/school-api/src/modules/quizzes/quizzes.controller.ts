@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS } from '../access/access.catalog';
-import { QuizQueryDto, RejectQuizDto, UpdateQuizDto } from './dto/quiz.dto';
+import { CreateQuizDto, QuizQueryDto, RejectQuizDto, UpdateQuizDto, UpdateQuizPermissionsDto } from './dto/quiz.dto';
 import { QuizzesService } from './quizzes.service';
 
 @ApiTags('Admin · Quizzes')
@@ -20,6 +20,28 @@ export class QuizzesController {
   @ApiEnvelope(Object, { paginated: true })
   list(@SchoolId() schoolId: number, @Query() query: QuizQueryDto) {
     return this.quizzes.listAdminQuizzes(schoolId, query);
+  }
+
+  @Get('permissions')
+  @RequirePermissions(PERMISSIONS.EXAMS_VIEW)
+  @ApiOperation({ summary: 'Get quiz creation permission configuration and staff permission list' })
+  @ApiEnvelope(Object)
+  getPermissions(@SchoolId() schoolId: number, @CurrentUser() user: AuthUser) {
+    return this.quizzes.getQuizPermissions(schoolId, user);
+  }
+
+  @Post('permissions')
+  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @ResponseMessage('Quiz permissions updated')
+  @ApiOperation({ summary: 'Configure online test creation permissions for staff members' })
+  @ApiEnvelope(Object, { message: 'Quiz permissions updated' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN)
+  updatePermissions(
+    @SchoolId() schoolId: number,
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateQuizPermissionsDto,
+  ) {
+    return this.quizzes.updateQuizPermissions(schoolId, user, dto);
   }
 
   @Get(':id')
@@ -87,5 +109,15 @@ export class QuizzesController {
   @ApiErrors(HttpStatus.NOT_FOUND)
   analytics(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
     return this.quizzes.getQuizAnalytics(schoolId, id);
+  }
+
+  @Post()
+  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @ResponseMessage('Online test / quiz created')
+  @ApiOperation({ summary: 'Admin or Principal create a new online test / quiz' })
+  @ApiEnvelope(Object, { status: HttpStatus.CREATED, message: 'Online test / quiz created' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN)
+  create(@SchoolId() schoolId: number, @CurrentUser() user: AuthUser, @Body() dto: CreateQuizDto) {
+    return this.quizzes.adminCreate(schoolId, user, dto);
   }
 }

@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
-import { AppException } from '@app/common';
+import { AppException, AuthUser } from '@app/common';
+import { PERMISSIONS, ROLES } from '../access/access.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AssignmentsService } from '../staff/assignments.service';
 import { TEMPLATES } from '../notifications/notification-templates.catalog';
@@ -11,7 +12,24 @@ import { QuizSubmission } from './entities/quiz-submission.entity';
 import { QuizAnswer } from './entities/quiz-answer.entity';
 import { presentAdminQuiz } from './quiz-admin.present';
 import { answerKeys, isCorrectAnswer, normalizeQuestion } from './quiz-questions.logic';
-import { CreateQuizDto, QuizQueryDto, RejectQuizDto, SubmitQuizDto, UpdateQuizDto } from './dto/quiz.dto';
+import {
+  CreateQuizDto,
+  QuizQueryDto,
+  RejectQuizDto,
+  SubmitQuizDto,
+  UpdateQuizDto,
+  UpdateQuizPermissionsDto,
+} from './dto/quiz.dto';
+
+interface StaffRow {
+  staff_id: number;
+  user_id: number;
+  name: string;
+  employee_no: string | null;
+  designation: string | null;
+  department: string | null;
+  staff_type: string;
+}
 
 const passMarksOf = (quiz: OnlineQuiz): number | null => (quiz.pass_marks === null ? null : Number(quiz.pass_marks));
 
@@ -43,14 +61,14 @@ export class QuizzesService {
     private readonly dataSource: DataSource,
   ) {}
 
-  async create(schoolId: number, teacherUserId: number, dto: CreateQuizDto): Promise<OnlineQuiz> {
+  async create(schoolId: number, teacherUserId: number, dto: CreateQuizDto, actor?: AuthUser): Promise<OnlineQuiz> {
     const start = new Date(dto.start_at);
     const end = new Date(dto.end_at);
     assertSchedule(start, end, dto.duration_minutes, true);
     const normalized = dto.questions.map((q, index) => normalizeQuestion(q, index));
 
     const academicYearId = dto.academic_year_id ?? (await this.currentAcademicYearId(schoolId));
-    await this.assertTeacherCanQuiz(schoolId, teacherUserId, dto.section_id, dto.subject_id);
+    await this.assertTeacherCanQuiz(schoolId, teacherUserId, dto.section_id, dto.subject_id, mustTeachClass(actor));
 
     const totalMarks = dto.questions.reduce((sum, q) => sum + (q.marks ?? 1), 0);
     const passMarks = dto.pass_marks ?? null;
@@ -98,12 +116,14 @@ export class QuizzesService {
     teacherUserId: number,
     sectionId: number,
     subjectId: number,
+    enforceAssignment: boolean,
   ): Promise<void> {
     const subjects: { id: number }[] = await this.dataSource.query(
       `SELECT id FROM subjects WHERE id = $1 AND school_id = $2 AND deleted_at IS NULL`,
       [subjectId, schoolId],
     );
     if (!subjects.length) throw AppException.notFound('Subject not found', 'SUBJECT_NOT_FOUND');
+    if (!enforceAssignment) return;
     const classes = await this.assignments.teacherClasses(schoolId, teacherUserId);
     const mine = classes.find((item) => item.section_id === sectionId);
     if (!mine) throw AppException.forbidden('You do not teach this section', 'NOT_YOUR_SECTION');
@@ -119,6 +139,222 @@ export class QuizzesService {
     );
     if (!rows.length) throw AppException.badRequest('No current academic year is set', 'NO_CURRENT_ACADEMIC_YEAR');
     return Number(rows[0].id);
+  }
+
+  async adminCreate(schoolId: number, adminUser: AuthUser, dto: CreateQuizDto) {
+    const academicYearId = dto.academic_year_id ?? (await this.currentAcademicYearId(schoolId));
+
+    const start = new Date(dto.start_at);
+    const end = new Date(dto.end_at);
+    assertSchedule(start, end, dto.duration_minutes, true);
+    const normalized = dto.questions.map((q, index) => normalizeQuestion(q, index));
+
+    const totalMarks = dto.questions.reduce((sum, q) => sum + (q.marks ?? 1), 0);
+    const passMarks = dto.pass_marks ?? null;
+    assertPassMarks(passMarks, totalMarks);
+
+    let teacherUserId = dto.teacher_user_id;
+    if (!teacherUserId) {
+      try {
+        const [assignment]: { teacher_user_id: number }[] = await this.dataSource.query(
+          `SELECT teacher_user_id FROM teacher_assignments WHERE section_id = $1 AND subject_id = $2 LIMIT 1`,
+          [dto.section_id, dto.subject_id],
+        );
+        teacherUserId = assignment?.teacher_user_id ? Number(assignment.teacher_user_id) : adminUser.id;
+      } catch {
+        teacherUserId = adminUser.id;
+      }
+    }
+
+    const targetStatus = dto.status === 'draft' ? 'draft' : 'approved';
+
+    const quiz = this.quizzes.create({
+      school_id: schoolId,
+      academic_year_id: academicYearId,
+      subject_id: dto.subject_id,
+      section_id: dto.section_id,
+      teacher_user_id: teacherUserId,
+      title: dto.title.trim(),
+      description: dto.description?.trim() ?? null,
+      instructions: dto.instructions?.trim() ?? null,
+      total_marks: totalMarks,
+      pass_marks: passMarks,
+      duration_minutes: dto.duration_minutes,
+      start_at: start,
+      end_at: end,
+      expire_on_exit: dto.expire_on_exit ?? false,
+      require_camera: dto.require_camera ?? false,
+      require_microphone: dto.require_microphone ?? false,
+      status: targetStatus,
+      approved_by_user_id: targetStatus === 'approved' ? adminUser.id : null,
+      approved_at: targetStatus === 'approved' ? new Date() : null,
+    });
+
+    const savedQuiz = await this.quizzes.save(quiz);
+
+    const questionEntities = dto.questions.map((q, idx) =>
+      this.questions.create({
+        quiz_id: savedQuiz.id,
+        sequence: q.sequence ?? idx + 1,
+        question_text: q.question_text.trim(),
+        ...normalized[idx],
+        explanation: q.explanation?.trim() ?? null,
+        marks: q.marks ?? 1,
+      }),
+    );
+
+    savedQuiz.questions = await this.questions.save(questionEntities);
+
+    if (targetStatus === 'approved') {
+      this.notifyParentsOfQuiz(schoolId, savedQuiz).catch((err) =>
+        this.logger.warn(`Failed to notify parents of quiz ${savedQuiz.id}: ${err.message}`),
+      );
+    }
+
+    return this.getAdminQuiz(schoolId, savedQuiz.id);
+  }
+
+  async canUserCreateQuiz(schoolId: number, user: AuthUser): Promise<boolean> {
+    if (
+      user.roles.includes(ROLES.SUPER_ADMIN) ||
+      user.roles.includes(ROLES.ADMIN) ||
+      user.roles.includes(ROLES.PRINCIPAL) ||
+      user.permissions.includes(PERMISSIONS.EXAMS_MANAGE)
+    ) {
+      return true;
+    }
+
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT allow_all_teachers, permitted_user_ids FROM quiz_permissions WHERE school_id = $1`,
+        [schoolId],
+      );
+      if (!rows.length) return false;
+      const perm = rows[0];
+      const permittedIds: number[] = Array.isArray(perm.permitted_user_ids) ? perm.permitted_user_ids.map(Number) : [];
+
+      if (permittedIds.includes(user.id)) return true;
+
+      if (perm.allow_all_teachers && (user.roles.includes(ROLES.TEACHER) || user.roles.includes(ROLES.HOD))) {
+        return true;
+      }
+    } catch (e) {
+      this.logger.warn(`Failed to check quiz permission: ${(e as Error).message}`);
+    }
+
+    return false;
+  }
+
+  async getQuizPermissions(schoolId: number, user: AuthUser) {
+    const isManager =
+      user.roles.includes(ROLES.SUPER_ADMIN) ||
+      user.roles.includes(ROLES.ADMIN) ||
+      user.roles.includes(ROLES.PRINCIPAL) ||
+      user.permissions.includes(PERMISSIONS.EXAMS_MANAGE);
+
+    let allowAllTeachers = false;
+    let permittedUserIds: number[] = [];
+
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT allow_all_teachers, permitted_user_ids FROM quiz_permissions WHERE school_id = $1`,
+        [schoolId],
+      );
+      if (rows.length) {
+        allowAllTeachers = Boolean(rows[0].allow_all_teachers);
+        permittedUserIds = Array.isArray(rows[0].permitted_user_ids) ? rows[0].permitted_user_ids.map(Number) : [];
+      }
+    } catch (e) {
+      this.logger.warn(`Failed to fetch quiz permissions: ${(e as Error).message}`);
+    }
+
+    let staffList: Array<{
+      staff_id: number;
+      user_id: number;
+      name: string;
+      employee_no: string;
+      designation: string;
+      department: string | null;
+      staff_type: string;
+      has_permission: boolean;
+    }> = [];
+
+    try {
+      const staffRows = await this.dataSource.query(
+        `SELECT 
+           s.id as staff_id,
+           s.user_id,
+           s.employee_no,
+           s.designation,
+           s.department,
+           s.staff_type,
+           u.name
+         FROM staff s
+         JOIN users u ON u.id = s.user_id
+         WHERE s.school_id = $1 AND s.deleted_at IS NULL
+         ORDER BY u.name ASC`,
+        [schoolId],
+      );
+
+      staffList = staffRows.map((r: StaffRow) => {
+        const userId = Number(r.user_id);
+        const hasPermission = permittedUserIds.includes(userId) || (allowAllTeachers && r.staff_type === 'teaching');
+        return {
+          staff_id: Number(r.staff_id),
+          user_id: userId,
+          name: String(r.name),
+          employee_no: String(r.employee_no ?? ''),
+          designation: String(r.designation ?? ''),
+          department: r.department ? String(r.department) : null,
+          staff_type: String(r.staff_type),
+          has_permission: hasPermission,
+        };
+      });
+    } catch (e) {
+      this.logger.warn(`Failed to fetch staff list for quiz permissions: ${(e as Error).message}`);
+    }
+
+    const canCreate = await this.canUserCreateQuiz(schoolId, user);
+
+    return {
+      can_manage: isManager,
+      can_create: canCreate,
+      allow_all_teachers: allowAllTeachers,
+      permitted_user_ids: permittedUserIds,
+      staff: staffList,
+    };
+  }
+
+  async updateQuizPermissions(schoolId: number, adminUser: AuthUser, dto: UpdateQuizPermissionsDto) {
+    const isManager =
+      adminUser.roles.includes(ROLES.SUPER_ADMIN) ||
+      adminUser.roles.includes(ROLES.ADMIN) ||
+      adminUser.roles.includes(ROLES.PRINCIPAL) ||
+      adminUser.permissions.includes(PERMISSIONS.EXAMS_MANAGE);
+
+    if (!isManager) {
+      throw AppException.forbidden(
+        'Only Admin or Principal can configure quiz creation permissions',
+        'QUIZ_PERMISSIONS_FORBIDDEN',
+      );
+    }
+
+    const allowAll = dto.allow_all_teachers ?? false;
+    const permittedIds = dto.permitted_user_ids ?? [];
+
+    await this.dataSource.query(
+      `INSERT INTO quiz_permissions (school_id, allow_all_teachers, permitted_user_ids, updated_by, updated_at)
+       VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (school_id)
+       DO UPDATE SET
+         allow_all_teachers = EXCLUDED.allow_all_teachers,
+         permitted_user_ids = EXCLUDED.permitted_user_ids,
+         updated_by = EXCLUDED.updated_by,
+         updated_at = now()`,
+      [schoolId, allowAll, permittedIds, adminUser.id],
+    );
+
+    return this.getQuizPermissions(schoolId, adminUser);
   }
 
   async listTeacherQuizzes(
@@ -927,6 +1163,21 @@ export class QuizzesService {
       questions: questionStats,
     };
   }
+}
+
+function isManager(user: AuthUser): boolean {
+  return (
+    user.roles.includes(ROLES.SUPER_ADMIN) ||
+    user.roles.includes(ROLES.ADMIN) ||
+    user.roles.includes(ROLES.PRINCIPAL) ||
+    user.permissions.includes(PERMISSIONS.EXAMS_MANAGE)
+  );
+}
+
+function mustTeachClass(actor?: AuthUser): boolean {
+  if (!actor) return true;
+  if (isManager(actor)) return false;
+  return actor.roles.includes(ROLES.TEACHER) || actor.roles.includes(ROLES.HOD);
 }
 
 function isFinished(status: string): boolean {
