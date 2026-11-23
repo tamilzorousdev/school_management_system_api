@@ -90,6 +90,13 @@ describe('permissions', () => {
     expect(rolePermissions(role('AO'))).not.toContain(PERMISSIONS.SCHOOLS_MANAGE);
   });
 
+  it('lets the AO see alumni while the principal and admin also manage them', () => {
+    expect(rolePermissions(role('AO'))).toContain(PERMISSIONS.ALUMNI_VIEW);
+    expect(rolePermissions(role('AO'))).not.toContain(PERMISSIONS.ALUMNI_MANAGE);
+    expect(rolePermissions(role('PRINCIPAL'))).toContain(PERMISSIONS.ALUMNI_MANAGE);
+    expect(rolePermissions(role('ADMIN'))).toContain(PERMISSIONS.ALUMNI_MANAGE);
+  });
+
   it('keeps salaries, user roles and setup away from the AO', () => {
     const ao = rolePermissions(role('AO'));
     for (const code of [
@@ -230,5 +237,35 @@ describe('role conflicts', () => {
     expect(roleConflict(['TEACHER', 'PARENT'])).toBeNull();
     expect(roleConflict(['DRIVER', 'PARENT'])).toBeNull();
     expect(roleConflict(['DRIVER', 'ATTENDANT'])).toBeNull();
+  });
+});
+
+describe('StudentsService alumni status', () => {
+  const build = (status: string) => {
+    const repo = {
+      findOneBy: jest.fn().mockResolvedValue({ id: 5, school_id: 1, status }),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new StudentsService(
+      repo as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { linkFor: () => null } as never,
+      {} as never,
+      { timeZone: 'Asia/Kolkata' } as AppConfig,
+    );
+    return { service, repo };
+  };
+  const result = (promise: Promise<unknown>) =>
+    promise.then(
+      () => 'ok',
+      (error: AppException) => (error.getResponse() as { code: string }).code,
+    );
+
+  it('refuses to make a student an alumnus by editing the status', async () => {
+    const { service, repo } = build('active');
+    expect(await result(service.update(1, 5, { status: 'alumni' }))).toBe('ALUMNI_STATUS_MANAGED');
+    expect(repo.update).not.toHaveBeenCalled();
   });
 });

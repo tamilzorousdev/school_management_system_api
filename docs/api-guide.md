@@ -1949,3 +1949,41 @@ Everything is under `/admin/grievances/*` (Swagger tag `Admin · Grievances`). P
 - `POST /admin/grievances/:id/notes`: Post an update or confidential internal note to the investigation log.
 - `POST /admin/grievances/:id/resolve`: Resolve the grievance with final summary and optional notification.
 - `POST /admin/grievances/:id/escalate`: Escalate ticket directly to Principal review with mandatory justification.
+
+## Alumni records (admin web)
+
+Admin endpoints are under `/admin/alumni/*` (Swagger tag `Admin · Alumni`). Permissions: `alumni.view` (list, profile, reports) and `alumni.manage` (edit, update links, approve submissions). Staff never create alumni by hand: students become alumni when they leave. School admin and Principal have both; the AO has `alumni.view`.
+
+**How people become alumni.**
+- **Automatically at year close.** When an academic year stops being current (another year is created as current, or made current), every student in the final class (the class with the highest `grade_level`) whose enrolment is still `studying` passes out:
+  - the student's `status` becomes `alumni` and `left_on` is the year's end date;
+  - the enrolment becomes `completed`;
+  - an alumni record is made (`source: pass_out`, `exit_type: graduated`, batch = year of the end date), with their class history, final percent, grade and result, and the primary guardian's mobile, email and address as starting contact details.
+  - Students marked `detained` in promotion stay. Fee dues do not block pass-out; they stay on the student. Running it twice does nothing extra.
+- **When a TC is issued.** `POST /admin/students/:id/exit` (transferred or withdrawn) also creates the alumni record in the same transaction (`source: converted`), using the TC for exit type, leaving date, TC number and last class, plus class history and results. Students who already had a TC before this module were added once by the migration `AlumniFromTransferCertificates`.
+- **Self-registration:** the public form below, for people who left before the school used this system; staff approve it first.
+- `PATCH /admin/students/:id` with `status: alumni` is refused with `400 ALUMNI_STATUS_MANAGED`. `GET /admin/students/:id` now returns `left_on` and `alumni_id`.
+
+**Endpoints.**
+- `GET /admin/alumni`: paginated list. Filters `batch_year`, `source` (`pass_out`, `converted`, `registered`, `self`), `exit_type` (`graduated`, `transferred`, `withdrawn`), `occupation_status` (`higher_studies`, `employed`, `self_employed`, `seeking`, `other`, `unknown`), `status` (`active`, `inactive`), `reachable` (consent plus a mobile or email), `city`. Search covers name, alumni no, admission no, mobile, email, institution, organisation and city. Sort: `name`, `batch_year` (default), `left_on`, `final_percent`, `alumni_no`, `created_at`.
+- `GET /admin/alumni/insights`: `total`, `active`, `reachable`, `latest_batch`, `pending_submissions`, `by_occupation`, `by_batch` (last six).
+- `GET /admin/alumni/batches`: `[{ batch_year, count }]`, newest first.
+- `GET /admin/alumni/pass-out-preview?academic_year_id=`: the final class, who will pass out when that year closes (with percent and unpaid fees), and how many are detained or already alumni. Defaults to the current year.
+- `GET /admin/alumni/export`: Excel file with the list filters.
+- `GET /admin/alumni/:id`: profile with `academic_history` (rows with `source: system` were copied from school records and are read-only; `manual` rows are editable), `timeline` (every change as `{ field: [before, after] }`) and `pending_submissions`.
+- `PATCH /admin/alumni/:id`: update the profile; every changed field is written to the timeline.
+- `PUT /admin/alumni/:id/academic-history { rows }`: replaces the manual rows.
+- `PATCH /admin/alumni/:id/status { status, note? }`: `inactive` means do not contact.
+- `DELETE /admin/alumni/:id`: soft delete; the student keeps `alumni` status.
+- `POST /admin/alumni/:id/update-link`: returns `{ path, expires_at }`. Prefix `path` with the admin web address and send it to the alumnus. It lasts 14 days, works once, and replaces earlier links.
+- `GET /admin/alumni/submissions?status=&type=`: self-registrations and self-updates. Updates carry `changes` (`[current, submitted]`); registrations carry `possible_matches` (same mobile, or same first name and batch).
+- `POST /admin/alumni/submissions/:id/approve { alumni_id? }`: a registration creates a record (`source: self`), or with `alumni_id` merges its contact and career details into that record; an update applies its changes. `409 SUBMISSION_CLOSED` if already handled.
+- `POST /admin/alumni/submissions/:id/reject { note }`.
+
+**Public endpoints (no sign-in, Swagger tag `Public · Alumni`).**
+- `GET /public/alumni/schools/:code`: school name and logo for the form header.
+- `POST /public/alumni/schools/:code/register`: `first_name`, `batch_year` and a `mobile` or `email` are required, plus optional identity, contact and career fields. Responds with `{ id }`.
+- `GET /public/alumni/update/:token`: the alumnus's contact and career details.
+- `POST /public/alumni/update/:token`: sends changed contact and career details for approval and uses up the link. `400 NO_CHANGES` if nothing changed.
+- Only contact and career fields can be changed this way; staff notes, results and history cannot. Unknown fields are refused. Limits: three pending submissions per mobile (`409 SUBMISSION_PENDING`) and 50 public submissions per school per hour (`429 TOO_MANY_SUBMISSIONS`). Expired or used links give `404 LINK_INVALID`.
+- Admins and the Principal get an `ALUMNI_SUBMISSION` notification for each new submission.

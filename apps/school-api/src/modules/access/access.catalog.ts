@@ -74,6 +74,8 @@ export const PERMISSIONS = {
   GRIEVANCES_VIEW: 'grievances.view',
   GRIEVANCES_MANAGE: 'grievances.manage',
   GRIEVANCES_RESOLVE: 'grievances.resolve',
+  ALUMNI_VIEW: 'alumni.view',
+  ALUMNI_MANAGE: 'alumni.manage',
 } as const;
 
 export interface PermissionDefinition {
@@ -91,6 +93,12 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { code: PERMISSIONS.PLATFORM_SCHOOLS, name: 'Create schools and switch between them', group: 'Platform' },
   { code: PERMISSIONS.STUDENTS_VIEW, name: 'View students, parents and guardians', group: 'Students' },
   { code: PERMISSIONS.STUDENTS_MANAGE, name: 'Edit students, guardians, classes and roll numbers', group: 'Students' },
+  { code: PERMISSIONS.ALUMNI_VIEW, name: 'View alumni records, batches and reports', group: 'Students' },
+  {
+    code: PERMISSIONS.ALUMNI_MANAGE,
+    name: 'Register and update alumni, and approve alumni self-service submissions',
+    group: 'Students',
+  },
   { code: PERMISSIONS.ADMISSIONS_MANAGE, name: 'Take applications, approve, reject and enrol', group: 'Students' },
   { code: PERMISSIONS.STAFF_VIEW, name: 'View staff, teacher profiles and assignments', group: 'Staff' },
   { code: PERMISSIONS.STAFF_MANAGE, name: 'Add and edit staff, verify documents, assign teachers', group: 'Staff' },
@@ -374,6 +382,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GRIEVANCES_VIEW,
       PERMISSIONS.GRIEVANCES_MANAGE,
       PERMISSIONS.GRIEVANCES_RESOLVE,
+      PERMISSIONS.ALUMNI_VIEW,
+      PERMISSIONS.ALUMNI_MANAGE,
     ],
   },
   {
@@ -430,6 +440,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GRIEVANCES_VIEW,
       PERMISSIONS.GRIEVANCES_MANAGE,
       PERMISSIONS.GRIEVANCES_RESOLVE,
+      PERMISSIONS.ALUMNI_VIEW,
     ],
   },
   {

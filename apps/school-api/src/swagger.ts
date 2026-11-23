@@ -196,6 +196,11 @@ const TAGS: [string, string][] = [
   ['Admin · Meetings', 'Teacher and parent video meetings (Agora, booked in the app): who with whom, status, call log'],
   ['Admin · Fleet', 'Live bus status and positions, read from the Telematics service'],
   ['Admin · Grievances', 'Complaint and grievance submission, assignment, tracking, SLA countdown, and resolution'],
+  [
+    'Admin · Alumni',
+    'Alumni records: automatic pass-out at year close, conversion of students who left, registration, profiles, academic history, reports and self-service approvals',
+  ],
+  ['Public · Alumni', 'Alumni self-registration form and personal update links (no sign-in)'],
   ['Health', 'Service status'],
 ];
 
