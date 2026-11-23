@@ -8,6 +8,7 @@ import { DatabaseModule } from './database/database.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EmergencyModule } from './modules/emergency/emergency.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
+import { AppraisalsModule } from './modules/appraisals/appraisals.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { PerformanceModule } from './modules/performance/performance.module';
 import { AccessModule } from './modules/access/access.module';
@@ -55,6 +56,7 @@ import { StudentLifecycleModule } from './modules/student-lifecycle/student-life
 import { StudentImportModule } from './modules/student-import/student-import.module';
 import { StudentRecordsModule } from './modules/student-records/student-records.module';
 import { UsersModule } from './modules/users/users.module';
+import { GrievancesModule } from './modules/grievances/grievances.module';
 
 @Module({
   imports: [
@@ -90,6 +92,7 @@ import { UsersModule } from './modules/users/users.module';
     FeedbackModule,
     EmergencyModule,
     SurveysModule,
+    AppraisalsModule,
     AchievementsModule,
     AppBannersModule,
     MeetingsModule,
@@ -108,6 +111,7 @@ import { UsersModule } from './modules/users/users.module';
     NotificationsModule,
     FilesModule,
     JobsModule,
+    GrievancesModule,
   ],
   providers: [
     { provide: APP_GUARD, useExisting: JwtAuthGuard },

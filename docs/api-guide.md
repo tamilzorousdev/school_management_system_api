@@ -1881,6 +1881,51 @@ Everything is under `/admin/inventory/*` (Swagger tag `Admin · Inventory`). Per
 
 `GET /me/payslips` lists the signed-in staff member's payslips for months the office has finalised (paginated, newest first): `month`, `month_label`, `gross`, `total_deductions`, `net`, `paid_days`, `lop_days` and each earning and deduction. `GET /me/payslips/{id}/pdf` downloads the PDF (`Content-Disposition: attachment`). A `PAYSLIP_READY` push arrives when a month is finalised.
 
+## Staff Performance Reviews & Appraisals (Module 3.3)
+
+The school appraises staff once (or more) a year in **cycles**. Staff are placed in **appraisal groups** (teams) for the academic year; each group has its **own KRA set** (Key Result Areas, weights adding up to 100). Flow: the office opens a cycle → each person scores themselves in the Staff app → the **HOD** of their department scores → the **Principal** gives the final score and publishes → the person acknowledges or appeals.
+
+Permissions: `appraisals.view` (see everything), `appraisals.configure` (groups, KRAs, cycles), `appraisals.finalize` (final score, publish, appeals). Principal: all three; AO: view + configure; Admin: all. The Staff app routes are `/me/*` and work for every staff member (office staff too).
+
+**Groups.** `rules` = `{ staff_types: ['teaching'|'non_teaching'], departments: [], designations: [], roles: ['TEACHER', 'HOD', …] }`: every kind that has values must match; within a kind any value matches (case-insensitive). People can also be **included** or **excluded** by hand. A person goes to the group they are included in, else the first matching group by `sort_order`, else the `is_default` group (the catch-all, which needs no rules). `GET …/members` shows who is in the group today and who also matches it but sits in another group.
+
+**KRAs.** `{ code, title, description?, category, weightage_percent, max_score (2–10, default 5), scoring_mode: manual|auto, auto_metric?, auto_target? }`. Auto KRAs are scored from school data of the academic year: `attendance_percent` (staff check-in), `exam_pass_percent` (published exams of the classes and subjects taught), `parent_rating` (average stars, Parent app), `parent_good_behaviour_percent`, `homework_count` (published diary homework), `driver_rating`. Auto score = `min(max_score, value ÷ auto_target × max_score)`; the default target is 100 for percentages, 5 for ratings and 60 for homework. When there is no data the person scores it by hand.
+
+**Percent and rating.** KRA % = score ÷ max_score × 100; overall % = Σ KRA % × weight ÷ 100 — computed on the server for self, HOD and final. Rating on the final %: ≥92 `outstanding`, ≥76 `exceeds_expectations`, ≥60 `meets_expectations`, ≥40 `needs_improvement`, else `unsatisfactory`. `suggested_increment` comes from the cycle's `increment_bands`; the Principal sets `increment_percent`. Recommendation defaults to `pip` for the two lowest ratings, else `increment`.
+
+**Steps (`stage`).** `self_pending` → `hod_pending` (skipped when the department has no HOD, or the person is an HOD or the Principal) → `principal_pending` → `published` → `completed` (acknowledged) or `appealed` → `completed` (appeal decided). At `self_due_at` the reviews still at `self_pending` move on with `self_missed = true`. Reminders: staff 24 h before `self_due_at`, HODs 24 h before `hod_due_at` (or on demand with `/remind`). Push templates: `APPRAISAL_SELF_OPEN`, `APPRAISAL_SELF_REMINDER`, `APPRAISAL_HOD_REVIEW`, `APPRAISAL_HOD_REMINDER`, `APPRAISAL_PUBLISHED`, `APPRAISAL_APPEAL_RAISED` (Principal), `APPRAISAL_APPEAL_DECIDED`; `data.appraisal_id` opens the appraisal (`category: approval`).
+
+### Admin web
+| Call | What it does |
+|---|---|
+| `GET /admin/appraisal-groups` | Groups of the year being viewed with their KRAs, `member_count`, `weight_total` |
+| `POST /admin/appraisal-groups` `{ name, description?, rules?, is_default?, sort_order?, starter_kras?: teaching\|staff\|none }` | New group in the current year (409 `GROUP_NAME_TAKEN`) |
+| `PATCH /admin/appraisal-groups/{id}`, `DELETE …/{id}` | Edit; delete is refused while a cycle that is not closed uses it (409 `GROUP_IN_USE`) |
+| `GET /admin/appraisal-groups/{id}/members`, `PUT …/members` `{ include_staff_ids, exclude_staff_ids }` | Who is in the group; people always in / never in |
+| `PUT /admin/appraisal-groups/{id}/kras` `{ kras: [...] }` | Replace the KRA set; 400 when weights do not add up to 100, a code repeats or an auto KRA has no metric. Open appraisals keep the KRAs they started with |
+| `POST /admin/appraisal-groups/copy-year` `{ from_academic_year_id, to_academic_year_id }` | Copy groups, people and KRAs to another year (same names skipped; 409 `YEAR_NOT_WRITABLE`) |
+| `GET /admin/appraisal-cycles`, `POST`, `GET/PATCH/DELETE …/{id}` | Cycles `{ title, description?, group_ids, self_opens_at?, self_due_at, hod_due_at, final_due_at, appeal_days?, increment_bands? }`; edits only while draft/scheduled (409 `CYCLE_LOCKED`) |
+| `POST …/{id}/open` | Opens now (or schedules for `self_opens_at`): one appraisal per person with the KRAs of their group and the HOD of their department. 409 `GROUP_KRAS_INCOMPLETE`, `CYCLE_NOT_DRAFT`; 400 `NO_RECIPIENTS` |
+| `POST …/{id}/close`, `…/extend` `{ self_due_at?, hod_due_at?, final_due_at? }`, `…/remind` | Close (staff and HODs can no longer change scores), move deadlines later, remind |
+| `GET …/{id}/insights`, `GET …/{id}/export` | Counts per step, average final %, ratings; Excel (summary + KRA scores) |
+| `GET /admin/appraisals?cycle_id=&group_id=&stage=&rating=&search=&sort=name\|final_percent\|stage\|created_at` | Appraisals of the year being viewed |
+| `GET /admin/appraisals/{id}` | Self, HOD, auto and final score per KRA, evidence (signed links), appeals |
+| `GET /admin/appraisals/staff/{staffId}/dossier?academic_year_id=` | Facts for the review: attendance, classes with pass %, homework, parent and driver ratings |
+| `PUT /admin/appraisals/{id}/final` `{ scores?: [{ kra_id, score, override_reason? }], recommendation?, increment_percent?, strengths?, improvements?, goals?, principal_remarks? }` | Principal step; changing a proposed score (HOD, else auto, else self) needs `override_reason` |
+| `POST /admin/appraisals/{id}/publish`, `POST /admin/appraisals/publish` `{ ids }` | Publish one or many (missing final scores take the proposed score) |
+| `GET /admin/appraisals/appeals?status=`, `POST /admin/appraisals/appeals/{id}/decide` `{ decision: accept\|reject, note, scores?, increment_percent? }` | Appeals (409 `APPEAL_DECIDED`) |
+
+### Staff app (`/me`)
+| Call | What it does |
+|---|---|
+| `GET /me/appraisals` | My appraisals, newest first. `hod_percent`, `final_percent`, `rating` stay empty until published |
+| `GET /me/appraisals/{id}` | My KRAs (weights, max score, auto value), my self scores and comments, evidence; the result once published; `appeal_until` |
+| `PUT /me/appraisals/{id}/self`, `POST …/self/submit` `{ scores: [{ kra_id, score?, comment? }], expected_increment_percent?, hike_justification?, file_ids? }` | Save / send my self-appraisal (every manual KRA needs a score; errors on `scores.<kra_id>`). 409 `APPRAISAL_NOT_IN_STAGE`, `CYCLE_NOT_OPEN` |
+| `POST /me/appraisals/{id}/acknowledge` `{ remarks? }`, `POST …/appeal` `{ reason, requested_increment? }` | Accept or appeal the published result (409 `APPEAL_WINDOW_CLOSED`) |
+| `GET /me/appraisal-reviews?state=pending\|done`, `GET/PUT …/{id}`, `POST …/{id}/submit` `{ scores, remarks? }` | HOD: reviews of my department (403 `NOT_YOUR_REVIEW`) |
+
+Reviews made with the earlier appraisal screens were moved into a closed "Earlier reviews" cycle (`is_legacy: true`); the earlier KRAs became an "All staff" group. The routes `admin/staff-appraisals/*`, `admin/staff-kra-configs/*` and `mobile/teacher/appraisals/*` are gone.
+
 ## Driver app
 
 Driver and Attendant roles. `GET /mobile/driver/duty` returns my bus and its routes, each with stops in travel order (`lat`, `lng`, `geofence_radius_m`, pickup and drop times) and the students at each stop (`full_name`, `class_section`, `mode` both/pickup/drop, `passenger_ref`, and `for`: `pickup` when they only get on here, `drop` when they only get off here, `both` otherwise). A student with a separate evening stop appears at both stops. `passenger_ref` is the opaque id the bus tracking system uses; it is never the student id. Sign in as 9000000007 (driver) or 9000000008 (attendant).
@@ -1890,3 +1935,17 @@ Driver and Attendant roles. `GET /mobile/driver/duty` returns my bus and its rou
 - Upload: `POST /files` as `multipart/form-data` with field `file` and optional `purpose` (snake_case). Images, PDF, Word, Excel and CSV; 10 MB by default.
 - The response has `url` and, for images, `thumbnail_url`. Both are signed links that work without a token until `url_expires_at` (1 hour). After that, call `GET /files/{id}` for fresh links.
 - Other records store the file `id`, never the URL.
+
+## Complaints and grievances (admin web)
+
+Everything is under `/admin/grievances/*` (Swagger tag `Admin · Grievances`). Permissions: `grievances.view`, `grievances.manage` (create, assign, change status, add notes) and `grievances.resolve` (resolve or escalate). Roles: Super Admin, Admin, Principal and AO.
+
+- `GET /admin/grievances`: Paginated list of grievances with filters (`status`, `category`, `priority`, `assigned_to`, `sla_breached`, `search`, `sort`, `order`). Each item includes SLA countdown/breach flags and linked student or bus info.
+- `GET /admin/grievances/insights`: Operational counters (`total_open`, `sla_breached`, `in_progress`, `resolved_this_month`, `avg_resolution_hours`, `by_category`).
+- `GET /admin/grievances/:id`: Detailed dossier including public timeline, attachments, and confidential internal investigation notes.
+- `POST /admin/grievances`: Log a new complaint (walk-in, phone call, or official). Generates sequential ticket number `GRV-YYYY-XXXX` and computes SLA due date.
+- `PATCH /admin/grievances/:id/assign`: Assign or reassign an investigation officer with instructions.
+- `PATCH /admin/grievances/:id/status`: Update workflow status (`submitted`, `acknowledged`, `in_progress`, `action_taken`, `resolved`, `reopened`, `closed`, `escalated`).
+- `POST /admin/grievances/:id/notes`: Post an update or confidential internal note to the investigation log.
+- `POST /admin/grievances/:id/resolve`: Resolve the grievance with final summary and optional notification.
+- `POST /admin/grievances/:id/escalate`: Escalate ticket directly to Principal review with mandatory justification.

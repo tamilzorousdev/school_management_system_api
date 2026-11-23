@@ -49,6 +49,9 @@ export const PERMISSIONS = {
   ANNOUNCEMENTS_MANAGE: 'announcements.manage',
   SURVEYS_VIEW: 'surveys.view',
   SURVEYS_MANAGE: 'surveys.manage',
+  APPRAISALS_VIEW: 'appraisals.view',
+  APPRAISALS_CONFIGURE: 'appraisals.configure',
+  APPRAISALS_FINALIZE: 'appraisals.finalize',
   EVENTS_VIEW: 'events.view',
   EVENTS_MANAGE: 'events.manage',
   CHAT_AUDIT: 'chat.audit',
@@ -68,6 +71,9 @@ export const PERMISSIONS = {
   INVENTORY_STOCK: 'inventory.stock',
   INVENTORY_APPROVE: 'inventory.approve',
   INVENTORY_AUDIT: 'inventory.audit',
+  GRIEVANCES_VIEW: 'grievances.view',
+  GRIEVANCES_MANAGE: 'grievances.manage',
+  GRIEVANCES_RESOLVE: 'grievances.resolve',
 } as const;
 
 export interface PermissionDefinition {
@@ -188,6 +194,21 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     group: 'Communication',
   },
   {
+    code: PERMISSIONS.APPRAISALS_VIEW,
+    name: 'See appraisal groups, KRAs, cycles and every staff appraisal',
+    group: 'Staff',
+  },
+  {
+    code: PERMISSIONS.APPRAISALS_CONFIGURE,
+    name: 'Set up appraisal groups, their KRAs and appraisal cycles for the academic year',
+    group: 'Staff',
+  },
+  {
+    code: PERMISSIONS.APPRAISALS_FINALIZE,
+    name: 'Give the final appraisal score, publish results and decide appeals',
+    group: 'Staff',
+  },
+  {
     code: PERMISSIONS.CHAT_AUDIT,
     name: 'Read teacher and parent chats, see flagged messages and hide them',
     group: 'Communication',
@@ -236,6 +257,21 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     group: 'Inventory',
   },
   { code: PERMISSIONS.INVENTORY_AUDIT, name: 'Run asset verifications and stock counts', group: 'Inventory' },
+  {
+    code: PERMISSIONS.GRIEVANCES_VIEW,
+    name: 'See grievances, complaints, investigation timeline and SLA status',
+    group: 'Communication',
+  },
+  {
+    code: PERMISSIONS.GRIEVANCES_MANAGE,
+    name: 'Log complaints, assign grievance officers, update status and add notes',
+    group: 'Communication',
+  },
+  {
+    code: PERMISSIONS.GRIEVANCES_RESOLVE,
+    name: 'Resolve grievances with final summary or escalate to executive review',
+    group: 'Communication',
+  },
 ];
 
 export const ROLES = {
@@ -297,6 +333,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.SCHOOLS_VIEW,
       PERMISSIONS.STUDENTS_VIEW,
       PERMISSIONS.STAFF_VIEW,
+      PERMISSIONS.APPRAISALS_VIEW,
+      PERMISSIONS.APPRAISALS_CONFIGURE,
+      PERMISSIONS.APPRAISALS_FINALIZE,
       PERMISSIONS.ATTENDANCE_VIEW,
       PERMISSIONS.LEAVE_APPROVE,
       PERMISSIONS.TIMETABLE_VIEW,
@@ -308,6 +347,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.ACCOUNTS_VIEW,
       PERMISSIONS.ACCOUNTS_APPROVE,
       PERMISSIONS.EXAMS_VIEW,
+      PERMISSIONS.EXAMS_MANAGE,
       PERMISSIONS.FEEDBACK_VIEW,
       PERMISSIONS.NOTIFICATIONS_VIEW,
       PERMISSIONS.NOTIFICATIONS_SEND,
@@ -331,6 +371,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GATE_MANAGE,
       PERMISSIONS.INVENTORY_VIEW,
       PERMISSIONS.INVENTORY_APPROVE,
+      PERMISSIONS.GRIEVANCES_VIEW,
+      PERMISSIONS.GRIEVANCES_MANAGE,
+      PERMISSIONS.GRIEVANCES_RESOLVE,
     ],
   },
   {
@@ -346,6 +389,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.ADMISSIONS_MANAGE,
       PERMISSIONS.STAFF_VIEW,
       PERMISSIONS.STAFF_MANAGE,
+      PERMISSIONS.APPRAISALS_VIEW,
+      PERMISSIONS.APPRAISALS_CONFIGURE,
       PERMISSIONS.ATTENDANCE_VIEW,
       PERMISSIONS.ATTENDANCE_MANAGE,
       PERMISSIONS.TIMETABLE_VIEW,
@@ -382,6 +427,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GATE_MANAGE,
       PERMISSIONS.INVENTORY_VIEW,
       PERMISSIONS.INVENTORY_APPROVE,
+      PERMISSIONS.GRIEVANCES_VIEW,
+      PERMISSIONS.GRIEVANCES_MANAGE,
+      PERMISSIONS.GRIEVANCES_RESOLVE,
     ],
   },
   {
