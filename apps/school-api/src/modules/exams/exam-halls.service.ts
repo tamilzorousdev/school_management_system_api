@@ -377,7 +377,7 @@ export class ExamHallsService {
       `SELECT es.id, es.exam_date, es.max_marks, es.pass_marks, s.name as subject_name, s.code as subject_code
        FROM exam_subjects es
        JOIN subjects s ON s.id = es.subject_id
-       WHERE es.exam_id = $1 AND es.class_id = $2 AND es.deleted_at IS NULL
+       WHERE es.exam_id = $1 AND es.class_id = $2
        ORDER BY es.exam_date ASC NULLS LAST, s.name ASC`,
       [examId, student.class_id],
     );

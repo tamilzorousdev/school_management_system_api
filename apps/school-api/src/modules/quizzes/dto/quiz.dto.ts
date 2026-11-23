@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayMinSize,
   IsArray,
   IsBoolean,
@@ -17,6 +18,7 @@ import {
 } from 'class-validator';
 import { ListQueryDto } from '@app/common';
 import { QUIZ_STATUSES, QuizStatus } from '../entities/online-quiz.entity';
+import { MAX_OPTIONS, MIN_OPTIONS, QUESTION_TYPES, QuestionType } from '../quiz-questions.logic';
 
 export class QuizOptionDto {
   @ApiProperty({ example: 'A' })
@@ -39,14 +41,28 @@ export class QuizQuestionInputDto {
   @Length(3, 1000)
   question_text: string;
 
-  @ApiProperty({ type: [QuizOptionDto] })
+  @ApiPropertyOptional({
+    enum: QUESTION_TYPES,
+    example: 'single_choice',
+    description:
+      'single_choice: one right answer. multiple_choice: two or more right answers, all-or-nothing marks. true_false: exactly two options (True/False or Yes/No).',
+  })
+  @IsOptional()
+  @IsIn(QUESTION_TYPES)
+  question_type?: QuestionType;
+
+  @ApiProperty({ type: [QuizOptionDto], description: 'Keys are assigned A, B, C... in order' })
   @IsArray()
-  @ArrayMinSize(2)
+  @ArrayMinSize(MIN_OPTIONS)
+  @ArrayMaxSize(MAX_OPTIONS)
   @ValidateNested({ each: true })
   @Type(() => QuizOptionDto)
   options: QuizOptionDto[];
 
-  @ApiProperty({ example: 'A' })
+  @ApiProperty({
+    example: 'A',
+    description: 'Key of the right option. multiple_choice: keys joined by comma, like A,C',
+  })
   @IsString()
   correct_option: string;
 
@@ -64,7 +80,7 @@ export class QuizQuestionInputDto {
 }
 
 export class CreateQuizDto {
-  @ApiPropertyOptional({ example: 1 })
+  @ApiPropertyOptional({ example: 1, description: 'Defaults to the current academic year' })
   @IsOptional()
   @IsInt()
   academic_year_id?: number;
@@ -97,11 +113,16 @@ export class CreateQuizDto {
   @IsString()
   instructions?: string;
 
-  @ApiPropertyOptional({ example: 5 })
+  @ApiPropertyOptional({
+    example: 5,
+    nullable: true,
+    description:
+      'Minimum marks to pass. Leave out for a quiz without pass or fail: the apps then show only the score and percentage.',
+  })
   @IsOptional()
   @IsNumber()
   @Min(0)
-  pass_marks?: number;
+  pass_marks?: number | null;
 
   @ApiProperty({ example: 30, description: 'Duration in minutes' })
   @IsInt()
@@ -166,7 +187,7 @@ export class UpdateQuizDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  pass_marks?: number;
+  pass_marks?: number | null;
 
   @ApiPropertyOptional({ example: 45 })
   @IsOptional()

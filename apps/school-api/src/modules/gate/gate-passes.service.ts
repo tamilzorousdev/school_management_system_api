@@ -27,6 +27,7 @@ import { GateCoreService, OFFICE_ROLES } from './gate-core.service';
 import {
   blockedMatch,
   codeLocked,
+  collectorError,
   PASS_VERDICT_TEXT,
   passVerdict,
   toMinutes,
@@ -39,14 +40,24 @@ const AFTERNOON_PERIOD = 5;
 const MAX_DAYS_AHEAD = 30;
 
 interface ResolvedPickup {
-  pickup_kind: PickupKind;
+  pickup_kind: PickupKind | null;
   guardian_id: number | null;
   authorised_id: number | null;
-  pickup_name: string;
+  pickup_name: string | null;
   pickup_relation: string | null;
   pickup_mobile: string | null;
   pickup_photo_file_id: number | null;
 }
+
+const NO_PICKUP: ResolvedPickup = {
+  pickup_kind: null,
+  guardian_id: null,
+  authorised_id: null,
+  pickup_name: null,
+  pickup_relation: null,
+  pickup_mobile: null,
+  pickup_photo_file_id: null,
+};
 
 const addMinutes = (time: string, minutes: number) => {
   const total = Math.min(toMinutes(time) + minutes, 23 * 60 + 59);
@@ -351,7 +362,7 @@ export class GatePassesService {
       .where('id = :id AND status = :approved', { id, approved: 'approved' })
       .execute();
     if (!updated.affected) throw AppException.conflict(PASS_VERDICT_TEXT.used, 'PASS_USED');
-    const leaveId = await this.markHalfDay(schoolId, pass, actor);
+    const leaveId = pass.pickup_kind ? await this.markHalfDay(schoolId, pass, actor) : null;
     if (leaveId) await this.passes.update(id, { leave_id: leaveId });
     const view = await this.get(schoolId, id, false);
     await this.core.log(
@@ -359,7 +370,7 @@ export class GatePassesService {
       'released',
       { pass_id: id, student_id: pass.student_id },
       actor.id,
-      `${pass.pass_no} · ${view.student.name}${view.student.class_section ? ` (${view.student.class_section})` : ''} to ${pass.pickup_name}`,
+      `${pass.pass_no} · ${view.student.name}${view.student.class_section ? ` (${view.student.class_section})` : ''} ${pass.pickup_name ? `to ${pass.pickup_name}` : '(visit)'}`,
       dto.method,
     );
     const time = this.core.nowTime();
@@ -369,7 +380,7 @@ export class GatePassesService {
       {
         student: view.student.name,
         time,
-        person: pass.pickup_name,
+        person: pass.pickup_name ?? '',
         relation: pass.pickup_relation ?? '',
         method:
           dto.method === 'manual'
@@ -386,7 +397,7 @@ export class GatePassesService {
         { roles: OFFICE_ROLES, school_id: schoolId },
         {
           student: view.student.name,
-          person: pass.pickup_name,
+          person: pass.pickup_name ?? '',
           time,
           by: actor.name,
           pass_id: id,
@@ -455,7 +466,7 @@ export class GatePassesService {
     const data = {
       student: view.student.name,
       class_section: view.student.class_section ?? '',
-      person: `${view.pickup.name}${view.pickup.relation ? ` (${view.pickup.relation})` : ''}`,
+      person: `${view.pickup!.name}${view.pickup!.relation ? ` (${view.pickup!.relation})` : ''}`,
       reason: dto.reason,
       pass_id: view.id,
     };
@@ -469,7 +480,7 @@ export class GatePassesService {
         'consent_asked',
         { pass_id: view.id, student_id: dto.student_id },
         actor.id,
-        view.pickup.name,
+        view.pickup!.name,
       );
     }
     return view;
@@ -495,7 +506,7 @@ export class GatePassesService {
         return {
           pass_id: pass.id,
           student: view.student,
-          person: view.pickup,
+          person: view.pickup!,
           reason: pass.reason,
           status: pass.consent_status ?? 'waiting',
           code: pass.consent_status === 'approved' && pass.consent_by === user.id ? pass.consent_code : null,
@@ -542,7 +553,7 @@ export class GatePassesService {
     const data = {
       student: view.student.name,
       class_section: view.student.class_section ?? '',
-      person: pass.pickup_name,
+      person: pass.pickup_name ?? '',
       reason: pass.reason,
       pass_id: pass.id,
     };
@@ -730,7 +741,7 @@ export class GatePassesService {
           { user_ids: [Number(row.requested_by)] },
           {
             student: view.student.name,
-            person: view.pickup.name,
+            person: view.pickup?.name ?? '',
             pass_id: view.id,
           },
         );
@@ -758,7 +769,10 @@ export class GatePassesService {
       errors.push({ field: 'until_time', message: 'until_time must be after from_time' });
     }
     if (errors.length) throw AppException.validation(errors);
-    const pickup = await this.resolvePickup(schoolId, studentId, dto.pickup, dto.pass_date);
+    const passType = dto.pass_type ?? 'pickup';
+    const collectorMessage = collectorError(passType, Boolean(dto.pickup));
+    if (collectorMessage) throw AppException.validation([{ field: 'pickup', message: collectorMessage }]);
+    const pickup = dto.pickup ? await this.resolvePickup(schoolId, studentId, dto.pickup, dto.pass_date) : NO_PICKUP;
     await this.core.assertFile(pickup.pickup_photo_file_id, schoolId, 'pickup.photo_file_id');
     const needsConsent = Boolean(extra.is_emergency) && pickup.pickup_kind === 'other';
     const passNo = await this.core.nextNumber(schoolId, 'gate_passes', 'GP', dto.pass_date);
@@ -771,6 +785,7 @@ export class GatePassesService {
         from_time: dto.from_time,
         until_time: until,
         reason: dto.reason,
+        pass_type: passType,
         ...pickup,
         status: approveNow ? 'approved' : 'pending',
         source,

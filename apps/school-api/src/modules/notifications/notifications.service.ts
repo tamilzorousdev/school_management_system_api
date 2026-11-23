@@ -22,6 +22,7 @@ import { Notification } from './entities/notification.entity';
 import { NotificationTemplate } from './entities/notification-template.entity';
 import { JOB_QUEUE, JobQueue } from './queue/job-queue';
 import { CallSide, devicesForSide } from './call-devices';
+import { appOf, NotificationApp, templatesNotFor } from './notification-apps';
 import { PushResult, PushService } from './push.service';
 import { renderTemplate, TemplateData, toStringData } from './template.renderer';
 
@@ -109,6 +110,7 @@ export class NotificationsService implements OnModuleInit {
       user_id: userId,
       channel: 'in_app' as const,
       status: Not('expired' as const),
+      ...this.appFilter(query.app),
       ...(query.unread ? { read_at: IsNull() } : {}),
       ...(query.category ? { category: query.category } : {}),
     };
@@ -121,8 +123,15 @@ export class NotificationsService implements OnModuleInit {
     return paginate([rows.map((row) => this.toMine(row)), total], query.page, query.limit);
   }
 
-  async unreadCount(userId: number): Promise<number> {
-    return this.notifications.count({ where: { user_id: userId, channel: 'in_app', read_at: IsNull() } });
+  async unreadCount(userId: number, app?: NotificationApp): Promise<number> {
+    return this.notifications.count({
+      where: { user_id: userId, channel: 'in_app', read_at: IsNull(), ...this.appFilter(app) },
+    });
+  }
+
+  private appFilter(app?: NotificationApp) {
+    if (!app) return {};
+    return { template_code: Not(In(templatesNotFor(app))) };
   }
 
   async markRead(userId: number, id: number): Promise<MyNotificationDto> {
@@ -409,7 +418,13 @@ export class NotificationsService implements OnModuleInit {
       tokens,
       title: row.title,
       body: row.body,
-      data: { ...row.data, notification_id: String(row.id), category: row.category, template: row.template_code ?? '' },
+      data: {
+        ...row.data,
+        notification_id: String(row.id),
+        category: row.category,
+        template: row.template_code ?? '',
+        ...(row.data.app || !appOf(row.template_code) ? {} : { app: appOf(row.template_code) as string }),
+      },
       userId: row.user_id,
       variables: toStringData({ ...row.data, name: user?.name ?? '' }),
     });

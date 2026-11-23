@@ -63,6 +63,20 @@ export class QuizzesController {
     return this.quizzes.adminUpdate(schoolId, id, dto);
   }
 
+  @Delete(':id')
+  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
+  @ResponseMessage('Quiz deleted')
+  @ApiOperation({
+    summary: 'Delete a quiz in any state, including one that is live',
+    description:
+      'For a quiz created by mistake. The quiz disappears for teachers and parents at once and students can no longer open or submit it. The records are kept (soft delete). `attempts` says how many students had already started it.',
+  })
+  @ApiEnvelope(Object, { message: 'Quiz deleted' })
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  remove(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.quizzes.adminDelete(schoolId, id);
+  }
+
   @Post(':id/approve')
   @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
   @ResponseMessage('Quiz approved and scheduled')
@@ -103,22 +117,7 @@ export class QuizzesController {
   @ApiOperation({ summary: 'Admin or Principal create a new online test / quiz' })
   @ApiEnvelope(Object, { status: HttpStatus.CREATED, message: 'Online test / quiz created' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN)
-  create(
-    @SchoolId() schoolId: number,
-    @CurrentUser() user: AuthUser,
-    @Body() dto: CreateQuizDto,
-  ) {
+  create(@SchoolId() schoolId: number, @CurrentUser() user: AuthUser, @Body() dto: CreateQuizDto) {
     return this.quizzes.adminCreate(schoolId, user, dto);
-  }
-
-  @Delete(':id')
-  @RequirePermissions(PERMISSIONS.EXAMS_MANAGE)
-  @ResponseMessage('Quiz deleted')
-  @ApiOperation({ summary: 'Delete an online quiz' })
-  @ApiEnvelope(undefined, { message: 'Quiz deleted' })
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
-  async delete(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
-    await this.quizzes.adminDelete(schoolId, id);
-    return null;
   }
 }

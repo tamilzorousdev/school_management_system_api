@@ -10,6 +10,9 @@ export type PassSource = (typeof PASS_SOURCES)[number];
 export const PICKUP_KINDS = ['guardian', 'authorised', 'other'] as const;
 export type PickupKind = (typeof PICKUP_KINDS)[number];
 
+export const PASS_TYPES = ['visit', 'pickup'] as const;
+export type PassType = (typeof PASS_TYPES)[number];
+
 export const CHECK_METHODS = ['qr', 'code', 'manual'] as const;
 export type CheckMethod = (typeof CHECK_METHODS)[number];
 
@@ -118,8 +121,11 @@ export class GatePass extends SchoolScopedEntity {
   @Column({ type: 'varchar', length: 300 })
   reason: string;
 
-  @Column({ type: 'varchar', length: 10 })
-  pickup_kind: PickupKind;
+  @Column({ type: 'varchar', length: 10, default: 'pickup' })
+  pass_type: PassType;
+
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  pickup_kind: PickupKind | null;
 
   @Column({ type: 'int', nullable: true })
   guardian_id: number | null;
@@ -127,8 +133,8 @@ export class GatePass extends SchoolScopedEntity {
   @Column({ type: 'int', nullable: true })
   authorised_id: number | null;
 
-  @Column({ type: 'varchar', length: 80 })
-  pickup_name: string;
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  pickup_name: string | null;
 
   @Column({ type: 'varchar', length: 40, nullable: true })
   pickup_relation: string | null;
