@@ -1826,6 +1826,99 @@ Every signed-in app user can call these; a form shows only for the people it was
 
 The push is `category: "announcement"` with `template` `SURVEY_NEW` or `SURVEY_REMINDER`, `survey_id`, and `role` (`parent` or `staff`) when all of the person's rows are for one app; open `GET /me/surveys/{survey_id}`, or the list when the form is per child.
 
+## Gallery
+
+Photo and video albums in three galleries: the **App Media Gallery** (`scope: school`, school-wide), the **Class-wise Gallery** (`scope: class`, one class of one academic year) and the **Section-wise Gallery** (`scope: section`). One set of tables serves the admin web, the Staff app and the Parent app. There is no student login, so students see the gallery through the Parent app.
+
+**Who can do what.** `gallery.view` sees every album, the dashboard and reports. `gallery.manage` creates, edits, publishes and deletes in every gallery and restores from Trash. `gallery.configure` changes settings, retention policies and holds, runs and pauses the cleanup, and deletes for good. `gallery.audit` reads the audit log. School admin has all four, Principal has view, manage and audit, and the AO has view and manage. In the Staff app, a teacher (a role listed in the setting `upload_roles`, default Teacher and HOD) can add albums and upload only for current-year sections they teach or are class teacher of. A teacher manages their own albums, and a class teacher manages every album of their section. Teachers delete their own uploads only when `teachers_delete_own` is on. Albums of past years are read-only for teachers. Every check runs in the API.
+
+**Who sees an album.** `status`: `draft` (the uploader and managers only), `published`, `archived` (hidden from parents, read-only, kept by the archived-albums policy). `visibility`:
+
+| scope | visibility | seen by |
+|---|---|---|
+| school | `everyone` | all staff and all parents |
+| school | `staff` | staff only |
+| school | `parents` | parents only (and gallery admins) |
+| school | `classes` + `class_ids` / `section_ids` | parents of children in those classes or sections in the album's year, and staff |
+| class / section | `everyone` | parents of children in that class or section that year, and its teachers |
+| class / section | `staff` | its teachers only |
+
+A parent sees an album only if a linked active child was in that class or section in the album's academic year, including earlier years. Albums they cannot see return 404 `ALBUM_NOT_FOUND`. When the school switches off the gallery (`is_enabled`) or one gallery (`app_gallery_enabled`, `class_gallery_enabled`, `section_gallery_enabled`), staff and parents get 403 `GALLERY_DISABLED` / `GALLERY_SCOPE_DISABLED`, while admins can still see and tidy it.
+
+**Uploading.** `POST .../albums/{id}/media` as `multipart/form-data` with one or more `files` (at most `max_files_per_upload`, default 20) and optional `checksums` (SHA-256 of each file in order; a mismatch fails that file with `CHECKSUM_MISMATCH`). The API checks the real file content, not the name: JPEG, PNG and WebP photos; MP4, MOV, WebM and 3GP videos, as allowed by `image_formats`, `video_formats` and `videos_enabled`. Photos are auto-rotated, resized to `image_max_side` (2048), compressed at `image_quality` (82) and stripped of all EXIF, GPS, XMP and IPTC metadata. Originals are not kept. Each photo gets a `thumbnail_side` (400) WebP thumbnail. For MP4, MOV and 3GP videos, the length is read from the file (`VIDEO_TOO_LONG` above `max_video_seconds`) and the location and metadata boxes are blanked. The server makes no video frames: the app takes a still and sends it with `PUT .../media/{id}/poster` (field `file`). The same file twice in one album is skipped as a duplicate. When storage is full, uploads fail with `STORAGE_FULL`. The reply always comes back 200 with per-file results, so retry only the failed ones:
+
+```json
+{ "session_id": 31, "total": 3, "accepted": 1, "duplicates": 1, "failed": 1,
+  "items": [{ "index": 0, "name": "IMG_1.jpg", "status": "accepted", "media_id": 88, "error": null, "message": null },
+            { "index": 1, "name": "IMG_1 copy.jpg", "status": "duplicate", "media_id": null, "error": "DUPLICATE_MEDIA", "message": "Already in this album" },
+            { "index": 2, "name": "x.jpg", "status": "failed", "media_id": null, "error": "FILE_TYPE_NOT_ALLOWED", "message": "..." }],
+  "media": [ /* MediaDto of the accepted files */ ] }
+```
+
+Other per-file codes: `FILE_TOO_LARGE`, `VIDEOS_DISABLED`, `IMAGE_INVALID`, `UPLOAD_FAILED`. For a progress bar per file, send one file per request. The server refuses any single file larger than `GALLERY_MAX_UPLOAD_MB` (default 200) with 413.
+
+**Viewing.** Media come with `url` (view), `thumbnail_url` and `download_url`, all signed links under `/files/gallery/{id}/content` that work without a token until `url_expires_at` (`FILE_URL_TTL_SECONDS`, 1 hour). Fetch the list again for fresh links. `download_url` is null when `downloads_enabled` is off or the album has `allow_download: false`. Video links accept `Range` (206) for seeking. Album details include `viewer: { slideshow_enabled, downloads_enabled, sharing_enabled, videos_enabled }`, which the app follows. Altered or expired links get 403 `LINK_EXPIRED`. With `download_audit_enabled`, each download is written to the audit log.
+
+**Admin web (`/admin/gallery`).**
+
+| Call | What it does |
+|---|---|
+| `GET /dashboard?academic_year_id=&from=&to=&class_id=&section_id=&album_id=&media_type=&uploader_id=&category_id=` | `albums`, `photos`, `videos`, `storage` (`used_bytes`, `trash_bytes`, `quota_bytes`, `remaining_bytes`, `used_percent`, `level` ok/warning/full), `uploaded_this_month`, `expiring_soon`, `scheduled_for_deletion`, `pending_deletion` (in Trash), `on_hold`, `by_class`, `by_section`, `recent` |
+| `GET /albums` | Albums of the year being viewed, paged: `search`, `scope`, `class_id`, `section_id`, `category_id`, `status`, `visibility`, `media_type`, `uploader_id`, `featured`, `tag`, `from`/`to` (event date), `sort=created_at|event_date|title|published_at` |
+| `POST /albums` `{ scope, class_id?, section_id?, academic_year_id?, category_id?, title, description?, event_date?, tags?, visibility?, class_ids?, section_ids?, allow_download?, is_featured?, publish? }` | 201. A draft unless `publish`. Section albums take the section's year |
+| `GET /albums/{id}`, `PATCH /albums/{id}` | Details; edit title, description, event date, category, tags, visibility, downloads, `cover_media_id` |
+| `POST /albums/{id}/publish` `{ notify? }`, `/unpublish`, `/archive` | Status changes. `notify` (default true) sends `GALLERY_ALBUM_SHARED` to the audience when sharing is on |
+| `PATCH /albums/{id}/feature` `{ is_featured }` | Featured albums (`featured=true` lists them) |
+| `POST /albums/{id}/share` | Tells everyone who can see the album: `{ recipients }`. 403 `SHARING_DISABLED`, 409 `ALBUM_NOT_PUBLISHED` |
+| `DELETE /albums/{id}?note=` | Album and its media go to Trash |
+| `GET /albums/{id}/media` | Paged media, default `sort_order` then upload order; `media_type`, `uploader_id`, `status`, `from`/`to` |
+| `POST /albums/{id}/media` | Upload (above) |
+| `GET /media` | Search media across albums; `expiring=true` lists those whose retention ends within the notice period |
+| `GET /media/{id}`, `PATCH /media/{id}` `{ title?, description?, sort_order? }`, `PUT /media/{id}/poster`, `DELETE /media/{id}?note=`, `POST /media/delete` `{ media_ids, note? }` | One item, caption, video still, move to Trash |
+| `GET /trash?kind=media|album&reason=&media_type=&scope=&class_id=&section_id=&album_id=` | Trash with deletion date, reason (`manual`, `retention`, `album_deleted`, `empty_album`), who deleted it, original album, class and section, and `purge_after` |
+| `POST /trash/restore` `{ media_ids?, album_ids?, target_album_id? }` | `{ media_restored, albums_restored, needs_album, duplicates }`. Media whose album is gone come back in `needs_album`: send them again with `target_album_id` |
+| `POST /trash/purge` `{ media_ids?, album_ids?, confirm: true }`, `POST /trash/empty` `{ confirm: true }` | Delete for good, files and thumbnails included (`gallery.configure`). Empty deletes up to 5000 per call |
+| `GET /reports/{report}?academic_year_id=&from=&to=` | `{ report, title, columns, rows }`. `report` = `class_usage`, `section_usage`, `album_counts`, `category_usage`, `upload_activity`, `user_uploads`, `storage`, `expiring`, `deleted`, `restored`, `purged`, `cleanup_activity`, `cleanup_failures` |
+| `GET /reports/{report}/export?format=xlsx|csv` | The same as a file |
+| `GET /audit-logs`, `GET /audit-logs/export` | `action`, `user_id`, `album_id`, `media_id`, `result`, `from`/`to`. Each row has user, role, action, album, media, class, section, result, details and IP. Rows can never be changed or deleted: the database refuses it |
+
+**Settings, retention and cleanup (`/admin/gallery`, tag `Admin · Gallery settings & retention`).**
+
+| Call | What it does |
+|---|---|
+| `GET /settings`, `PATCH /settings`, `POST /settings/reset` `{ confirm: true }` | Every switch and limit. Send only what changes. Changes that can delete media sooner (shorter retention, notice or recovery; automatic or permanent deletion or the cleanup switched on) return 409 `CONFIRMATION_REQUIRED` until sent again with `confirm: true` |
+| `GET /categories?all=`, `POST`, `PATCH /categories/{id}`, `DELETE` | School events, Sports, Cultural activities, Annual day, Independence Day, Republic Day, Educational, Classroom, Excursions, Achievements, Other, plus the school's own. 409 `CATEGORY_IN_USE` |
+| `GET /retention` | Default retention, each policy with `applies_to` and `media_count`, `default_media_count`, `kept_forever` |
+| `POST /retention/policies` `{ name, target, album_id?, category_id?, academic_year_id?, scope?, media_type?, retention_value?, retention_unit?, keep_forever?, is_active?, confirm? }`, `PATCH`, `DELETE ?confirm=true` | `target` = `album`, `archived`, `category`, `academic_year`, `scope` (App/Class/Section gallery) or `media_type`. The most specific wins in that order, then the default. 409 `POLICY_EXISTS`; 409 `CONFIRMATION_REQUIRED` when shorter than the default |
+| `GET /retention/holds?active=`, `POST /retention/holds` `{ album_id | media_id, reason, keep_until? }`, `POST /retention/holds/{id}/release` `{ reason, confirm? }` | A hold protects an album or item from automatic deletion. No `keep_until` keeps it until released (permanent retention). A date extends retention to that day (`kind: extension`). Applying a hold takes items off the deletion schedule. Releasing a hold over items already past retention needs `confirm`. Who applied and released it, and why, is kept |
+| `GET /cleanup/status` | `cleanup_enabled`, `paused`, `running`, `next_cleanup_at`, `last_job`, `retryable` |
+| `GET /cleanup/preview` | What a run would do now, without changes: `to_mark`, `to_trash`, `to_purge`, `albums_to_trash`, `albums_to_purge`, `held`, `bytes_to_reclaim`, first 100 `items` |
+| `POST /cleanup/run` `{ confirm: true }` | Runs now (show the preview first). 409 `CLEANUP_RUNNING` |
+| `POST /cleanup/pause`, `POST /cleanup/resume` | Scheduled runs only |
+| `GET /cleanup/jobs`, `GET /cleanup/jobs/{id}`, `GET /cleanup/jobs/{id}/items?action=`, `POST /cleanup/jobs/{id}/retry`, `GET /cleanup/jobs/{id}/export?format=` | History with scanned, marked, unmarked, trashed, purged, failed, held, albums, orphans removed, storage freed, duration, error; retry of failed deletions; the run's report |
+
+**How the automatic cleanup works.** Defaults: on; retention **1 year from the upload date**; daily at 02:00 in `time_zone` (Asia/Kolkata); 30 days of notice; 30 days of recovery; permanent deletion on. `cleanup_frequency` can be `daily`, `weekly` (`cleanup_weekday` 1 = Monday) or `monthly` (`cleanup_month_day` 1 to 28). Each run, per school:
+
+1. Recalculates every item's `expires_at` from the policies (`retention_source` says which rule applied; `null` means kept forever).
+2. Takes items off the schedule if a hold or a longer policy now covers them (`unmarked`).
+3. Marks items whose retention ends within `notice_days` as `pending_deletion`, with `trash_at` no earlier than now + notice (so an item is never trashed without notice, even if it expired long ago), and sends `GALLERY_DELETION_SCHEDULED` to `notify_roles`. Held items are skipped and counted in `held`.
+4. Moves marked items whose `trash_at` has passed to Trash (`deleted_reason: retention`, `purge_after` = now + `recovery_days`), and albums left empty by that (`delete_empty_albums`).
+5. With `permanent_delete_enabled`, deletes Trash items past `purge_after` for good, with their stored files and thumbnails (held items stay), then empty albums past theirs. Failures stay in Trash, are listed as `failed` items and can be retried.
+6. Removes stored files left behind by failed uploads (`purge_orphans`) and upload records older than 30 days (`purge_stale_uploads`).
+7. Records the run and every item, writes the audit log, sends `GALLERY_CLEANUP_DONE` (when something changed) or `GALLERY_CLEANUP_FAILED`, and checks storage.
+
+With `auto_trash_enabled` off, nothing is marked or trashed automatically. With `permanent_delete_enabled` off, Trash is kept until someone empties it. `GALLERY_STORAGE_WARNING` (at `storage_warning_percent`) and `GALLERY_STORAGE_FULL` go out once each time the level changes. Admin notices are in-app and push; with `notify_email` they are also emailed through the central notification service (Kafka), when it is configured.
+
+**Maintenance.** Files live under `gallery/{school_id}/{yyyy}/{mm}/` in the storage set by `STORAGE_DRIVER` / `STORAGE_LOCAL_DIR`. Back that folder up together with the database. The cleanup runs inside the API (one check a minute). Only one run per school can be in progress; a run cut short by a restart is marked failed after 2 hours. Raise `GALLERY_MAX_UPLOAD_MB` only with enough server memory, since uploads are held in memory while they are processed.
+
+### Staff app (Module 13: Gallery, `/mobile/teacher/gallery`)
+
+Teacher, HOD, Principal and Gate in-charge. `GET /options` gives `can_upload`, `targets` (the current-year sections I teach or am class teacher of, with `is_class_teacher`), `categories`, `accepted_types`, `max_image_mb`, `max_video_mb` (null when videos are off), `max_video_seconds`, `max_files_per_upload`. Then: `GET /albums?mine=&scope=&class_id=&section_id=&category_id=&featured=`, `POST /albums` (scope `class` or `section` only; 403 `CLASS_NOT_ASSIGNED`, `GALLERY_UPLOAD_NOT_ALLOWED`), `GET|PATCH|DELETE /albums/{id}`, `POST /albums/{id}/publish|unpublish|share`, `GET|POST /albums/{id}/media`, `GET|PATCH|DELETE /media/{id}`, `PUT /media/{id}/poster`. `can_manage` on an album and `can_delete` on an item say which buttons to show.
+
+### Parent app (Module 10: Gallery, `/mobile/parent/gallery`)
+
+`GET /albums?student_id=&scope=&class_id=&section_id=&category_id=&featured=` (published albums the children can see; `student_id` narrows to one child), `GET /albums/{id}`, `GET /albums/{id}/media`, `GET /media/{id}`, and `GET /categories?student_id=` (the school's active categories `[{ id, name }]` for the filter).
+
 ## Push notification data (tap routing)
 
 **Automatic pushes can be switched off.** With `PUSH_AUTO=false` the API sends no push on its own: every notification is still saved in the app's notification list (`GET /me/notifications`), and its push row is marked `skipped` ("Automatic push is off"), with no SMS fallback because of it. Pushes only go out when the app asks for one:
@@ -1853,6 +1946,8 @@ Every push (OneSignal `additionalData`) has `category`, `template` and `notifica
 | `announcement` | SURVEY_NEW, SURVEY_REMINDER (`survey_id`, `role` when the form is for one app) to the people it was sent to | — | the form: `GET /me/surveys/{survey_id}` (a form answered once per child: list `GET /me/surveys` and pick the child) |
 | `system` | STUDENT_FEEDBACK (`feedback_id`) to the parents | `student_id` | the child's feedback |
 | `system` | TEACHER_RATED (`rating_id`, `teacher_user_id`) to the school admin | `student_id` | admin web, Teacher feedback |
+| `announcement` | GALLERY_ALBUM_SHARED (`album_id`) to the album audience | — | the album: Parent `GET /mobile/parent/gallery/albums/{album_id}`, Staff `GET /mobile/teacher/gallery/albums/{album_id}` |
+| `system` | GALLERY_DELETION_SCHEDULED, GALLERY_CLEANUP_DONE, GALLERY_CLEANUP_FAILED, GALLERY_STORAGE_WARNING, GALLERY_STORAGE_FULL to the gallery `notify_roles` | — | admin web, Gallery cleanup monitoring |
 | `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips | `trip_id`, `alert_id`, `announcement_id` where present | the matching screen |
 
 ## Inventory and assets (admin web)
@@ -1935,6 +2030,7 @@ Driver and Attendant roles. `GET /mobile/driver/duty` returns my bus and its rou
 - Upload: `POST /files` as `multipart/form-data` with field `file` and optional `purpose` (snake_case). Images, PDF, Word, Excel and CSV; 10 MB by default.
 - The response has `url` and, for images, `thumbnail_url`. Both are signed links that work without a token until `url_expires_at` (1 hour). After that, call `GET /files/{id}` for fresh links.
 - Other records store the file `id`, never the URL.
+- Gallery photos and videos are not uploaded through `/files`: use the gallery upload endpoints. Their signed links are under `/files/gallery/{id}/content` and accept `Range`.
 
 ## Complaints and grievances (admin web)
 

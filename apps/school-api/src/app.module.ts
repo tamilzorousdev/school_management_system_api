@@ -8,6 +8,7 @@ import { DatabaseModule } from './database/database.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EmergencyModule } from './modules/emergency/emergency.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
+import { GalleryModule } from './modules/gallery/gallery.module';
 import { AppraisalsModule } from './modules/appraisals/appraisals.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { PerformanceModule } from './modules/performance/performance.module';
@@ -95,6 +96,7 @@ import { AlumniModule } from './modules/alumni/alumni.module';
     FeedbackModule,
     EmergencyModule,
     SurveysModule,
+    GalleryModule,
     AppraisalsModule,
     AchievementsModule,
     AppBannersModule,

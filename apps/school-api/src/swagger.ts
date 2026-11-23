@@ -79,6 +79,10 @@ const TAGS: [string, string][] = [
     'Library books the child holds with due dates and late fine, unpaid fines, history, visits and the catalogue',
   ],
   [
+    'Mobile · Parent · Module 10: Gallery',
+    'School and class photo and video albums the children can see, with full-screen viewing, slideshow and downloads when the school allows them',
+  ],
+  [
     'Mobile · Teacher · Module 1: Profile, Qualifications, Bank & Documents',
     'Staff profile, qualifications, bank details, performance appraisals, verification documents and home alerts',
   ],
@@ -126,6 +130,10 @@ const TAGS: [string, string][] = [
     'Mobile · Teacher · Module 12: Gate, Visitors & Pickups',
     'Gate in-charge: check passes by QR, 4-digit code or by hand, release students, emergency release with parent consent, walk-in visitors in and out. Class teacher: approve gate passes of my class',
   ],
+  [
+    'Mobile · Teacher · Module 13: Gallery',
+    'Class and section photo and video albums: create, upload several files with per-file results, captions, video stills, publish and share with parents; school albums open to staff',
+  ],
   ['Admin · Dashboard', 'Home screen in one call: counts per section, gated by the caller’s permissions'],
   ['Admin · Students', 'Students, class placement, guardians, roll numbers, Excel import'],
   ['Admin · Student records', 'Documents with verification, health and vaccinations, behaviour notes'],
@@ -145,6 +153,14 @@ const TAGS: [string, string][] = [
   ['Admin · Payroll', 'Salary structures, monthly payroll runs, payslip PDFs'],
   ['Admin · Fees', 'Fee heads, class fee plans, invoices with transport, payments, receipts and dues'],
   ['Admin · Accounts', 'School expenses and other income with approval, vouchers, and income vs expense reports'],
+  [
+    'Admin · Gallery',
+    'App Media Gallery and class and section galleries: albums, multi-file upload, viewer links, Trash and restore, dashboard, reports and the audit log',
+  ],
+  [
+    'Admin · Gallery settings & retention',
+    'Gallery switches, upload limits and storage, categories, retention policies and holds, automatic cleanup with preview, run now, pause, history and retry',
+  ],
   [
     'Admin · Library',
     'Catalogue with ISBN and barcode scanning, Excel import, copies and labels, members, issue and return, overdue follow-ups and alerts, fines, library attendance, stock checks and reports',
@@ -348,7 +364,7 @@ const AUDIENCES: AudienceConfig[] = [
     jsonSlug: 'mobile-teacher',
     title: 'Tamilzorous School Management API · Mobile · Teacher App',
     intro:
-      'Routes for the Teacher & Staff mobile app: Modules 1 to 12 (profile, qualifications, bank, attendance, timetable, homework, exams, chat, video, payroll, fees, holidays, library, gate and visitors), plus sign-in, `/me` and files.',
+      'Routes for the Teacher & Staff mobile app: Modules 1 to 13 (profile, qualifications, bank, attendance, timetable, homework, exams, chat, video, payroll, fees, holidays, library, gate and visitors, gallery), plus sign-in, `/me` and files.',
     owns: /^\/api\/v\d+\/mobile\/teacher\//,
     stripPrefix: 'Mobile · Teacher · ',
   },
@@ -358,7 +374,7 @@ const AUDIENCES: AudienceConfig[] = [
     jsonSlug: 'mobile-parent',
     title: 'Tamilzorous School Management API · Mobile · Parent App',
     intro:
-      'Routes for the Parent mobile app: Modules 1 to 9 (children, attendance, academics, diary, chat, video, student fees, holidays, library), plus sign-in, `/me` and files.',
+      'Routes for the Parent mobile app: Modules 1 to 10 (children, attendance, academics, diary, chat, video, student fees, holidays, library, gallery), plus sign-in, `/me` and files.',
     owns: /^\/api\/v\d+\/mobile\/parent\//,
     stripPrefix: 'Mobile · Parent · ',
   },
@@ -508,8 +524,8 @@ const SWAGGER_CUSTOM_JS = `
         inGroupClass: 'in-group-teacher',
         icon: '📱',
         title: 'Mobile · Teacher App',
-        badge: '12 Modules',
-        desc: 'Profile, Qualifications, Attendance, Timetable, Class Diary, Exams, Parent Chat, Video Meetings, Payroll, Fees Overview, Holidays, Library and Gate & Visitors',
+        badge: '13 Modules',
+        desc: 'Profile, Qualifications, Attendance, Timetable, Class Diary, Exams, Parent Chat, Video Meetings, Payroll, Fees Overview, Holidays, Library, Gate & Visitors and Gallery',
         match: function(tag) { return tag.indexOf('Teacher') !== -1; }
       },
       {
@@ -518,8 +534,8 @@ const SWAGGER_CUSTOM_JS = `
         inGroupClass: 'in-group-parent',
         icon: '👨‍👩‍👧',
         title: 'Mobile · Parent App',
-        badge: '9 Modules',
-        desc: 'Home & Children, Attendance & Leave, Academics & Report Card, Class Diary & Behaviour, Teacher Chat, Video Meetings, Student Fees, Holidays and Library',
+        badge: '10 Modules',
+        desc: 'Home & Children, Attendance & Leave, Academics & Report Card, Class Diary & Behaviour, Teacher Chat, Video Meetings, Student Fees, Holidays, Library and Gallery',
         match: function(tag) { return tag.indexOf('Parent') !== -1; }
       },
       {
@@ -689,8 +705,8 @@ export function setupSwagger(app: INestApplication): void {
   const URL_ITEMS = [
     { name: 'Admin web', url: '/api/docs/admin-json' },
     { name: 'Mobile app (All)', url: '/api/docs/mobile-json' },
-    { name: 'Mobile · Teacher App (Modules 1 - 12)', url: '/api/docs/mobile-teacher-json' },
-    { name: 'Mobile · Parent App (Modules 1 - 9)', url: '/api/docs/mobile-parent-json' },
+    { name: 'Mobile · Teacher App (Modules 1 - 13)', url: '/api/docs/mobile-teacher-json' },
+    { name: 'Mobile · Parent App (Modules 1 - 10)', url: '/api/docs/mobile-parent-json' },
     { name: 'Mobile · Driver App (Modules 1 - 5)', url: '/api/docs/mobile-driver-json' },
   ];
 
