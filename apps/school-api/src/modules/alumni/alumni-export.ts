@@ -21,6 +21,7 @@ const COLUMNS: [string, number, (row: AlumniDetailDto) => string | number | null
   ['Gender', 9, (row) => row.gender],
   ['Date of birth', 13, (row) => row.dob],
   ['Admission no', 15, (row) => row.admission_no],
+  ['EMIS no', 18, (row) => row.emis_number],
   ['Batch', 8, (row) => row.batch_year],
   ['Left on', 12, (row) => row.left_on],
   ['Exit', 12, (row) => row.exit_type],

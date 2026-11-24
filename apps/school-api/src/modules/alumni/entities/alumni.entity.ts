@@ -63,6 +63,9 @@ export class Alumni extends SchoolScopedEntity {
   @Column({ type: 'varchar', length: 30, nullable: true })
   admission_no: string | null;
 
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  emis_number: string | null;
+
   @Column({ type: 'date', nullable: true })
   admission_date: string | null;
 

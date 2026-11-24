@@ -168,6 +168,13 @@ export class StudentDetailDto extends StudentListItemDto {
   @ApiProperty({ example: 18, nullable: true, type: Number, description: 'The alumni record for this student, if any' })
   alumni_id: number | null;
 
+  @ApiProperty({
+    enum: ['open', 'cleared'],
+    nullable: true,
+    description: 'Set while a leaving request (NOC) is open or cleared and the TC is not issued yet',
+  })
+  noc_status: 'open' | 'cleared' | null;
+
   @ApiProperty({ enum: BLOOD_GROUPS, nullable: true })
   blood_group: BloodGroup | null;
 

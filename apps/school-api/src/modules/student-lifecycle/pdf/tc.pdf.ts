@@ -11,6 +11,7 @@ export interface TcData {
   issued_on: string;
   student_name: string;
   admission_no: string;
+  emis_number?: string | null;
   gender: string;
   dob: string;
   identification_marks: string | null;
@@ -76,6 +77,7 @@ export async function tcPdf(tc: TcData): Promise<Buffer> {
   const rows: [string, string][] = [
     ['Name of the pupil', tc.student_name],
     ['Admission number', tc.admission_no],
+    ['EMIS number', tc.emis_number ?? '—'],
     ['Gender', tc.gender.charAt(0).toUpperCase() + tc.gender.slice(1)],
     ['Date of birth', displayDate(tc.dob)],
     ['Personal marks of identification', tc.identification_marks ?? '—'],

@@ -314,6 +314,7 @@ export class AlumniRecordsService {
       dob: student.dob,
       photo_file_id: student.photo_file_id,
       admission_no: student.admission_no,
+      emis_number: student.emis_number ?? null,
       admission_date: student.admission_date,
     };
   }

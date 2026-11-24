@@ -15,12 +15,20 @@ import {
 import { IsDateOnly } from '../../../shared/dates';
 import { ID_CARD_DESIGNS } from '../../../shared/id-card-design';
 import { RefDto } from '../../students/dto/student-response.dto';
+import {
+  NOC_DEPARTMENTS,
+  NOC_ITEM_STATUSES,
+  NOC_STATUSES,
+  NocDepartment,
+  NocItemStatus,
+  NocStatus,
+} from '../entities/student-noc.entity';
 import { EXIT_TYPES, ExitType } from '../entities/transfer-certificate.entity';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 const trimToNull = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() || null : value);
 
-export class StudentExitDto {
+export class StartNocDto {
   @ApiProperty({ enum: EXIT_TYPES, example: 'transferred' })
   @IsIn(EXIT_TYPES)
   exit_type: ExitType;
@@ -33,6 +41,49 @@ export class StudentExitDto {
   @IsString()
   @Length(3, 255)
   reason: string;
+}
+
+export class ClearNocItemDto {
+  @ApiPropertyOptional({ nullable: true, type: String, example: 'All books returned' })
+  @IsOptional()
+  @Transform(trimToNull)
+  @ValidateIf((_dto, value) => value !== null)
+  @IsString()
+  @MaxLength(255)
+  remarks?: string | null;
+
+  @ApiPropertyOptional({
+    default: false,
+    description: 'Needed to clear the fees line while fees are unpaid (409 FEE_DUES_PENDING otherwise)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  acknowledge_dues?: boolean;
+}
+
+export class CancelNocDto {
+  @ApiProperty({ example: 'Parents decided to continue' })
+  @Transform(trim)
+  @IsString()
+  @Length(3, 255)
+  note: string;
+}
+
+export class StudentExitDto {
+  @ApiPropertyOptional({ enum: EXIT_TYPES, description: 'Defaults to the cleared NOC' })
+  @IsOptional()
+  @IsIn(EXIT_TYPES)
+  exit_type?: ExitType;
+
+  @IsDateOnly('2026-11-02', true)
+  leaving_date?: string;
+
+  @ApiPropertyOptional({ example: 'Family moved to Coimbatore', description: 'Defaults to the cleared NOC' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @Length(3, 255)
+  reason?: string;
 
   @ApiPropertyOptional({ example: 'Good', default: 'Good' })
   @IsOptional()
@@ -188,6 +239,78 @@ export class TransferCertificateDto {
 
   @ApiProperty({ example: 4500, description: 'Unpaid fees when the TC was issued' })
   fee_balance: number;
+}
+
+export class NocItemDto {
+  @ApiProperty({ enum: NOC_DEPARTMENTS })
+  department: NocDepartment;
+
+  @ApiProperty({ enum: NOC_ITEM_STATUSES })
+  status: NocItemStatus;
+
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    example: '2 library books not returned',
+    description: 'What is still outstanding right now, or null when nothing is',
+  })
+  blocker: string | null;
+
+  @ApiProperty({ description: 'True when the blocker stops the line from being cleared' })
+  blocking: boolean;
+
+  @ApiProperty({ example: 4500, description: 'Unpaid fees, only on the fees line' })
+  amount: number;
+
+  @ApiProperty({ description: 'Whether the signed-in user may clear or reopen this line' })
+  can_clear: boolean;
+
+  @ApiProperty({ nullable: true, type: String })
+  cleared_by_name: string | null;
+
+  @ApiProperty({ nullable: true, type: String, format: 'date-time' })
+  cleared_at: string | null;
+
+  @ApiProperty({ nullable: true, type: String })
+  remarks: string | null;
+
+  @ApiProperty({ nullable: true, type: String, description: 'What was outstanding when the line was cleared' })
+  blocker_snapshot: string | null;
+}
+
+export class NocDto {
+  @ApiProperty({ example: 4 })
+  id: number;
+
+  @ApiProperty({ example: 12 })
+  student_id: number;
+
+  @ApiProperty({ enum: NOC_STATUSES })
+  status: NocStatus;
+
+  @ApiProperty({ enum: EXIT_TYPES })
+  exit_type: ExitType;
+
+  @ApiProperty({ example: '2026-11-30' })
+  leaving_date: string;
+
+  @ApiProperty({ example: 'Family moved to Coimbatore' })
+  reason: string;
+
+  @ApiProperty({ nullable: true, type: String })
+  requested_by_name: string | null;
+
+  @ApiProperty({ format: 'date-time' })
+  requested_at: string;
+
+  @ApiProperty({ nullable: true, type: String, format: 'date-time' })
+  cleared_at: string | null;
+
+  @ApiProperty({ example: 3 })
+  cleared_count: number;
+
+  @ApiProperty({ type: [NocItemDto] })
+  items: NocItemDto[];
 }
 
 export class DigitalIdDto {

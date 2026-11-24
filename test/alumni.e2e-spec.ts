@@ -74,12 +74,39 @@ describeOnScratchDb('Alumni (e2e, needs a migrated scratch database with seed an
     let studentId = 0;
     let tcNo = '';
     for (const candidate of candidates) {
-      const res = await api().post(`/api/v1/admin/students/${candidate.id}/exit`).set(as(ADMIN)).send({
+      const base = `/api/v1/admin/students/${candidate.id}`;
+      const early = await api().post(`${base}/exit`).set(as(ADMIN)).send({ acknowledge_dues: true });
+      if (early.status !== 409 || early.body.error !== 'NOC_NOT_CLEARED') continue;
+      const started = await api().post(`${base}/noc`).set(as(ADMIN)).send({
         exit_type: 'transferred',
         leaving_date: today(),
         reason: 'Family moved to another city',
-        acknowledge_dues: true,
       });
+      if (started.status !== 201) continue;
+      await api()
+        .post(`${base}/noc`)
+        .set(as(ADMIN))
+        .send({
+          exit_type: 'transferred',
+          leaving_date: today(),
+          reason: 'Again',
+        })
+        .expect(409);
+      let cleared = true;
+      for (const department of ['fees', 'library', 'transport', 'inventory', 'class_teacher']) {
+        const line = await api()
+          .post(`${base}/noc/items/${department}/clear`)
+          .set(as(ADMIN))
+          .send({ acknowledge_dues: true });
+        if (line.status !== 200) cleared = false;
+      }
+      if (!cleared) {
+        await api().post(`${base}/noc/cancel`).set(as(ADMIN)).send({ note: 'Library still pending' });
+        continue;
+      }
+      const noc = await api().get(`${base}/noc`).set(as(ADMIN)).expect(200);
+      expect(noc.body.data.status).toBe('cleared');
+      const res = await api().post(`${base}/exit`).set(as(ADMIN)).send({});
       if (res.status === 201) {
         studentId = candidate.id;
         tcNo = res.body.data.tc_no;
