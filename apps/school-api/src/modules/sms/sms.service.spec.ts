@@ -10,6 +10,7 @@ const kafkaConfig: KafkaNotifyConfig = {
   ssl: false,
   topic: 'notifications',
   clientId: 'school-api',
+  tenantByOneSignalApp: {},
   tenantId: 'tenant-1',
   templatePrefix: 'school_',
   logEnabled: false,

@@ -17,6 +17,7 @@ export class UserDevicesService {
       fcm_token: token,
       platform: dto.platform,
       app: dto.app ?? null,
+      onesignal_app_id: dto.onesignal_app_id ?? null,
       device_name: dto.device_name ?? null,
       app_version: dto.app_version ?? null,
       last_seen_at: new Date(),
