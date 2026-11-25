@@ -83,6 +83,26 @@ export const PERMISSIONS = {
   GALLERY_AUDIT: 'gallery.audit',
   ALUMNI_VIEW: 'alumni.view',
   ALUMNI_MANAGE: 'alumni.manage',
+  HOSTEL_VIEW: 'hostel.view',
+  HOSTEL_MANAGE: 'hostel.manage',
+  HOSTEL_ALLOCATE: 'hostel.allocate',
+  HOSTEL_ATTENDANCE: 'hostel.attendance',
+  HOSTEL_LEAVE_APPROVE: 'hostel.leave_approve',
+  HOSTEL_PASS_OPERATE: 'hostel.pass_operate',
+  HOSTEL_VISITOR: 'hostel.visitor',
+  HOSTEL_FEES: 'hostel.fees',
+  HOSTEL_MESS: 'hostel.mess',
+  HOSTEL_COMPLAINT: 'hostel.complaint',
+  HOSTEL_MAINTENANCE: 'hostel.maintenance',
+  HOSTEL_INVENTORY: 'hostel.inventory',
+  HOSTEL_DISCIPLINE: 'hostel.discipline',
+  HOSTEL_CHECKOUT: 'hostel.checkout',
+  HOSTEL_REPORTS: 'hostel.reports',
+  HOSTEL_SETTINGS: 'hostel.settings',
+  HOSTEL_STAFF_DUTY: 'hostel.staff_duty',
+  HOSTEL_STUDY: 'hostel.study',
+  HOSTEL_STUDY_HALL: 'hostel.study_hall',
+  HOSTEL_LOCKER: 'hostel.locker',
 } as const;
 
 export interface PermissionDefinition {
@@ -310,6 +330,34 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     name: 'Resolve grievances with final summary or escalate to executive review',
     group: 'Communication',
   },
+  { code: PERMISSIONS.HOSTEL_VIEW, name: 'See hostel dashboard, rooms, beds, students and reports', group: 'Hostel' },
+  {
+    code: PERMISSIONS.HOSTEL_MANAGE,
+    name: 'Set up hostels, blocks, floors, room types, rooms and beds',
+    group: 'Hostel',
+  },
+  {
+    code: PERMISSIONS.HOSTEL_ALLOCATE,
+    name: 'Admit students to the hostel, allocate beds, transfer and vacate',
+    group: 'Hostel',
+  },
+  { code: PERMISSIONS.HOSTEL_ATTENDANCE, name: 'Take hostel roll call', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_LEAVE_APPROVE, name: 'Approve hostel leave and outings', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_PASS_OPERATE, name: 'Issue and scan hostel gate passes', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_VISITOR, name: 'Register and manage hostel visitors', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_FEES, name: 'Hostel fee plans, deposits and dues', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_MESS, name: 'Hostel mess menu, meal attendance and feedback', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_COMPLAINT, name: 'Handle hostel complaints', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_MAINTENANCE, name: 'Hostel maintenance tickets and room inspections', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_INVENTORY, name: 'Hostel room assets and stock', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_DISCIPLINE, name: 'Hostel discipline cases and actions', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_CHECKOUT, name: 'Hostel checkout and clearance', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_REPORTS, name: 'Hostel reports and analytics', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_SETTINGS, name: 'Hostel settings and optional modules', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_STAFF_DUTY, name: 'Hostel staff attendance and duty roster', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_STUDY, name: 'Hostel study hours and study attendance', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_STUDY_HALL, name: 'Hostel study halls and seat allocation', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_LOCKER, name: 'Hostel student lockers', group: 'Hostel' },
 ];
 
 export const ROLES = {
@@ -327,6 +375,8 @@ export const ROLES = {
   LIBRARIAN: 'LIBRARIAN',
   GATE_INCHARGE: 'GATE_INCHARGE',
   STORE_KEEPER: 'STORE_KEEPER',
+  WARDEN: 'WARDEN',
+  ASSISTANT_WARDEN: 'ASSISTANT_WARDEN',
 } as const;
 
 export type RoleCode = (typeof ROLES)[keyof typeof ROLES];
@@ -420,6 +470,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GALLERY_AUDIT,
       PERMISSIONS.ALUMNI_VIEW,
       PERMISSIONS.ALUMNI_MANAGE,
+      PERMISSIONS.HOSTEL_VIEW,
+      PERMISSIONS.HOSTEL_LEAVE_APPROVE,
+      PERMISSIONS.HOSTEL_REPORTS,
     ],
   },
   {
@@ -481,6 +534,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.GALLERY_VIEW,
       PERMISSIONS.GALLERY_MANAGE,
       PERMISSIONS.ALUMNI_VIEW,
+      PERMISSIONS.HOSTEL_VIEW,
+      PERMISSIONS.HOSTEL_LEAVE_APPROVE,
+      PERMISSIONS.HOSTEL_REPORTS,
     ],
   },
   {
@@ -500,6 +556,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.ACCOUNTS_MANAGE,
       PERMISSIONS.NOTIFICATIONS_VIEW,
       PERMISSIONS.ANNOUNCEMENTS_VIEW,
+      PERMISSIONS.HOSTEL_VIEW,
+      PERMISSIONS.HOSTEL_FEES,
     ],
   },
   {
@@ -546,6 +604,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.SCHOOLS_VIEW,
       PERMISSIONS.STAFF_VIEW,
       PERMISSIONS.NOTIFICATIONS_VIEW,
+      PERMISSIONS.HOSTEL_VIEW,
+      PERMISSIONS.HOSTEL_INVENTORY,
     ],
   },
   {
@@ -591,6 +651,49 @@ export const ROLE_CATALOG: RoleDefinition[] = [
     app: 'staff',
     permissions: [PERMISSIONS.GATE_VIEW, PERMISSIONS.GATE_OPERATE],
   },
+  {
+    code: ROLES.WARDEN,
+    name: 'Hostel warden',
+    description:
+      'Runs the hostel: rooms, allocation, roll call, leave, passes, visitors, discipline and the Hostel section of the Staff app.',
+    app: 'staff',
+    permissions: [
+      PERMISSIONS.HOSTEL_VIEW,
+      PERMISSIONS.HOSTEL_MANAGE,
+      PERMISSIONS.HOSTEL_ALLOCATE,
+      PERMISSIONS.HOSTEL_ATTENDANCE,
+      PERMISSIONS.HOSTEL_LEAVE_APPROVE,
+      PERMISSIONS.HOSTEL_PASS_OPERATE,
+      PERMISSIONS.HOSTEL_VISITOR,
+      PERMISSIONS.HOSTEL_MESS,
+      PERMISSIONS.HOSTEL_COMPLAINT,
+      PERMISSIONS.HOSTEL_MAINTENANCE,
+      PERMISSIONS.HOSTEL_INVENTORY,
+      PERMISSIONS.HOSTEL_DISCIPLINE,
+      PERMISSIONS.HOSTEL_CHECKOUT,
+      PERMISSIONS.HOSTEL_REPORTS,
+      PERMISSIONS.HOSTEL_STAFF_DUTY,
+      PERMISSIONS.HOSTEL_STUDY,
+      PERMISSIONS.HOSTEL_STUDY_HALL,
+      PERMISSIONS.HOSTEL_LOCKER,
+    ],
+  },
+  {
+    code: ROLES.ASSISTANT_WARDEN,
+    name: 'Assistant warden',
+    description:
+      'Floor and night duty in the Hostel section of the Staff app: roll call, passes, visitors and complaints.',
+    app: 'staff',
+    permissions: [
+      PERMISSIONS.HOSTEL_VIEW,
+      PERMISSIONS.HOSTEL_ATTENDANCE,
+      PERMISSIONS.HOSTEL_PASS_OPERATE,
+      PERMISSIONS.HOSTEL_VISITOR,
+      PERMISSIONS.HOSTEL_COMPLAINT,
+      PERMISSIONS.HOSTEL_DISCIPLINE,
+      PERMISSIONS.HOSTEL_STUDY,
+    ],
+  },
 ];
 
 export function rolePermissions(role: RoleDefinition): string[] {
@@ -603,11 +706,19 @@ export const FULL_ACCESS_ROLES: string[] = [ROLES.SUPER_ADMIN];
 
 const TEACHING_ROLES: string[] = [ROLES.TEACHER, ROLES.HOD];
 const BUS_CREW_ROLES: string[] = [ROLES.DRIVER, ROLES.ATTENDANT];
+const HOSTEL_ROLES: string[] = [ROLES.WARDEN, ROLES.ASSISTANT_WARDEN];
 
 export function roleConflict(codes: string[]): string | null {
-  const teaching = codes.filter((code) => TEACHING_ROLES.includes(code));
   const crew = codes.filter((code) => BUS_CREW_ROLES.includes(code));
-  if (!teaching.length || !crew.length) return null;
+  if (!crew.length) return null;
   const name = (code: string) => ROLE_CATALOG.find((role) => role.code === code)?.name ?? code;
-  return `A person cannot be both ${name(teaching[0]!)} and ${name(crew[0]!)}. Teaching staff and bus crew must be different people.`;
+  const teaching = codes.filter((code) => TEACHING_ROLES.includes(code));
+  if (teaching.length) {
+    return `A person cannot be both ${name(teaching[0]!)} and ${name(crew[0]!)}. Teaching staff and bus crew must be different people.`;
+  }
+  const hostel = codes.filter((code) => HOSTEL_ROLES.includes(code));
+  if (hostel.length) {
+    return `A person cannot be both ${name(hostel[0]!)} and ${name(crew[0]!)}. Hostel wardens and bus crew must be different people.`;
+  }
+  return null;
 }

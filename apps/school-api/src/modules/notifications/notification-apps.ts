@@ -1,3 +1,5 @@
+import { HOSTEL_PARENT_TEMPLATES, HOSTEL_STAFF_TEMPLATES } from './hostel-templates.catalog';
+
 export const NOTIFICATION_APPS = ['parent', 'staff', 'driver'] as const;
 export type NotificationApp = (typeof NOTIFICATION_APPS)[number];
 
@@ -58,6 +60,7 @@ const PARENT_ONLY = [
   'LIBRARY_BOOK_RETURNED',
   'LIBRARY_FINE_RAISED',
   'LIBRARY_FINE_PAID',
+  ...HOSTEL_PARENT_TEMPLATES,
 ];
 
 const STAFF_ONLY = [
@@ -109,6 +112,7 @@ const STAFF_ONLY = [
   'INVENTORY_WARRANTY_EXPIRING',
   'INVENTORY_LOW_STOCK',
   'INVENTORY_TICKET_RESOLVED',
+  ...HOSTEL_STAFF_TEMPLATES,
 ];
 
 const DRIVER_ONLY = [

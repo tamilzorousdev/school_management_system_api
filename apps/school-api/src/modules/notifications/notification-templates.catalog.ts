@@ -4,6 +4,7 @@ import { SmsMode } from './entities/notification-template.entity';
 import { LIBRARY_TEMPLATE_CATALOG, LIBRARY_TEMPLATES } from './library-templates.catalog';
 import { INVENTORY_TEMPLATE_CATALOG, INVENTORY_TEMPLATES } from './inventory-templates.catalog';
 import { GALLERY_TEMPLATE_CATALOG, GALLERY_TEMPLATES } from './gallery-templates.catalog';
+import { HOSTEL_TEMPLATE_CATALOG, HOSTEL_TEMPLATES } from './hostel-templates.catalog';
 
 export const TEMPLATES = {
   SYSTEM_TEST: 'SYSTEM_TEST',
@@ -142,6 +143,7 @@ export const TEMPLATES = {
   ...LIBRARY_TEMPLATES,
   ...INVENTORY_TEMPLATES,
   ...GALLERY_TEMPLATES,
+  ...HOSTEL_TEMPLATES,
 } as const;
 
 interface TemplateText {
@@ -2656,4 +2658,5 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
   ...LIBRARY_TEMPLATE_CATALOG,
   ...INVENTORY_TEMPLATE_CATALOG,
   ...GALLERY_TEMPLATE_CATALOG,
+  ...HOSTEL_TEMPLATE_CATALOG,
 ];
