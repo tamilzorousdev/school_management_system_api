@@ -234,6 +234,14 @@ export class AlumniDetailsInputDto extends AlumniContactInputDto {
   @MaxLength(30)
   admission_no?: string | null;
 
+  @ApiPropertyOptional({ example: '3302040120100123', nullable: true, type: String })
+  @IsOptional()
+  @Transform(emptyToNull)
+  @ValidateIf(notNull)
+  @IsString()
+  @MaxLength(50)
+  emis_number?: string | null;
+
   @ApiPropertyOptional({ example: 'Class 12', nullable: true, type: String })
   @IsOptional()
   @Transform(emptyToNull)
@@ -533,6 +541,9 @@ export class AlumniItemDto {
 
   @ApiProperty({ example: 'ADM-2014-0042', nullable: true, type: String })
   admission_no: string | null;
+
+  @ApiProperty({ example: '3302040120100123', nullable: true, type: String })
+  emis_number: string | null;
 
   @ApiProperty({ example: 2026 })
   batch_year: number;

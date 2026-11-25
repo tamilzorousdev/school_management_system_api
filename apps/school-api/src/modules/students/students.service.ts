@@ -287,11 +287,17 @@ export class StudentsService {
       `SELECT id FROM alumni WHERE school_id = $1 AND student_id = $2 AND deleted_at IS NULL LIMIT 1`,
       [schoolId, id],
     )) as { id: number }[];
+    const [noc] = (await this.dataSource.query(
+      `SELECT status FROM student_nocs
+        WHERE school_id = $1 AND student_id = $2 AND status IN ('open', 'cleared') AND deleted_at IS NULL LIMIT 1`,
+      [schoolId, id],
+    )) as { status: 'open' | 'cleared' }[];
 
     return {
       ...this.toListItem(listed, siblings.length, todayIn(this.app.timeZone)),
       left_on: student.left_on ?? null,
       alumni_id: alumni ? Number(alumni.id) : null,
+      noc_status: noc?.status ?? null,
       blood_group: student.blood_group,
       address_line: student.address_line,
       city: student.city,

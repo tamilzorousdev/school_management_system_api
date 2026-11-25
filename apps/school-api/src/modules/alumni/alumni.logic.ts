@@ -26,6 +26,7 @@ export const IDENTITY_FIELDS = [
   'gender',
   'dob',
   'admission_no',
+  'emis_number',
   'batch_year',
   'final_class_name',
 ] as const;

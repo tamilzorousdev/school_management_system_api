@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import QRCode from 'qrcode';
-import { DataSource, EntityManager, In, MoreThan, Not, Repository } from 'typeorm';
+import { DataSource, In, MoreThan, Not, Repository } from 'typeorm';
 import { AppException } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
@@ -33,6 +33,8 @@ import { tcPdf } from './pdf/tc.pdf';
 import { rupees } from '../payroll/payroll.calc';
 import { yearClause, yearWhere } from '../../shared/year-context';
 import { AlumniRecordsService } from '../alumni/alumni-records.service';
+import { assertLibraryClear, feeBalance } from './clearance';
+import { NocService } from './noc.service';
 
 interface CardRow {
   id: number;
@@ -78,6 +80,7 @@ export class StudentLifecycleService {
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
     private readonly alumni: AlumniRecordsService,
+    private readonly noc: NocService,
   ) {}
 
   async idCard(schoolId: number, studentId: number, requestedDesign?: string): Promise<{ name: string; pdf: Buffer }> {
@@ -174,20 +177,21 @@ export class StudentLifecycleService {
       if (student.status !== 'active') {
         throw AppException.conflict(`This student is already ${student.status}`, 'STUDENT_NOT_ACTIVE');
       }
-      await this.libraryClearance(manager, studentId);
-      const [{ balance }] = await manager.query(
-        `SELECT coalesce(sum(balance), 0) AS balance FROM fee_invoices
-         WHERE school_id = $1 AND student_id = $2 AND status <> 'cancelled' AND deleted_at IS NULL`,
-        [schoolId, studentId],
-      );
-      const feeBalance = Number(balance);
-      if (feeBalance > 0 && !dto.acknowledge_dues) {
+      const noc = await this.noc.clearedFor(manager, schoolId, studentId);
+      const exitType = dto.exit_type ?? noc.exit_type;
+      const leavingDate = dto.leaving_date ?? noc.leaving_date;
+      const reason = dto.reason ?? noc.reason;
+      await assertLibraryClear(manager, studentId);
+      const balance = await feeBalance(manager, schoolId, studentId);
+      const feesLine = (noc.items ?? []).find((item) => item.department === 'fees');
+      const acknowledged = dto.acknowledge_dues || Boolean(feesLine?.blocker_snapshot);
+      if (balance > 0 && !acknowledged) {
         throw AppException.conflict(
-          `${rupees(feeBalance)} of fees is unpaid. Confirm to issue the TC anyway; the dues stay on record.`,
+          `${rupees(balance)} of fees is unpaid. Confirm to issue the TC anyway; the dues stay on record.`,
           'FEE_DUES_PENDING',
         );
       }
-      if (dto.leaving_date < student.admission_date) {
+      if (leavingDate < student.admission_date) {
         throw AppException.validation([
           { field: 'leaving_date', message: 'Leaving date cannot be before the admission date' },
         ]);
@@ -212,26 +216,27 @@ export class StudentLifecycleService {
         if (!(await manager.exists(TransferCertificate, { where: { school_id: schoolId, tc_no: candidate } })))
           tcNo = candidate;
       }
-      await manager.update(Student, studentId, { status: dto.exit_type, left_on: dto.leaving_date });
+      await manager.update(Student, studentId, { status: exitType, left_on: leavingDate });
       if (enrollment) await manager.update(StudentEnrollment, enrollment.id, { status: 'left', roll_no: null });
       const certificate = await manager.save(
         manager.create(TransferCertificate, {
           school_id: schoolId,
           student_id: studentId,
           tc_no: tcNo,
-          exit_type: dto.exit_type,
-          leaving_date: dto.leaving_date,
+          exit_type: exitType,
+          leaving_date: leavingDate,
           issued_on: issuedOn,
-          reason: dto.reason,
+          reason,
           conduct: dto.conduct ?? 'Good',
           promotion_eligible: dto.promotion_eligible ?? true,
           remarks: dto.remarks ?? null,
-          fee_balance: feeBalance,
+          fee_balance: balance,
           academic_year_name: year?.name ?? null,
           class_name: enrollment?.school_class?.name ?? null,
           section_name: enrollment?.section?.name ?? null,
         }),
       );
+      await this.noc.markIssued(manager, noc.id, certificate.id);
       await this.alumni.convert(manager, schoolId, studentId, actor);
       return certificate;
     });
@@ -262,6 +267,7 @@ export class StudentLifecycleService {
       issued_on: tc.issued_on,
       student_name: fullName(student),
       admission_no: student.admission_no,
+      emis_number: student.emis_number ?? null,
       gender: student.gender,
       dob: student.dob,
       identification_marks: student.identification_marks,
@@ -484,25 +490,6 @@ export class StudentLifecycleService {
       throw AppException.badRequest('Add next academic year in School setup before promoting', 'NO_NEXT_YEAR');
     }
     return { current, next };
-  }
-
-  private async libraryClearance(manager: EntityManager, studentId: number): Promise<void> {
-    const [pending]: { books: number; fines: string }[] = await manager.query(
-      `SELECT
-         (SELECT COUNT(*) FROM library_issues i JOIN library_members m ON m.id = i.member_id
-            WHERE m.student_id = $1 AND i.status = 'issued' AND i.deleted_at IS NULL)::int AS books,
-         (SELECT COALESCE(SUM(f.balance), 0) FROM library_fines f JOIN library_members m ON m.id = f.member_id
-            WHERE m.student_id = $1 AND f.deleted_at IS NULL) AS fines`,
-      [studentId],
-    );
-    const books = Number(pending?.books ?? 0);
-    const fines = Number(pending?.fines ?? 0);
-    if (!books && !fines) return;
-    const parts = [
-      books ? `${books} library ${books === 1 ? 'book' : 'books'} not returned` : null,
-      fines ? `Rs. ${fines.toFixed(2)} library fine unpaid` : null,
-    ].filter(Boolean);
-    throw AppException.conflict(`Clear the library first: ${parts.join(' and ')}`, 'LIBRARY_CLEARANCE_PENDING');
   }
 
   private async findCertificate(schoolId: number, studentId: number): Promise<TransferCertificate> {
