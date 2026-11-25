@@ -201,19 +201,33 @@ export class PushService {
         error: 'No user for this push',
       };
     }
-    await this.kafka.sendPush({
-      templateId: this.kafka.templateId(KAFKA_PUSH_TEMPLATE),
-      variables: {
-        ...(message.variables ?? {}),
-        ...message.data,
-        title: message.title,
-        body: message.body,
-        ...(message.ttlSeconds ? { ttl_seconds: String(message.ttlSeconds) } : {}),
-      },
-      externalIds: [String(message.userId)],
-      playerIds: message.tokens,
-    });
-    return { status: 'sent', provider: 'kafka', successCount: 1, invalidTokens: [] };
+    const variables = {
+      ...(message.variables ?? {}),
+      ...message.data,
+      title: message.title,
+      body: message.body,
+      ...(message.ttlSeconds ? { ttl_seconds: String(message.ttlSeconds) } : {}),
+    };
+    const groups = this.oneSignalGroups(message.tokens, message.targets);
+    if (!groups.size) {
+      await this.kafka.sendPush({
+        templateId: this.kafka.templateId(KAFKA_PUSH_TEMPLATE),
+        variables,
+        externalIds: [String(message.userId)],
+        playerIds: message.tokens,
+      });
+      return { status: 'sent', provider: 'kafka', successCount: 1, invalidTokens: [] };
+    }
+    for (const [appId, tokens] of groups) {
+      await this.kafka.sendPush({
+        templateId: this.kafka.templateId(KAFKA_PUSH_TEMPLATE),
+        variables,
+        externalIds: [String(message.userId)],
+        playerIds: tokens,
+        oneSignalAppId: appId,
+      });
+    }
+    return { status: 'sent', provider: 'kafka', successCount: groups.size, invalidTokens: [] };
   }
 
   private async sendFcm(message: PushMessage): Promise<PushResult> {
