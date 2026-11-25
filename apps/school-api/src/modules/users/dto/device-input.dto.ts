@@ -34,6 +34,16 @@ export class RegisterDeviceDto {
   @IsIn(CLIENT_APPS)
   app?: ClientApp;
 
+  @ApiPropertyOptional({
+    example: '637c058f-e9e0-496c-be2f-a5d3f9e48d05',
+    description:
+      'OneSignal app this subscription belongs to. Each published app has its own, so a push must be sent through the matching one',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  onesignal_app_id?: string;
+
   @ApiPropertyOptional({ example: 'Pixel 7' })
   @IsOptional()
   @IsString()

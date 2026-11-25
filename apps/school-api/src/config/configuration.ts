@@ -81,14 +81,32 @@ export const kafkaNotifyConfig = registerAs('kafkaNotify', () => ({
 
 export type PushDriver = 'off' | 'fcm' | 'onesignal' | 'kafka';
 
-export const pushConfig = registerAs('push', () => ({
-  driver: (process.env.PUSH_DRIVER ?? 'off') as PushDriver,
-  callDriver: (process.env.CALL_PUSH_DRIVER || process.env.PUSH_DRIVER || 'off') as PushDriver,
-  auto: process.env.PUSH_AUTO !== 'false',
-  credentialsFile: process.env.FIREBASE_CREDENTIALS_FILE ?? '',
-  oneSignalAppId: process.env.ONESIGNAL_APP_ID ?? '',
-  oneSignalApiKey: process.env.ONESIGNAL_REST_API_KEY ?? '',
-}));
+export function parseOneSignalApps(raw: string | undefined): Record<string, string> {
+  const apps: Record<string, string> = {};
+  for (const pair of (raw ?? '').split(',')) {
+    const [appId, apiKey] = pair.split(':').map((part) => part.trim());
+    if (appId && apiKey) apps[appId] = apiKey;
+  }
+  return apps;
+}
+
+export const pushConfig = registerAs('push', () => {
+  const oneSignalAppId = process.env.ONESIGNAL_APP_ID ?? '';
+  const oneSignalApiKey = process.env.ONESIGNAL_REST_API_KEY ?? '';
+  const oneSignalApps = parseOneSignalApps(process.env.ONESIGNAL_APPS);
+  if (oneSignalAppId && oneSignalApiKey && !oneSignalApps[oneSignalAppId]) {
+    oneSignalApps[oneSignalAppId] = oneSignalApiKey;
+  }
+  return {
+    driver: (process.env.PUSH_DRIVER ?? 'off') as PushDriver,
+    callDriver: (process.env.CALL_PUSH_DRIVER || process.env.PUSH_DRIVER || 'off') as PushDriver,
+    auto: process.env.PUSH_AUTO !== 'false',
+    credentialsFile: process.env.FIREBASE_CREDENTIALS_FILE ?? '',
+    oneSignalAppId,
+    oneSignalApiKey,
+    oneSignalApps,
+  };
+});
 
 export const storageConfig = registerAs('storage', () => ({
   driver: (process.env.STORAGE_DRIVER ?? 'local') as 'local',

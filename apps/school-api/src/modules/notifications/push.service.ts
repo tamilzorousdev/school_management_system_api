@@ -5,8 +5,14 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { pushConfig, PushConfig } from '../../config/configuration';
 import { KAFKA_CALL_TEMPLATE, KAFKA_PUSH_TEMPLATE, KafkaNotifyService } from '../sms/kafka-notify.service';
 
+export interface PushTarget {
+  token: string;
+  oneSignalAppId: string | null;
+}
+
 export interface PushMessage {
   tokens: string[];
+  targets?: PushTarget[];
   title: string;
   body: string;
   data: Record<string, string>;
@@ -18,6 +24,7 @@ export interface PushMessage {
 export interface DataPushMessage {
   userId: number;
   tokens: string[];
+  targets?: PushTarget[];
   data: Record<string, string>;
   ttlSeconds: number;
 }
@@ -125,31 +132,54 @@ export class PushService {
   }
 
   private async sendOneSignalData(message: DataPushMessage): Promise<PushResult> {
-    if (!this.config.oneSignalAppId || !this.config.oneSignalApiKey) {
+    const groups = this.oneSignalGroups(message.tokens, message.targets);
+    if (!groups.size) {
       return {
         status: 'failed',
         provider: 'onesignal',
         successCount: 0,
         invalidTokens: [],
-        error: 'OneSignal App ID or REST API Key is missing in .env',
+        error: 'No OneSignal app is configured for any of these devices',
       };
     }
-    const response = await fetch('https://api.onesignal.com/notifications', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Key ${this.config.oneSignalApiKey}` },
-      body: JSON.stringify({
-        app_id: this.config.oneSignalAppId,
-        target_channel: 'push',
-        include_subscription_ids: message.tokens,
-        data: message.data,
-        content_available: true,
-        priority: 10,
-        ttl: message.ttlSeconds,
-      }),
-    });
-    const body = (await response.json().catch(() => ({}))) as { id?: string; errors?: unknown };
-    if (response.ok && body.id) return { status: 'sent', provider: 'onesignal', successCount: 1, invalidTokens: [] };
-    if (response.ok && JSON.stringify(body.errors ?? '').includes('not subscribed')) {
+
+    let sent = 0;
+    let notSubscribed = 0;
+    const errors: string[] = [];
+    for (const [appId, tokens] of groups) {
+      const apiKey = this.oneSignalKey(appId);
+      if (!apiKey) {
+        errors.push(`${appId}: No REST API key configured for this OneSignal app`);
+        continue;
+      }
+      const response = await fetch('https://api.onesignal.com/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Key ${apiKey}` },
+        body: JSON.stringify({
+          app_id: appId,
+          target_channel: 'push',
+          include_subscription_ids: tokens,
+          data: message.data,
+          content_available: true,
+          priority: 10,
+          ttl: message.ttlSeconds,
+        }),
+      });
+      const body = (await response.json().catch(() => ({}))) as { id?: string; errors?: unknown };
+      if (response.ok && body.id) {
+        sent += 1;
+        continue;
+      }
+      if (response.ok && JSON.stringify(body.errors ?? '').includes('not subscribed')) {
+        notSubscribed += 1;
+        continue;
+      }
+      errors.push(`${appId}: OneSignal error (${response.status}): ${JSON.stringify(body.errors ?? body)}`);
+    }
+
+    if (sent > 0) return { status: 'sent', provider: 'onesignal', successCount: sent, invalidTokens: [] };
+    if (errors.length) throw new Error(errors.join(' | '));
+    if (notSubscribed > 0) {
       return {
         status: 'skipped',
         provider: 'onesignal',
@@ -158,7 +188,7 @@ export class PushService {
         error: 'The phone is not subscribed to push in OneSignal',
       };
     }
-    throw new Error(`OneSignal error (${response.status}): ${JSON.stringify(body.errors ?? body)}`);
+    return { status: 'failed', provider: 'onesignal', successCount: 0, invalidTokens: [] };
   }
 
   private async sendKafka(message: PushMessage): Promise<PushResult> {
@@ -225,58 +255,98 @@ export class PushService {
     };
   }
 
-  private async sendOneSignal(message: PushMessage): Promise<PushResult> {
-    if (!this.config.oneSignalAppId || !this.config.oneSignalApiKey) {
-      return {
-        status: 'failed',
-        provider: 'onesignal',
-        successCount: 0,
-        invalidTokens: [],
-        error: 'OneSignal App ID or REST API Key is missing in .env',
-      };
+  private oneSignalGroups(tokens: string[], targets?: PushTarget[]): Map<string, string[]> {
+    const groups = new Map<string, string[]>();
+    const appIdOf = new Map((targets ?? []).map((target) => [target.token, target.oneSignalAppId]));
+    for (const token of tokens) {
+      const appId = appIdOf.get(token) || this.config.oneSignalAppId;
+      if (!appId) continue;
+      const group = groups.get(appId);
+      if (group) group.push(token);
+      else groups.set(appId, [token]);
     }
+    return groups;
+  }
 
-    const payload = {
-      app_id: this.config.oneSignalAppId,
-      include_subscription_ids: message.tokens,
-      headings: { en: message.title },
-      contents: { en: message.body },
-      data: message.data,
-      ...(message.ttlSeconds ? { ttl: message.ttlSeconds } : {}),
-    };
+  private oneSignalKey(appId: string): string {
+    return this.config.oneSignalApps[appId] ?? '';
+  }
 
+  private async postOneSignal(
+    appId: string,
+    body: Record<string, unknown>,
+  ): Promise<{ recipients: number; invalidTokens: string[]; error?: string }> {
+    const apiKey = this.oneSignalKey(appId);
+    if (!apiKey) {
+      return { recipients: 0, invalidTokens: [], error: `No REST API key configured for OneSignal app ${appId}` };
+    }
     const response = await fetch('https://api.onesignal.com/notifications', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Key ${this.config.oneSignalApiKey}`,
-      },
-      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json', Authorization: `Key ${apiKey}` },
+      body: JSON.stringify({ app_id: appId, ...body }),
     });
-
     const resJson = (await response.json().catch(() => ({}))) as {
       id?: string;
       recipients?: number;
       errors?: string[] | Record<string, unknown>;
       invalid_player_ids?: string[];
     };
-
     if (!response.ok && !resJson.recipients) {
       const errMsg = Array.isArray(resJson.errors)
         ? resJson.errors.join(', ')
         : typeof resJson.errors === 'object'
           ? JSON.stringify(resJson.errors)
           : `OneSignal error (${response.status})`;
-      throw new Error(errMsg);
+      return { recipients: 0, invalidTokens: resJson.invalid_player_ids ?? [], error: errMsg };
     }
-
-    const recipients = resJson.recipients ?? (resJson.id ? message.tokens.length : 0);
+    const sentTo = (body.include_subscription_ids as string[] | undefined)?.length ?? 0;
     return {
-      status: recipients > 0 ? 'sent' : 'failed',
-      provider: 'onesignal',
-      successCount: recipients,
+      recipients: resJson.recipients ?? (resJson.id ? sentTo : 0),
       invalidTokens: resJson.invalid_player_ids ?? [],
     };
+  }
+
+  private async fanOutOneSignal(
+    tokens: string[],
+    targets: PushTarget[] | undefined,
+    body: (groupTokens: string[]) => Record<string, unknown>,
+  ): Promise<PushResult> {
+    const groups = this.oneSignalGroups(tokens, targets);
+    if (!groups.size) {
+      return {
+        status: 'failed',
+        provider: 'onesignal',
+        successCount: 0,
+        invalidTokens: [],
+        error: 'No OneSignal app is configured for any of these devices',
+      };
+    }
+
+    let successCount = 0;
+    const invalidTokens: string[] = [];
+    const errors: string[] = [];
+    for (const [appId, groupTokens] of groups) {
+      const result = await this.postOneSignal(appId, body(groupTokens));
+      successCount += result.recipients;
+      invalidTokens.push(...result.invalidTokens);
+      if (result.error) errors.push(`${appId}: ${result.error}`);
+    }
+
+    if (successCount > 0) {
+      return { status: 'sent', provider: 'onesignal', successCount, invalidTokens };
+    }
+    if (errors.length) throw new Error(errors.join(' | '));
+    return { status: 'failed', provider: 'onesignal', successCount: 0, invalidTokens };
+  }
+
+  private sendOneSignal(message: PushMessage): Promise<PushResult> {
+    return this.fanOutOneSignal(message.tokens, message.targets, (tokens) => ({
+      include_subscription_ids: tokens,
+      headings: { en: message.title },
+      contents: { en: message.body },
+      data: message.data,
+      ...(message.ttlSeconds ? { ttl: message.ttlSeconds } : {}),
+    }));
   }
 
   private firebase(): App {

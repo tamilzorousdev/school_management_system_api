@@ -40,6 +40,9 @@ export class UserDevice {
   @Column({ type: 'varchar', length: 10, nullable: true })
   app: ClientApp | null;
 
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  onesignal_app_id: string | null;
+
   @Column({ type: 'varchar', length: 100, nullable: true })
   device_name: string | null;
 

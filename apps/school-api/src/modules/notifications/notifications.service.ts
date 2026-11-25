@@ -7,6 +7,7 @@ import { pushConfig, PushConfig } from '../../config/configuration';
 import { ROLES } from '../access/access.catalog';
 import { SmsResult, SmsService } from '../sms/sms.service';
 import { Language, User } from '../users/entities/user.entity';
+import { UserDevice } from '../users/entities/user-device.entity';
 import { UserDevicesService } from '../users/user-devices.service';
 import {
   DispatchResultDto,
@@ -23,7 +24,7 @@ import { NotificationTemplate } from './entities/notification-template.entity';
 import { JOB_QUEUE, JobQueue } from './queue/job-queue';
 import { CallSide, devicesForSide } from './call-devices';
 import { appOf, NOTIFICATION_APPS, NotificationApp, templatesNotFor } from './notification-apps';
-import { PushResult, PushService } from './push.service';
+import { PushResult, PushService, PushTarget } from './push.service';
 import { renderTemplate, TemplateData, toStringData } from './template.renderer';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
@@ -304,6 +305,7 @@ export class NotificationsService implements OnModuleInit {
     }
     const devices = await this.devices.tokensFor(user.id);
     const tokens = devices.map((device) => device.fcm_token);
+    const targets = pushTargets(devices);
     const data = {
       ...Object.fromEntries(Object.entries(input.data ?? {}).map(([key, value]) => [key, String(value)])),
       test: 'true',
@@ -325,6 +327,7 @@ export class NotificationsService implements OnModuleInit {
     const result = await this.push
       .send({
         tokens,
+        targets,
         title: row.title,
         body: row.body,
         data: { ...data, notification_id: String(row.id), category: row.category, template: TEST_PUSH },
@@ -373,9 +376,11 @@ export class NotificationsService implements OnModuleInit {
         error: 'Automatic push is off (PUSH_AUTO=false)',
       };
     }
-    const tokens = (await this.devices.tokensFor(input.userId)).map((device) => device.fcm_token);
+    const devices = await this.devices.tokensFor(input.userId);
+    const tokens = devices.map((device) => device.fcm_token);
     const result = await this.push.send({
       tokens,
+      targets: pushTargets(devices),
       title: input.title,
       body: input.body,
       data: input.data,
@@ -415,6 +420,7 @@ export class NotificationsService implements OnModuleInit {
     const result = await this.push.sendData({
       userId,
       tokens: devices.map((device) => device.fcm_token),
+      targets: pushTargets(devices),
       data,
       ttlSeconds,
     });
@@ -432,6 +438,7 @@ export class NotificationsService implements OnModuleInit {
     const user = await this.users.findOneBy({ id: row.user_id });
     const result = await this.push.send({
       tokens,
+      targets: pushTargets(devices),
       title: row.title,
       body: row.body,
       data: {
@@ -564,4 +571,8 @@ export class NotificationsService implements OnModuleInit {
       user: row.user ? { id: row.user.id, name: row.user.name, mobile: row.user.mobile } : null,
     };
   }
+}
+
+export function pushTargets(devices: UserDevice[]): PushTarget[] {
+  return devices.map((device) => ({ token: device.fcm_token, oneSignalAppId: device.onesignal_app_id }));
 }
