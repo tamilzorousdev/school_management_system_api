@@ -7,6 +7,7 @@ import {
   TestPushDto,
   TestPushResultDto,
   UnreadCountDto,
+  UnreadCountQueryDto,
 } from './dto/notification.dto';
 import { NotificationsService } from './notifications.service';
 
@@ -27,8 +28,8 @@ export class MeNotificationsController {
   @Get('unread-count')
   @ApiOperation({ summary: 'Number for the bell badge' })
   @ApiEnvelope(UnreadCountDto)
-  async unreadCount(@CurrentUser() user: AuthUser): Promise<UnreadCountDto> {
-    return { unread: await this.notifications.unreadCount(user.id) };
+  async unreadCount(@CurrentUser() user: AuthUser, @Query() query: UnreadCountQueryDto): Promise<UnreadCountDto> {
+    return { unread: await this.notifications.unreadCount(user.id, query.app) };
   }
 
   @Post('test-push')

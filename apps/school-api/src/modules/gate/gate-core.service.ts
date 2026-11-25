@@ -352,15 +352,19 @@ export class GateCoreService {
         from_time: row.from_time,
         until_time: row.until_time,
         reason: row.reason,
-        pickup: {
-          kind: row.pickup_kind,
-          id: row.guardian_id ?? row.authorised_id,
-          name: row.pickup_name,
-          relation: row.pickup_relation,
-          mobile: row.pickup_mobile,
-          photo: photoId ? (files.get(photoId) ?? null) : null,
-          valid_until: person?.valid_until ?? null,
-        },
+        pass_type: row.pass_type,
+        pickup:
+          row.pickup_kind && row.pickup_name
+            ? {
+                kind: row.pickup_kind,
+                id: row.guardian_id ?? row.authorised_id,
+                name: row.pickup_name,
+                relation: row.pickup_relation,
+                mobile: row.pickup_mobile,
+                photo: photoId ? (files.get(photoId) ?? null) : null,
+                valid_until: person?.valid_until ?? null,
+              }
+            : null,
         status: row.status,
         source: row.source,
         is_emergency: row.is_emergency,

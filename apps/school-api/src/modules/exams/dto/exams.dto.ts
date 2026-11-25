@@ -726,3 +726,50 @@ export class SectionRankingDto {
   @ApiProperty({ type: [RankingRowDto] })
   rows: RankingRowDto[];
 }
+
+export const CHILD_EXAM_PHASES = ['upcoming', 'ongoing', 'awaiting_results', 'results_published'] as const;
+export type ChildExamPhase = (typeof CHILD_EXAM_PHASES)[number];
+
+export class ChildExamPaperDto {
+  @ApiProperty({ example: 'Mathematics' })
+  subject: string;
+
+  @ApiProperty({ example: 'MAT' })
+  code: string;
+
+  @ApiProperty({ example: '2026-12-07', nullable: true, type: String })
+  exam_date: string | null;
+
+  @ApiProperty({ example: 100 })
+  max_marks: number;
+}
+
+export class ChildExamDto {
+  @ApiProperty({ example: 2 })
+  id: number;
+
+  @ApiProperty({ example: 'Half-yearly exam' })
+  name: string;
+
+  @ApiProperty({ example: '2026-12-07' })
+  start_date: string;
+
+  @ApiProperty({ example: '2026-12-18' })
+  end_date: string;
+
+  @ApiProperty({
+    enum: CHILD_EXAM_PHASES,
+    description:
+      'upcoming: not started. ongoing: between start and end date. awaiting_results: finished, marks not published. results_published: result is in `result`.',
+  })
+  phase: ChildExamPhase;
+
+  @ApiProperty({ description: 'The hall ticket is useful before and during the exam only' })
+  hall_ticket_available: boolean;
+
+  @ApiProperty({ type: [ChildExamPaperDto], description: 'Timetable of papers for the child class' })
+  schedule: ChildExamPaperDto[];
+
+  @ApiProperty({ type: StudentExamResultDto, nullable: true, description: 'Set once results are published' })
+  result: StudentExamResultDto | null;
+}

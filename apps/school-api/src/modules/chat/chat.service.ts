@@ -10,6 +10,7 @@ import { addDays, holidaySet } from '../../shared/school-days';
 import { parentsOfStudent, teachersOfStudent } from '../../shared/student-contacts';
 import { withoutSelf } from '../meetings/meeting-people';
 import { FilesService } from '../files/files.service';
+import { NotificationApp } from '../notifications/notification-apps';
 import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -104,7 +105,7 @@ export class ChatService {
       ]);
     }
     const thread = await this.findOrCreate(schoolId, actor.id, parent.id, dto.student_id, actor.id);
-    return (await this.present([thread], actor.id))[0];
+    return (await this.present([thread], actor.id, 'teacher'))[0];
   }
 
   async openAsParent(
@@ -118,22 +119,24 @@ export class ChatService {
       throw AppException.validation([{ field: 'teacher_user_id', message: 'This teacher does not teach your child' }]);
     }
     const thread = await this.findOrCreate(schoolId, dto.teacher_user_id, actor.id, studentId, actor.id);
-    return (await this.present([thread], actor.id))[0];
+    return (await this.present([thread], actor.id, 'parent'))[0];
   }
 
   async myThreads(actor: AuthUser, party: ChatParty, query: ThreadsQueryDto): Promise<Paginated<ChatThreadDto>> {
     const qb = this.partyQuery(actor, party);
-    if (query.student_id) qb.andWhere('t.student_id = :studentId', { studentId: query.student_id });
+    if (query.student_id) {
+      qb.andWhere('(t.student_id = :studentId OR t.is_group = true)', { studentId: query.student_id });
+    }
     qb.orderBy('t.last_message_at', 'DESC', 'NULLS LAST')
       .addOrderBy('t.id', 'DESC')
       .skip(offset(query.page, query.limit))
       .take(query.limit);
     const page = paginate(await qb.getManyAndCount(), query.page, query.limit);
-    return { ...page, items: await this.present(page.items, actor.id) };
+    return { ...page, items: await this.present(page.items, actor.id, party) };
   }
 
   async thread(actor: AuthUser, party: ChatParty, id: number): Promise<ChatThreadDto> {
-    return (await this.present([await this.findForParty(actor, party, id)], actor.id))[0];
+    return (await this.present([await this.findForParty(actor, party, id)], actor.id, party))[0];
   }
 
   async history(actor: AuthUser, party: ChatParty, id: number, query: MessagesQueryDto): Promise<MessagesPageDto> {
@@ -168,7 +171,7 @@ export class ChatService {
       .orderBy('m.id', 'DESC')
       .take(limit + 1)
       .getMany();
-    return { items: await this.presentMessages(rows.slice(0, limit), actor.id), has_more: rows.length > limit };
+    return { items: await this.presentMessages(rows.slice(0, limit), actor.id, party), has_more: rows.length > limit };
   }
 
   async previewHistory(
@@ -261,20 +264,23 @@ export class ChatService {
       }
       return message;
     });
-    const [presented] = await this.presentMessages([saved], actor.id);
+    const [presented] = await this.presentMessages([saved], actor.id, party);
     const memberIds = await this.threadMemberIds(thread);
     this.realtime.toUsers(memberIds, 'chat.message', presented);
     if (!held) {
       const recipientIds = thread.is_group
         ? memberIds.filter((id) => id !== actor.id)
         : [party === 'teacher' ? thread.parent_user_id! : thread.teacher_user_id!];
+      const sides = thread.is_group ? await this.groupSides(thread.id) : null;
       for (const recipient of recipientIds) {
+        const side = sides ? sides.get(recipient) : party === 'teacher' ? 'parent' : 'teacher';
         await this.pushMessage(
           thread,
           recipient,
           thread.is_group ? (thread.title ?? 'Group') : actor.name,
           messagePreview(saved.body, Boolean(saved.file_id), kind),
           1,
+          side ? appOfParty(side) : null,
         );
       }
     }
@@ -316,7 +322,7 @@ export class ChatService {
     const message = await this.messages.findOneBy({ id: messageId, thread_id: thread.id });
     if (!message) throw AppException.notFound('Message not found', 'MESSAGE_NOT_FOUND');
     if (message.event) throw AppException.badRequest('Group notices cannot be reported', 'SYSTEM_MESSAGE');
-    if (message.sender_user_id === actor.id) {
+    if (message.sender_user_id === actor.id && message.sender_party === party) {
       throw AppException.badRequest('You cannot report your own message', 'OWN_MESSAGE');
     }
     if (message.flagged_at && !message.flag_resolved_at) {
@@ -330,7 +336,7 @@ export class ChatService {
     });
     await this.messages.save(message);
     await this.threads.increment({ id: thread.id }, 'open_flags', 1);
-    return (await this.presentMessages([message], actor.id))[0];
+    return (await this.presentMessages([message], actor.id, party))[0];
   }
 
   async deleteMessage(
@@ -350,7 +356,7 @@ export class ChatService {
       await this.log(thread, actor.id, 'deleted_for_me', message.id);
       return { message_id: message.id, deleted_for: 'me', undo_until: null, message: null };
     }
-    if (message.sender_user_id !== actor.id) {
+    if (message.sender_user_id !== actor.id || message.sender_party !== party) {
       throw AppException.forbidden('You can delete only your own messages for everyone', 'NOT_YOUR_MESSAGE');
     }
     if (message.deleted_for_all_at) throw AppException.conflict('This message is already deleted', 'ALREADY_DELETED');
@@ -367,7 +373,7 @@ export class ChatService {
     await this.messages.save(message);
     await this.refreshPreview(thread.id);
     await this.log(thread, actor.id, 'deleted_for_everyone', message.id);
-    const [presented] = await this.presentMessages([message], actor.id);
+    const [presented] = await this.presentMessages([message], actor.id, party);
     this.realtime.toUsers(await this.threadMemberIds(thread), 'chat.deleted', {
       thread_id: thread.id,
       message_id: message.id,
@@ -390,7 +396,7 @@ export class ChatService {
     await this.messages.save(message);
     await this.refreshPreview(thread.id);
     await this.log(thread, actor.id, 'undid_delete', message.id);
-    const [presented] = await this.presentMessages([message], actor.id);
+    const [presented] = await this.presentMessages([message], actor.id, party);
     this.realtime.toUsers(await this.threadMemberIds(thread), 'chat.restored', presented);
     return presented;
   }
@@ -405,7 +411,7 @@ export class ChatService {
     const thread = await this.findForParty(actor, party, threadId);
     if (thread.is_group) await this.assertActiveMember(thread.id, actor.id);
     const message = await this.visibleMessage(thread, party, actor.id, messageId);
-    if (message.sender_user_id !== actor.id) {
+    if (message.sender_user_id !== actor.id || message.sender_party !== party) {
       throw AppException.forbidden('You can edit only your own messages', 'NOT_YOUR_MESSAGE');
     }
     if (message.deleted_for_all_at) {
@@ -422,7 +428,7 @@ export class ChatService {
     }
     const body = dto.body.trim();
     if (body === message.body) {
-      return (await this.presentMessages([message], actor.id))[0]!;
+      return (await this.presentMessages([message], actor.id, party))[0]!;
     }
     await this.dataSource.getRepository(ChatMessageEdit).insert({
       school_id: message.school_id,
@@ -435,7 +441,7 @@ export class ChatService {
     await this.messages.save(message);
     await this.refreshPreview(thread.id);
     await this.log(thread, actor.id, 'edited_message', message.id);
-    const [presented] = await this.presentMessages([message], actor.id);
+    const [presented] = await this.presentMessages([message], actor.id, party);
     this.realtime.toUsers(await this.threadMemberIds(thread), 'chat.edited', presented);
     return presented;
   }
@@ -641,6 +647,7 @@ export class ChatService {
           sender?.name ?? 'Parent',
           messagePreview(latest.body, Boolean(latest.file_id)),
           list.length,
+          'staff',
         );
       }
     }
@@ -655,7 +662,14 @@ export class ChatService {
     return { start: hours.start, end: hours.end, open_now: status.open, next_open_at: status.next_open_at };
   }
 
-  private async pushMessage(thread: ChatThread, recipient: number, sender: string, text: string, count: number) {
+  private async pushMessage(
+    thread: ChatThread,
+    recipient: number,
+    sender: string,
+    text: string,
+    count: number,
+    app: NotificationApp | null = null,
+  ) {
     await this.notifications
       .dispatch({
         template: TEMPLATES.CHAT_MESSAGE,
@@ -664,6 +678,7 @@ export class ChatService {
           sender,
           preview: count > 1 ? `${count} new messages. Latest: ${text}` : text,
           thread_id: String(thread.id),
+          ...(app ? { app } : {}),
         },
       })
       .catch((error: Error) => this.logger.warn(`Chat push for thread ${thread.id} failed: ${error.message}`));
@@ -705,10 +720,16 @@ export class ChatService {
     throw AppException.forbidden('Your account is not linked to a school', 'NO_SCHOOL');
   }
 
-  async createGroup(actor: AuthUser, dto: CreateGroupChatDto, schoolIdOverride?: number): Promise<ChatThreadDto> {
+  async createGroup(
+    actor: AuthUser,
+    dto: CreateGroupChatDto,
+    schoolIdOverride?: number,
+    party: ChatParty | null = null,
+  ): Promise<ChatThreadDto> {
     const schoolId = schoolIdOverride ?? (await this.resolveActorSchool(actor));
     const yearId = await currentYearId(this.dataSource.manager, schoolId);
     const memberUserIds = [...new Set([actor.id, ...(dto.member_user_ids ?? [])])];
+    const sides = await this.memberSides(memberUserIds, party ?? 'teacher');
     const thread = await this.dataSource.transaction(async (manager) => {
       const created = await manager.save(
         manager.create(ChatThread, {
@@ -727,12 +748,13 @@ export class ChatService {
           user_id: userId,
           role: userId === actor.id ? 'creator' : 'member',
           unread_count: 0,
+          party: userId === actor.id ? party : sides.get(userId)!,
         }),
       );
       await manager.save(ChatGroupMember, members);
       return created;
     });
-    return (await this.present([thread], actor.id))[0];
+    return (await this.present([thread], actor.id, party))[0];
   }
 
   async addGroupMembers(
@@ -740,6 +762,7 @@ export class ChatService {
     threadId: number,
     dto: AddGroupMembersDto,
     schoolId: number | null = null,
+    party: ChatParty | null = null,
   ): Promise<ChatMemberDto[]> {
     const thread = await this.groupThread(threadId, schoolId);
     if (schoolId === null) await this.assertActiveMember(thread.id, actor.id);
@@ -751,17 +774,18 @@ export class ChatService {
     }
     const added: number[] = [];
     const events: ChatMessage[] = [];
+    const sides = await this.memberSides(wanted, party ?? 'teacher');
     await this.dataSource.transaction(async (manager) => {
       for (const userId of wanted) {
         const rows = (await manager.query(
-          `INSERT INTO chat_group_members (school_id, thread_id, user_id, role, unread_count, created_at, updated_at)
-           VALUES ($1, $2, $3, 'member', 0, now(), now())
+          `INSERT INTO chat_group_members (school_id, thread_id, user_id, role, unread_count, party, created_at, updated_at)
+           VALUES ($1, $2, $3, 'member', 0, $4, now(), now())
            ON CONFLICT (thread_id, user_id) DO UPDATE
-             SET role = 'member', unread_count = 0, cleared_at = now(), left_at = NULL, left_reason = NULL,
-                 removed_by = NULL, updated_at = now()
+             SET role = 'member', unread_count = 0, party = EXCLUDED.party, cleared_at = now(), left_at = NULL,
+                 left_reason = NULL, removed_by = NULL, updated_at = now()
              WHERE chat_group_members.left_at IS NOT NULL
            RETURNING user_id`,
-          [thread.school_id, thread.id, userId],
+          [thread.school_id, thread.id, userId, sides.get(userId)],
         )) as { user_id: number }[];
         if (!rows.length) continue;
         added.push(userId);
@@ -1080,6 +1104,37 @@ export class ChatService {
     });
   }
 
+  private async memberSides(userIds: number[], fallback: ChatParty): Promise<Map<number, ChatParty>> {
+    const rows: { user_id: number; is_teacher: boolean; is_parent: boolean }[] = userIds.length
+      ? await this.dataSource.query(
+          `SELECT ur.user_id,
+                  bool_or(r.code IN ('TEACHER', 'HOD', 'PRINCIPAL')) AS is_teacher,
+                  bool_or(r.code = 'PARENT') AS is_parent
+           FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+           WHERE ur.user_id = ANY($1)
+           GROUP BY ur.user_id`,
+          [userIds],
+        )
+      : [];
+    const roles = new Map(rows.map((row) => [Number(row.user_id), row]));
+    return new Map(
+      userIds.map((id) => {
+        const row = roles.get(id);
+        if (row?.is_teacher && !row.is_parent) return [id, 'teacher'];
+        if (row?.is_parent && !row.is_teacher) return [id, 'parent'];
+        return [id, fallback];
+      }),
+    );
+  }
+
+  private async groupSides(threadId: number): Promise<Map<number, ChatParty | null>> {
+    const rows: { user_id: number; party: ChatParty | null }[] = await this.dataSource.query(
+      `SELECT user_id, party FROM chat_group_members WHERE thread_id = $1 AND left_at IS NULL`,
+      [threadId],
+    );
+    return new Map(rows.map((row) => [Number(row.user_id), row.party]));
+  }
+
   private async threadMemberIds(thread: ChatThread): Promise<number[]> {
     if (thread.is_group) {
       const rows: { user_id: number }[] = await this.dataSource.query(
@@ -1096,12 +1151,12 @@ export class ChatService {
     if (party === 'teacher') {
       const schoolId = this.schoolOf(actor);
       qb.where(
-        '((t.is_group = false AND t.teacher_user_id = :userId AND t.school_id = :schoolId) OR (t.is_group = true AND t.school_id = :schoolId AND EXISTS (SELECT 1 FROM chat_group_members gm WHERE gm.thread_id = t.id AND gm.user_id = :userId)))',
+        "((t.is_group = false AND t.teacher_user_id = :userId AND t.school_id = :schoolId) OR (t.is_group = true AND t.school_id = :schoolId AND EXISTS (SELECT 1 FROM chat_group_members gm WHERE gm.thread_id = t.id AND gm.user_id = :userId AND (gm.party IS NULL OR gm.party = 'teacher'))))",
         { userId: actor.id, schoolId },
       );
     } else {
       qb.where(
-        '((t.is_group = false AND t.parent_user_id = :userId) OR (t.is_group = true AND EXISTS (SELECT 1 FROM chat_group_members gm WHERE gm.thread_id = t.id AND gm.user_id = :userId)))',
+        "((t.is_group = false AND t.parent_user_id = :userId) OR (t.is_group = true AND EXISTS (SELECT 1 FROM chat_group_members gm WHERE gm.thread_id = t.id AND gm.user_id = :userId AND (gm.party IS NULL OR gm.party = 'parent'))))",
         { userId: actor.id },
       );
     }
@@ -1219,7 +1274,11 @@ export class ChatService {
     );
   }
 
-  private async presentMessages(rows: ChatMessage[], viewerId: number | null = null): Promise<ChatMessageDto[]> {
+  private async presentMessages(
+    rows: ChatMessage[],
+    viewerId: number | null = null,
+    viewerParty: ChatParty | null = null,
+  ): Promise<ChatMessageDto[]> {
     if (!rows.length) return [];
     const gone = (row: ChatMessage) => Boolean(row.hidden_at || row.deleted_for_all_at);
     const schoolIds = [...new Set(rows.map((row) => row.school_id).filter(Boolean))];
@@ -1268,6 +1327,7 @@ export class ChatService {
       can_edit:
         !row.event &&
         viewerId === row.sender_user_id &&
+        (!viewerParty || row.sender_party === viewerParty) &&
         !row.deleted_for_all_at &&
         !row.hidden_at &&
         canEditMessage(row.created_at),
@@ -1276,6 +1336,7 @@ export class ChatService {
       can_delete_for_everyone:
         !row.event &&
         viewerId === row.sender_user_id &&
+        (!viewerParty || row.sender_party === viewerParty) &&
         !row.deleted_for_all_at &&
         canDeleteForEveryone(row.created_at, windows.get(row.school_id) ?? '24_hours'),
       undo_until: viewerId !== null && row.deleted_for_all_by === viewerId ? undoUntil(row.deleted_for_all_at) : null,
@@ -1322,7 +1383,11 @@ export class ChatService {
     }));
   }
 
-  private async present(rows: ChatThread[], viewerId: number | null): Promise<ChatThreadDto[]> {
+  private async present(
+    rows: ChatThread[],
+    viewerId: number | null,
+    viewerParty: ChatParty | null = null,
+  ): Promise<ChatThreadDto[]> {
     if (!rows.length) return [];
     const studentIds = [...new Set(rows.map((row) => row.student_id).filter((id): id is number => Boolean(id)))];
     const userIds = rows
@@ -1466,7 +1531,7 @@ export class ChatService {
             photo_url: parentPerson?.photo_url ?? null,
           }
         : null;
-      const viewerIsTeacher = viewerId === row.teacher_user_id;
+      const viewerIsTeacher = viewerParty ? viewerParty === 'teacher' : viewerId === row.teacher_user_id;
       return {
         id: row.id,
         is_group: false,
@@ -1481,7 +1546,7 @@ export class ChatService {
           ? [student.class_name, student.section_name].filter(Boolean).join(' - ')
           : null,
         last_message_at: row.last_message_at,
-        last_message_preview: clearedFor(row, viewerId) ? null : row.last_message_preview,
+        last_message_preview: clearedFor(row, viewerId, viewerIsTeacher) ? null : row.last_message_preview,
         unread:
           viewerId === null
             ? row.teacher_unread + row.parent_unread
@@ -1498,9 +1563,14 @@ export class ChatService {
   }
 }
 
-function clearedFor(thread: ChatThread, viewerId: number | null): boolean {
+function clearedFor(thread: ChatThread, viewerId: number | null, viewerIsTeacher?: boolean): boolean {
   if (viewerId === null || !thread.last_message_at) return false;
   if (thread.is_group) return false;
-  const cleared = viewerId === thread.teacher_user_id ? thread.teacher_cleared_at : thread.parent_cleared_at;
+  const asTeacher = viewerIsTeacher ?? viewerId === thread.teacher_user_id;
+  const cleared = asTeacher ? thread.teacher_cleared_at : thread.parent_cleared_at;
   return Boolean(cleared && thread.last_message_at <= cleared);
+}
+
+function appOfParty(party: ChatParty): NotificationApp {
+  return party === 'teacher' ? 'staff' : 'parent';
 }

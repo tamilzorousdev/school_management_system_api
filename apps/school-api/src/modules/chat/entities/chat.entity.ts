@@ -90,6 +90,9 @@ export class ChatGroupMember {
   @Column({ type: 'int', default: 0 })
   unread_count: number;
 
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  party: ChatParty | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   cleared_at: Date | null;
 

@@ -610,7 +610,7 @@ export class ParentGateController {
   @ApiOperation({
     summary: 'Ask for a gate pass to take my child early',
     description:
-      'pickup: guardian (a parent allowed to pick up), authorised (a saved pickup person) or other (name, relation, mobile). The class teacher or the office approves; I get GATE_PASS_DECIDED with the code. pass_date today to 30 days ahead; until_time defaults to 2 hours after from_time.',
+      'pass_type: pickup (default, someone takes the student home: pickup required) or visit (the parent comes to school: pickup optional, send it only if someone will also take the student). pickup: guardian (a parent allowed to pick up), authorised (a saved pickup person) or other (name, relation, mobile). The class teacher or the office approves; I get GATE_PASS_DECIDED with the code. pass_date today to 30 days ahead; until_time defaults to 2 hours after from_time.',
   })
   @ApiEnvelope(GatePassDto, { status: HttpStatus.CREATED, message: 'Gate pass requested' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)

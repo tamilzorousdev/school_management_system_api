@@ -11,6 +11,7 @@ import {
   NotificationStatus,
 } from '../entities/notification.entity';
 import { SMS_MODES, SmsMode } from '../entities/notification-template.entity';
+import { NOTIFICATION_APPS, NotificationApp } from '../notification-apps';
 
 export class MyNotificationsQueryDto extends PaginationDto {
   @ApiPropertyOptional({ description: 'true: only unread' })
@@ -23,6 +24,22 @@ export class MyNotificationsQueryDto extends PaginationDto {
   @IsOptional()
   @IsIn(CATEGORIES)
   category?: NotificationCategory;
+
+  @ApiPropertyOptional({
+    enum: NOTIFICATION_APPS,
+    description:
+      'The app asking. One account can hold several roles; this hides notifications meant for the other apps.',
+  })
+  @IsOptional()
+  @IsIn(NOTIFICATION_APPS)
+  app?: NotificationApp;
+}
+
+export class UnreadCountQueryDto {
+  @ApiPropertyOptional({ enum: NOTIFICATION_APPS })
+  @IsOptional()
+  @IsIn(NOTIFICATION_APPS)
+  app?: NotificationApp;
 }
 
 export class OutboxQueryDto extends ListQueryDto {

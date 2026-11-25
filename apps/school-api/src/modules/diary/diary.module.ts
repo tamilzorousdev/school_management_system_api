@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RealtimeModule } from '../realtime/realtime.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StaffModule } from '../staff/staff.module';
 import { DiaryController } from './diary.controller';
@@ -13,6 +14,7 @@ import { DiarySubmissionAttachment } from './entities/diary-submission-attachmen
   imports: [
     TypeOrmModule.forFeature([DiaryEntry, DiaryRecipient, DiaryAttachment, DiarySubmission, DiarySubmissionAttachment]),
     StaffModule,
+    RealtimeModule,
   ],
   controllers: [DiaryController],
   providers: [DiaryService],

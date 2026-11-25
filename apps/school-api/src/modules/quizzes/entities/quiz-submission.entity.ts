@@ -64,8 +64,8 @@ export class QuizSubmission {
   @Column({ type: 'numeric', precision: 5, scale: 2, default: 0 })
   percentage: number;
 
-  @Column({ type: 'boolean', default: false })
-  passed: boolean;
+  @Column({ type: 'boolean', nullable: true })
+  passed: boolean | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   created_at: Date;

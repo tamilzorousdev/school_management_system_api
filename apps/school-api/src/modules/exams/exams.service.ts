@@ -9,6 +9,8 @@ import { AcademicYear } from '../setup/entities/academic-year.entity';
 import { Term } from '../setup/entities/term.entity';
 import { AssignmentsService } from '../staff/assignments.service';
 import {
+  ChildExamDto,
+  ChildExamPhase,
   ClassToppersDto,
   ExamClassDto,
   ExamDetailDto,
@@ -571,6 +573,64 @@ export class ExamsService {
     );
     if (!row) throw AppException.notFound('This child is not linked to your mobile number', 'CHILD_NOT_FOUND');
     return this.studentResults(Number(row.school_id), studentId);
+  }
+
+  async childExams(userId: number, studentId: number, today: string): Promise<ChildExamDto[]> {
+    const schoolId = await this.childSchool(userId, studentId);
+    const rows: { id: number; class_id: number; class_name: string }[] = await this.dataSource.query(
+      `SELECT x.id, e.class_id, c.name AS class_name FROM exams x
+       JOIN student_enrollments e ON e.student_id = $2 AND e.academic_year_id = x.academic_year_id
+       JOIN classes c ON c.id = e.class_id
+       WHERE x.school_id = $1 AND x.deleted_at IS NULL
+         AND EXISTS (SELECT 1 FROM exam_subjects es WHERE es.exam_id = x.id AND es.class_id = e.class_id)
+       ORDER BY x.start_date DESC, x.id DESC`,
+      [schoolId, studentId],
+    );
+    const items: ChildExamDto[] = [];
+    for (const row of rows) {
+      const exam = await this.find(schoolId, Number(row.id));
+      const result =
+        exam.status === 'published'
+          ? await this.resultFor(exam, Number(row.class_id), row.class_name, studentId)
+          : null;
+      const phase = examPhase(exam, today, result !== null);
+      const papers: { subject: string; code: string; exam_date: string | null; max_marks: string }[] =
+        await this.dataSource.query(
+          `SELECT s.name AS subject, s.code, to_char(es.exam_date, 'YYYY-MM-DD') AS exam_date, es.max_marks
+           FROM exam_subjects es JOIN subjects s ON s.id = es.subject_id
+           WHERE es.exam_id = $1 AND es.class_id = $2
+           ORDER BY es.exam_date ASC NULLS LAST, s.name ASC`,
+          [exam.id, row.class_id],
+        );
+      items.push({
+        id: exam.id,
+        name: exam.name,
+        start_date: exam.start_date,
+        end_date: exam.end_date,
+        phase,
+        hall_ticket_available: phase === 'upcoming' || phase === 'ongoing',
+        schedule: papers.map((paper) => ({
+          subject: paper.subject,
+          code: paper.code ?? '',
+          exam_date: paper.exam_date,
+          max_marks: Number(paper.max_marks),
+        })),
+        result,
+      });
+    }
+    return items;
+  }
+
+  async childSchool(userId: number, studentId: number): Promise<number> {
+    const [row] = await this.dataSource.query(
+      `SELECT s.school_id FROM student_guardians sg
+       JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
+       JOIN students s ON s.id = sg.student_id AND s.deleted_at IS NULL AND s.status = 'active'
+       WHERE g.user_id = $1 AND sg.student_id = $2 LIMIT 1`,
+      [userId, studentId],
+    );
+    if (!row) throw AppException.notFound('This child is not linked to your mobile number', 'CHILD_NOT_FOUND');
+    return Number(row.school_id);
   }
 
   async teacherExams(schoolId: number, userId: number): Promise<TeacherExamDto[]> {
@@ -1209,4 +1269,11 @@ export class ExamsService {
       exam_date: paper.exam_date,
     };
   }
+}
+
+export function examPhase(exam: Exam, today: string, hasResult: boolean): ChildExamPhase {
+  if (hasResult) return 'results_published';
+  if (today < exam.start_date) return 'upcoming';
+  if (today <= exam.end_date) return 'ongoing';
+  return 'awaiting_results';
 }

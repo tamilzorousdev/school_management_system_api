@@ -9,6 +9,7 @@ import { addDays } from '../../shared/school-days';
 import { FilesService } from '../files/files.service';
 import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { DiaryReviewMode } from '../schools/entities/school.entity';
 import { AssignmentsService } from '../staff/assignments.service';
 import {
@@ -53,6 +54,7 @@ export class DiaryService {
     private readonly assignments: AssignmentsService,
     private readonly files: FilesService,
     private readonly notifications: NotificationsService,
+    private readonly realtime: RealtimeGateway,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
@@ -199,11 +201,12 @@ export class DiaryService {
     const entry = await this.feedQuery(schoolId, studentId).andWhere('d.id = :entryId', { entryId }).getOne();
     if (!entry) throw AppException.notFound('Diary post not found', 'DIARY_NOT_FOUND');
     const now = new Date();
-    await this.dataSource.query(
+    const [, changed]: [unknown, number] = await this.dataSource.query(
       `UPDATE diary_recipients SET seen_at = $3, seen_by = $4
        WHERE entry_id = $1 AND student_id = $2 AND seen_at IS NULL`,
       [entryId, studentId, now, actor.id],
     );
+    if (changed) await this.announceProgress(entry);
     const row = await this.recipients.findOneByOrFail({ entry_id: entryId, student_id: studentId });
     return { seen_at: row.seen_at ?? now };
   }
@@ -634,8 +637,53 @@ export class DiaryService {
       return existing;
     });
 
+    await this.notifyTeacherOfSubmission(entry, studentId, actor, isLate);
+    await this.announceProgress(entry);
     const [presented] = await this.presentSubmissions([submission]);
     return presented;
+  }
+
+  private async notifyTeacherOfSubmission(
+    entry: DiaryEntry,
+    studentId: number,
+    actor: AuthUser,
+    isLate: boolean,
+  ): Promise<void> {
+    if (!entry.created_by) return;
+    const [student]: { name: string }[] = await this.dataSource.query(
+      `SELECT concat_ws(' ', first_name, last_name) AS name FROM students WHERE id = $1`,
+      [studentId],
+    );
+    await this.notifications
+      .dispatch({
+        template: TEMPLATES.DIARY_SUBMITTED,
+        audience: { user_ids: [entry.created_by] },
+        data: {
+          student: student?.name ?? 'A student',
+          parent: actor.name ?? 'A parent',
+          title: entry.title,
+          late: isLate ? ' (late)' : '',
+          entry_id: String(entry.id),
+          student_id: String(studentId),
+        },
+      })
+      .catch((error: Error) => this.logger.warn(`Diary ${entry.id} submission notice failed: ${error.message}`));
+  }
+
+  private async announceProgress(entry: DiaryEntry): Promise<void> {
+    if (!entry.created_by) return;
+    const [counts]: { seen: string; total: string; submitted: string }[] = await this.dataSource.query(
+      `SELECT COUNT(*) FILTER (WHERE r.seen_at IS NOT NULL) AS seen, COUNT(*) AS total,
+              (SELECT COUNT(*) FROM diary_submissions s WHERE s.entry_id = $1) AS submitted
+       FROM diary_recipients r WHERE r.entry_id = $1`,
+      [entry.id],
+    );
+    this.realtime.toUsers([entry.created_by], 'diary.updated', {
+      entry_id: entry.id,
+      seen_count: Number(counts?.seen ?? 0),
+      recipient_count: Number(counts?.total ?? 0),
+      submission_count: Number(counts?.submitted ?? 0),
+    });
   }
 
   async getSubmissionForStudent(

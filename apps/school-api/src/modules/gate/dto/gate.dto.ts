@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsDefined,
   IsIn,
   IsInt,
   IsOptional,
@@ -28,6 +29,8 @@ import {
   ID_PROOFS,
   IdProof,
   PASS_SOURCES,
+  PASS_TYPES,
+  PassType,
   PASS_STATUSES,
   PassSource,
   PassStatus,
@@ -123,10 +126,26 @@ export class PassRequestDto {
   @Length(3, 300)
   reason: string;
 
-  @ApiProperty({ type: PickupInputDto })
+  @ApiPropertyOptional({
+    enum: PASS_TYPES,
+    example: 'pickup',
+    description:
+      'visit = the parent comes to school (no collector needed); pickup = someone takes the student home (pickup required). Default pickup',
+  })
+  @IsOptional()
+  @IsIn(PASS_TYPES)
+  pass_type?: PassType;
+
+  @ApiPropertyOptional({
+    type: PickupInputDto,
+    description:
+      'Required for pass_type pickup. Optional for visit: send it only if someone will also take the student',
+  })
+  @ValidateIf((dto: PassRequestDto) => dto.pass_type !== 'visit' || (dto.pickup !== undefined && dto.pickup !== null))
+  @IsDefined({ message: 'Choose who will collect the student' })
   @ValidateNested()
   @Type(() => PickupInputDto)
-  pickup: PickupInputDto;
+  pickup?: PickupInputDto | null;
 }
 
 export class StaffPassDto extends PassRequestDto {
@@ -713,8 +732,11 @@ export class GatePassDto {
   @ApiProperty({ example: 'Doctor appointment' })
   reason: string;
 
-  @ApiProperty({ type: PickupPersonDto })
-  pickup: PickupPersonDto;
+  @ApiProperty({ enum: PASS_TYPES, example: 'pickup' })
+  pass_type: PassType;
+
+  @ApiProperty({ type: PickupPersonDto, nullable: true, description: 'null for a visit pass without a collector' })
+  pickup: PickupPersonDto | null;
 
   @ApiProperty({ enum: PASS_STATUSES, example: 'approved' })
   status: PassStatus;

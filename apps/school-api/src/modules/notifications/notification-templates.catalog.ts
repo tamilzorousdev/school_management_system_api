@@ -28,6 +28,7 @@ export const TEMPLATES = {
   MEETING_ENDING: 'MEETING_ENDING',
   MEETING_NOTES_SHARED: 'MEETING_NOTES_SHARED',
   DIARY_REJECTED: 'DIARY_REJECTED',
+  DIARY_SUBMITTED: 'DIARY_SUBMITTED',
   ANNOUNCEMENT: 'ANNOUNCEMENT',
   ANNOUNCEMENT_URGENT: 'ANNOUNCEMENT_URGENT',
   ANNOUNCEMENT_UPDATED: 'ANNOUNCEMENT_UPDATED',
@@ -1176,6 +1177,25 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: 'கூட்டம் {{minutes}} நிமிடங்களில் முடிவடையும்',
         body: '{{student}} குறித்து {{host}} உடனான உங்கள் கூட்டம் {{time}} மணிக்கு முடிவடைய உள்ளது.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.DIARY_SUBMITTED,
+    category: 'diary',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Homework submitted by {{student}}',
+        body: '{{parent}} submitted homework "{{title}}" for {{student}}{{late}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} வீட்டுப்பாடம் சமர்ப்பித்தார்',
+        body: '{{parent}} "{{title}}" வீட்டுப்பாடத்தை {{student}}-க்காக சமர்ப்பித்தார்{{late}}',
         sms_body: null,
       },
     },
