@@ -1,4 +1,4 @@
-import { parseOneSignalApps } from '../../config/configuration';
+import { parseOneSignalApps, parsePairs } from '../../config/configuration';
 import { pushTargets } from './notifications.service';
 import { UserDevice } from '../users/entities/user-device.entity';
 
@@ -30,5 +30,18 @@ describe('pushTargets', () => {
 
   it('leaves an unregistered app null so the default is used', () => {
     expect(pushTargets([device('t1', null)])).toEqual([{ token: 't1', oneSignalAppId: null }]);
+  });
+});
+
+describe('parsePairs', () => {
+  it('keeps a value that itself contains a colon', () => {
+    expect(parsePairs('a1:k:1,a2:k2')).toEqual({ a1: 'k:1', a2: 'k2' });
+  });
+
+  it('maps a OneSignal app id to the tenant that owns it', () => {
+    expect(parsePairs('637c058f:TZSMS_DRIVER,c066ba63:TZSMS_OFFICE')).toEqual({
+      '637c058f': 'TZSMS_DRIVER',
+      c066ba63: 'TZSMS_OFFICE',
+    });
   });
 });

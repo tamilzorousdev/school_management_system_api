@@ -372,6 +372,10 @@ export class EnvironmentVariables {
   @IsString()
   ONESIGNAL_APPS?: string;
 
+  @IsOptional()
+  @IsString()
+  NOTIFY_PUSH_TENANTS?: string;
+
   @IsIn(['local'], { message: 'STORAGE_DRIVER supports local in this phase; s3 comes with the infrastructure phase' })
   STORAGE_DRIVER: string = 'local';
 

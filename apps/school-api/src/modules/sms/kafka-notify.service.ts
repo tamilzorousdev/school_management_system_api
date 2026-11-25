@@ -35,7 +35,6 @@ export interface KafkaPushMessage {
   variables: Record<string, string>;
   externalIds: string[];
   playerIds?: string[];
-  oneSignalAppId?: string;
   dataOnly?: true;
   data?: Record<string, string>;
   priority?: 'high';
@@ -47,7 +46,7 @@ export interface KafkaPushInput {
   variables: Record<string, string>;
   externalIds: string[];
   playerIds: string[];
-  oneSignalAppId?: string;
+  tenantId?: string;
   dataOnly?: { data: Record<string, string>; ttlSeconds: number };
 }
 
@@ -126,15 +125,18 @@ export class KafkaNotifyService implements OnModuleInit, OnModuleDestroy {
     return message;
   }
 
+  pushTenantFor(oneSignalAppId: string | null): string {
+    return (oneSignalAppId && this.config.tenantByOneSignalApp[oneSignalAppId]) || this.config.tenantId;
+  }
+
   pushMessage(input: KafkaPushInput): KafkaPushMessage {
     return {
       type: 'push',
-      tenantId: this.config.tenantId,
+      tenantId: input.tenantId || this.config.tenantId,
       templateId: input.templateId,
       variables: input.variables,
       externalIds: input.externalIds,
       ...(input.playerIds.length ? { playerIds: input.playerIds } : {}),
-      ...(input.oneSignalAppId ? { oneSignalAppId: input.oneSignalAppId } : {}),
       ...(input.dataOnly
         ? {
             dataOnly: true as const,

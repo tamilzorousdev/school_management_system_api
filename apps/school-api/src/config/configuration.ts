@@ -67,6 +67,18 @@ export const smsConfig = registerAs('sms', () => ({
   pingOtpTemplateId: process.env.PING_OTP_TEMPLATE_ID ?? '',
 }));
 
+export function parsePairs(raw: string | undefined): Record<string, string> {
+  const pairs: Record<string, string> = {};
+  for (const entry of (raw ?? '').split(',')) {
+    const separator = entry.indexOf(':');
+    if (separator < 0) continue;
+    const key = entry.slice(0, separator).trim();
+    const value = entry.slice(separator + 1).trim();
+    if (key && value) pairs[key] = value;
+  }
+  return pairs;
+}
+
 export const kafkaNotifyConfig = registerAs('kafkaNotify', () => ({
   brokers: list(process.env.NOTIFY_KAFKA_BROKER),
   username: process.env.NOTIFY_KAFKA_USER ?? '',
@@ -75,6 +87,7 @@ export const kafkaNotifyConfig = registerAs('kafkaNotify', () => ({
   topic: process.env.NOTIFY_KAFKA_TOPIC || 'notifications',
   clientId: process.env.NOTIFY_KAFKA_CLIENT_ID || 'school-api',
   tenantId: process.env.NOTIFY_TENANT_ID ?? '',
+  tenantByOneSignalApp: parsePairs(process.env.NOTIFY_PUSH_TENANTS),
   templatePrefix: process.env.NOTIFY_TEMPLATE_PREFIX ?? 'school_',
   logEnabled: process.env.NOTIFY_KAFKA_LOG === 'true',
 }));
@@ -82,12 +95,7 @@ export const kafkaNotifyConfig = registerAs('kafkaNotify', () => ({
 export type PushDriver = 'off' | 'fcm' | 'onesignal' | 'kafka';
 
 export function parseOneSignalApps(raw: string | undefined): Record<string, string> {
-  const apps: Record<string, string> = {};
-  for (const pair of (raw ?? '').split(',')) {
-    const [appId, apiKey] = pair.split(':').map((part) => part.trim());
-    if (appId && apiKey) apps[appId] = apiKey;
-  }
-  return apps;
+  return parsePairs(raw);
 }
 
 export const pushConfig = registerAs('push', () => {

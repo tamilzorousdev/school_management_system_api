@@ -224,7 +224,7 @@ export class PushService {
         variables,
         externalIds: [String(message.userId)],
         playerIds: tokens,
-        oneSignalAppId: appId,
+        tenantId: this.kafka.pushTenantFor(appId),
       });
     }
     return { status: 'sent', provider: 'kafka', successCount: groups.size, invalidTokens: [] };
