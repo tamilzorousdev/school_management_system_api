@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { AppException, AuthUser, paginate, Paginated } from '@app/common';
-import { appConfig, AppConfig } from '../../config/configuration';
+import { appConfig, AppConfig, telematicsConfig, TelematicsConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { addDays, holidaySet, WEEKLY_OFF, weekday } from '../../shared/school-days';
 import { ClearanceService } from '../crew/clearance.service';
@@ -85,6 +85,7 @@ export class TripsService {
     private readonly clearance: ClearanceService,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
+    @Inject(telematicsConfig.KEY) private readonly telematicsConfig: TelematicsConfig,
   ) {}
 
   async start(
@@ -106,9 +107,7 @@ export class TripsService {
     }
     if (!busToday) throw AppException.badRequest('Give this route a bus first', 'ROUTE_HAS_NO_BUS');
     const vehicle = await this.dataSource.getRepository(Vehicle).findOneByOrFail({ id: busToday });
-    if (!vehicle.device_id) {
-      throw AppException.badRequest('Fit a GPS tracker to this bus in Buses and routes first', 'NO_TRACKER');
-    }
+    const tracked = Boolean(vehicle.device_id && this.telematicsConfig.url);
     await this.clearance.assertCanRun(schoolId, vehicle);
     const allStops = await this.dataSource.getRepository(RouteStop).find({ where: { route_id: route.id } });
     const stops = handover ? allStops.filter((stop) => handover.stopIds.includes(stop.id)) : allStops;
@@ -117,7 +116,7 @@ export class TripsService {
       `SELECT code, name, latitude, longitude, geofence_radius_m FROM schools WHERE id = $1`,
       [schoolId],
     );
-    if (school?.latitude == null || school?.longitude == null) {
+    if (tracked && (school?.latitude == null || school?.longitude == null)) {
       throw AppException.badRequest('Set the school location in School setup first', 'SCHOOL_LOCATION_MISSING');
     }
     const running = await this.trips.findOneBy({ vehicle_id: vehicle.id, status: 'active' });
@@ -131,7 +130,8 @@ export class TripsService {
         school_id: schoolId,
         route_id: route.id,
         vehicle_id: vehicle.id,
-        device_id: vehicle.device_id,
+        device_id: tracked ? vehicle.device_id : null,
+        tracking: tracked ? 'telematics' : 'phone',
         kind: dto.kind,
         trip_date: todayIn(this.app.timeZone),
         status: 'active',
@@ -154,6 +154,7 @@ export class TripsService {
         })),
       }),
     );
+    if (!tracked) return this.detail(schoolId, trip.id);
     try {
       const remote = await this.telematics.post<TelematicsTrip>('/trips', {
         ref: `${school.code}-${trip.id}`,
@@ -180,10 +181,22 @@ export class TripsService {
       });
       await this.trips.update(trip.id, { telematics_trip_id: remote.id });
     } catch (error) {
-      await this.trips.delete(trip.id);
-      throw error;
+      this.logger.warn(`Trip ${trip.id} runs on the driver's phone: ${(error as Error).message}`);
+      await this.trips.update(trip.id, { tracking: 'phone', device_id: null });
     }
     return this.detail(schoolId, trip.id);
+  }
+
+  async sweep(schoolId: number, tripId: number, photoFileId: number, actor: AuthUser, vehicleId: number) {
+    const trip = await this.find(schoolId, tripId);
+    if (trip.vehicle_id !== vehicleId) throw AppException.forbidden('This trip is not on your bus', 'NOT_YOUR_TRIP');
+    const [file] = await this.dataSource.query(`SELECT id FROM files WHERE id = $1 AND school_id = $2`, [
+      photoFileId,
+      schoolId,
+    ]);
+    if (!file) throw AppException.validation([{ field: 'photo_file_id', message: 'Upload the photo first' }]);
+    await this.trips.update(trip.id, { sweep_photo_id: photoFileId, swept_at: new Date(), swept_by: actor.id });
+    return this.detail(schoolId, tripId);
   }
 
   async end(schoolId: number, tripId: number, reason: 'driver' | 'admin', vehicleId?: number): Promise<TripDetailDto> {
@@ -347,13 +360,28 @@ export class TripsService {
     });
   }
 
-  async phonePosition(schoolId: number, tripId: number, dto: PhonePositionDto, vehicleId: number): Promise<void> {
+  async phonePosition(
+    schoolId: number,
+    tripId: number,
+    dto: PhonePositionDto,
+    vehicleId: number,
+  ): Promise<TripPosition | null> {
     const trip = await this.find(schoolId, tripId);
     if (trip.vehicle_id !== vehicleId) throw AppException.forbidden('This trip is not on your bus', 'NOT_YOUR_TRIP');
     if (trip.status !== 'active') throw AppException.conflict('This trip has ended', 'TRIP_ENDED');
     const at = dto.recorded_at ? new Date(dto.recorded_at) : new Date();
     if (Number.isNaN(at.getTime())) {
       throw AppException.validation([{ field: 'recorded_at', message: 'recorded_at must be a date and time' }]);
+    }
+    if (trip.tracking === 'phone' || !trip.device_id) {
+      return {
+        lat: dto.lat,
+        lng: dto.lng,
+        speed: dto.speed ?? null,
+        heading: dto.heading ?? null,
+        recorded_at: at.toISOString(),
+        source: 'phone',
+      };
     }
     await this.telematics.post(`/devices/${trip.device_id}/positions`, {
       ts: Math.floor(at.getTime() / 1000),
@@ -363,6 +391,7 @@ export class TripsService {
       ...(dto.heading !== undefined ? { hdg: dto.heading } : {}),
       ign: 1,
     });
+    return null;
   }
 
   async childBus(schoolId: number, studentId: number): Promise<ChildBusDto | null> {
@@ -546,6 +575,7 @@ export class TripsService {
     ]);
     const boardedIds = new Set(recorded.filter((row) => row.action === 'boarded').map((row) => row.student_id));
     const alightedIds = new Set(recorded.filter((row) => row.action === 'alighted').map((row) => row.student_id));
+    const missedIds = new Set(recorded.filter((row) => row.action === 'missed').map((row) => row.student_id));
     const order = new Map(trip.stops.map((stop, index) => [stop.stop_id, index]));
     return rows
       .map((row) => ({
@@ -561,6 +591,7 @@ export class TripsService {
         passenger_ref: row.passenger_ref,
         boarded: boardedIds.has(Number(row.student_id)),
         alighted: alightedIds.has(Number(row.student_id)),
+        missed: missedIds.has(Number(row.student_id)),
         away_today: Boolean(absence),
         away_note: absence?.note ?? null,
       }))
@@ -615,6 +646,8 @@ export class TripsService {
         method: row.method,
         stop: row.stop_id ? { id: row.stop_id, name: stopNames.get(row.stop_id) ?? '' } : null,
         recorded_by: person ? { id: Number(person.id), name: person.name } : null,
+        handed_to: row.handed_to,
+        pass_on_hold: row.pass_on_hold,
         occurred_at: row.occurred_at,
       };
     });
@@ -680,6 +713,8 @@ export class TripsService {
             : null,
         handover_of: row.handover_of,
         replaced_by: row.replaced_by,
+        tracking: row.tracking,
+        swept_at: row.swept_at,
       };
     });
   }

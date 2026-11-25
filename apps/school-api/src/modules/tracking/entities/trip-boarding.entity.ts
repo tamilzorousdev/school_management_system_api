@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
-export const BOARDING_ACTIONS = ['boarded', 'alighted'] as const;
+export const BOARDING_ACTIONS = ['boarded', 'alighted', 'missed'] as const;
 export type BoardingAction = (typeof BOARDING_ACTIONS)[number];
 
 export const BOARDING_METHODS = ['qr', 'manual'] as const;
@@ -33,6 +33,12 @@ export class TripBoarding {
 
   @Column({ type: 'int', nullable: true })
   recorded_by: number | null;
+
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  handed_to: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  pass_on_hold: boolean;
 
   @Column({ type: 'timestamptz' })
   occurred_at: Date;

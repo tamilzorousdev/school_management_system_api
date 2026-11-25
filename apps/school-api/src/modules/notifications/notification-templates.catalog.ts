@@ -3,6 +3,8 @@ import { NotificationCategory } from './entities/notification.entity';
 import { SmsMode } from './entities/notification-template.entity';
 import { LIBRARY_TEMPLATE_CATALOG, LIBRARY_TEMPLATES } from './library-templates.catalog';
 import { INVENTORY_TEMPLATE_CATALOG, INVENTORY_TEMPLATES } from './inventory-templates.catalog';
+import { GALLERY_TEMPLATE_CATALOG, GALLERY_TEMPLATES } from './gallery-templates.catalog';
+import { HOSTEL_TEMPLATE_CATALOG, HOSTEL_TEMPLATES } from './hostel-templates.catalog';
 
 export const TEMPLATES = {
   SYSTEM_TEST: 'SYSTEM_TEST',
@@ -88,6 +90,18 @@ export const TEMPLATES = {
   BUS_LOW_MILEAGE: 'BUS_LOW_MILEAGE',
   BUS_BUDGET_EXCEEDED: 'BUS_BUDGET_EXCEEDED',
   BUS_PROBLEM_REPORTED: 'BUS_PROBLEM_REPORTED',
+  STUDENT_NOT_AT_STOP: 'STUDENT_NOT_AT_STOP',
+  STUDENT_BUS_ABSENT_TEACHER: 'STUDENT_BUS_ABSENT_TEACHER',
+  GATE_EARLY_LEAVE_BUS: 'GATE_EARLY_LEAVE_BUS',
+  BUS_PASS_HOLD_BOARDED: 'BUS_PASS_HOLD_BOARDED',
+  BUS_PASS_HOLD_BOARDED_OFFICE: 'BUS_PASS_HOLD_BOARDED_OFFICE',
+  BUS_STOP_SKIPPED: 'BUS_STOP_SKIPPED',
+  DRIVER_ATTENDANT_ABSENT: 'DRIVER_ATTENDANT_ABSENT',
+  TRANSPORT_INCIDENT_REPORTED: 'TRANSPORT_INCIDENT_REPORTED',
+  TRANSPORT_BREAKDOWN: 'TRANSPORT_BREAKDOWN',
+  TRANSPORT_INCIDENT_RESOLVED: 'TRANSPORT_INCIDENT_RESOLVED',
+  BUS_OPT_OUT: 'BUS_OPT_OUT',
+  BUS_PICKUP_PERSON: 'BUS_PICKUP_PERSON',
   FUEL_ENTRY_REVIEWED: 'FUEL_ENTRY_REVIEWED',
   TRIP_NOT_BOARDED: 'TRIP_NOT_BOARDED',
   STUDENTS_LEFT_ON_BUS: 'STUDENTS_LEFT_ON_BUS',
@@ -135,8 +149,13 @@ export const TEMPLATES = {
   GRIEVANCE_NEW: 'GRIEVANCE_NEW',
   GRIEVANCE_ASSIGNED: 'GRIEVANCE_ASSIGNED',
   GRIEVANCE_RESOLVED: 'GRIEVANCE_RESOLVED',
+  GATE_PASS_ESCALATED: 'GATE_PASS_ESCALATED',
+  OFFICE_REMINDER: 'OFFICE_REMINDER',
+  ALUMNI_SUBMISSION: 'ALUMNI_SUBMISSION',
   ...LIBRARY_TEMPLATES,
   ...INVENTORY_TEMPLATES,
+  ...GALLERY_TEMPLATES,
+  ...HOSTEL_TEMPLATES,
 } as const;
 
 interface TemplateText {
@@ -915,12 +934,12 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
     text: {
       en: {
         title: '{{student}} got off the bus',
-        body: '{{student}} got off {{bus}} at {{stop}} at {{time}}.',
+        body: '{{student}} got off {{bus}} at {{stop}} at {{time}}.{{handed}}',
         sms_body: null,
       },
       ta: {
         title: '{{student}} பேருந்திலிருந்து இறங்கினார்',
-        body: '{{student}} {{time}} மணிக்கு {{stop}}-இல் {{bus}}-இலிருந்து இறங்கினார்.',
+        body: '{{student}} {{time}} மணிக்கு {{stop}}-இல் {{bus}}-இலிருந்து இறங்கினார்.{{handed_ta}}',
         sms_body: null,
       },
     },
@@ -2114,6 +2133,234 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
     },
   },
   {
+    code: TEMPLATES.BUS_STOP_SKIPPED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus did not stop at {{stop}}',
+        body: '{{bus}} did not stop at {{stop}} this trip.{{reason}} Please contact the transport office.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{stop}} நிறுத்தத்தில் பேருந்து நிற்கவில்லை',
+        body: '{{bus}} இந்தப் பயணத்தில் {{stop}} நிறுத்தத்தில் நிற்கவில்லை.{{reason}} போக்குவரத்து அலுவலகத்தைத் தொடர்பு கொள்ளவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.DRIVER_ATTENDANT_ABSENT,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'No attendant on {{bus}} today',
+        body: '{{driver}} checked in without {{attendant}}. Send another attendant for {{bus}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'இன்று {{bus}} பேருந்தில் உதவியாளர் இல்லை',
+        body: '{{driver}} {{attendant}} இல்லாமல் பணிக்கு வந்துள்ளார். {{bus}} பேருந்துக்கு வேறு உதவியாளரை அனுப்பவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.TRANSPORT_INCIDENT_REPORTED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: '{{type}} reported on {{bus}}',
+        body: '{{by}} reported: {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} பேருந்தில் {{type}} புகார்',
+        body: '{{by}} தெரிவித்தது: {{note}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.TRANSPORT_BREAKDOWN,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: true,
+    text: {
+      en: {
+        title: '{{bus}} broke down',
+        body: '{{by}}: {{note}}. Send another bus and hand the trip over in Trips.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} பேருந்து பழுதடைந்தது',
+        body: '{{by}}: {{note}}. வேறு பேருந்தை அனுப்பி, பயணங்கள் பகுதியில் பயணத்தை மாற்றவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.TRANSPORT_INCIDENT_RESOLVED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{type}} on {{bus}} closed',
+        body: 'The office closed it: {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{bus}} பேருந்தின் {{type}} முடிக்கப்பட்டது',
+        body: 'அலுவலகம் முடித்தது: {{note}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_OPT_OUT,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}} will not take the bus {{day}}',
+        body: 'Parent says {{student}} skips the {{trips}} {{day}}.{{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} {{day}} பேருந்தில் வரமாட்டார்',
+        body: '{{student}} {{day}} {{trips}} பயணத்தில் வரமாட்டார் என்று பெற்றோர் தெரிவித்தார்.{{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PICKUP_PERSON,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'New pickup person for {{student}}',
+        body: '{{person}} will collect {{student}} from the bus {{day}}. Check the hand-over list.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}}-ஐ அழைத்துச் செல்ல புதிய நபர்',
+        body: '{{day}} {{person}} பேருந்திலிருந்து {{student}}-ஐ அழைத்துச் செல்வார். ஒப்படைப்பு பட்டியலைப் பார்க்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.STUDENT_NOT_AT_STOP,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}} was not at the bus stop',
+        body: '{{bus}} came to {{stop}} at {{time}} and {{student}} was not there. Please call the transport office if your child still needs the bus.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} பேருந்து நிறுத்தத்தில் இல்லை',
+        body: '{{bus}} {{time}} மணிக்கு {{stop}} வந்தது, {{student}} அங்கு இல்லை. குழந்தைக்கு இன்னும் பேருந்து தேவைப்பட்டால் போக்குவரத்து அலுவலகத்தை அழைக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.STUDENT_BUS_ABSENT_TEACHER,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}} ({{class_section}}) did not come to the bus',
+        body: '{{bus}} reached {{stop}} at {{time}} for the {{trip}} and {{student}} was not there. The parent has been told. Check before marking class attendance.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} ({{class_section}}) பேருந்துக்கு வரவில்லை',
+        body: '{{trip_ta}} பயணத்தில் {{bus}} {{time}} மணிக்கு {{stop}} வந்தது, {{student}} அங்கு இல்லை. பெற்றோருக்குத் தெரிவிக்கப்பட்டது. வகுப்பு வருகையைக் குறிக்கும் முன் சரிபார்க்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_EARLY_LEAVE_BUS,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}} went home early: not on the evening bus',
+        body: '{{student}} ({{class_section}}) left school at {{time}} on {{date}} with {{person}} ({{relation}}) on a gate pass. Do not wait for the child on the evening drop.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} முன்கூட்டியே வீடு சென்றார்: மாலை பேருந்தில் இல்லை',
+        body: '{{student}} ({{class_section}}) {{date}} அன்று {{time}} மணிக்கு {{person}} ({{relation}}) உடன் வாயில் அனுமதிச் சீட்டுடன் பள்ளியை விட்டுச் சென்றார். மாலை பயணத்தில் காத்திருக்க வேண்டாம்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PASS_HOLD_BOARDED,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{student}} boarded with the bus pass on hold',
+        body: '{{student}} got on {{bus}} at {{stop}} at {{time}}, but the bus pass is on hold ({{reason}}). Please clear it at the school office.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'பேருந்து பாஸ் நிறுத்தி வைக்கப்பட்ட நிலையில் {{student}} ஏறினார்',
+        body: '{{student}} {{time}} மணிக்கு {{stop}}-இல் {{bus}}-இல் ஏறினார், ஆனால் பேருந்து பாஸ் நிறுத்தி வைக்கப்பட்டுள்ளது ({{reason}}). பள்ளி அலுவலகத்தில் சரிசெய்யவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.BUS_PASS_HOLD_BOARDED_OFFICE,
+    category: 'transport',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Bus pass on hold: {{student}} boarded',
+        body: '{{student}} ({{class_section}}) boarded {{bus}} at {{stop}} at {{time}} with the pass on hold. Reason: {{reason}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'பாஸ் நிறுத்தம்: {{student}} பேருந்தில் ஏறினார்',
+        body: '{{student}} ({{class_section}}) {{time}} மணிக்கு {{stop}}-இல் பாஸ் நிறுத்தி வைக்கப்பட்ட நிலையில் {{bus}}-இல் ஏறினார். காரணம்: {{reason}}.',
+        sms_body: null,
+      },
+    },
+  },
+  {
     code: TEMPLATES.BUS_PROBLEM_REPORTED,
     category: 'transport',
     push: true,
@@ -2166,6 +2413,44 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: 'வெளியேறும் அனுமதி கோரிக்கை: {{student}}',
         body: '{{student}} ({{class_section}}) {{date}} அன்று {{from}} முதல் வெளியேற: {{reason}}. செயலியில் அனுமதிக்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.GATE_PASS_ESCALATED,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Gate pass waiting {{minutes}} min: {{student}}',
+        body: '{{student}} ({{class_section}}) wants to leave from {{from}}: {{reason}}. {{wing}} has not answered. Please decide.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'வெளியேறும் அனுமதி {{minutes}} நிமிடம் காத்திருக்கிறது: {{student}}',
+        body: '{{student}} ({{class_section}}) {{from}} முதல் வெளியேற: {{reason}}. {{wing}} இன்னும் பதில் தரவில்லை. முடிவு செய்யவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.OFFICE_REMINDER,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: '{{count}} items waiting for you',
+        body: '{{by}} reminded you: {{count}} approvals are waiting ({{overdue}} overdue). Please clear them today.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{count}} கோரிக்கைகள் உங்களுக்காக காத்திருக்கின்றன',
+        body: '{{by}} நினைவூட்டினார்: {{count}} ஒப்புதல்கள் காத்திருக்கின்றன ({{overdue}} தாமதம்). இன்றே முடிக்கவும்.',
         sms_body: null,
       },
     },
@@ -2535,6 +2820,25 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
     },
   },
   {
+    code: TEMPLATES.ALUMNI_SUBMISSION,
+    category: 'system',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Alumni details to review',
+        body: '{{name}} {{kind}}. Review it under Alumni → Submissions.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'முன்னாள் மாணவர் விவரங்கள் சரிபார்க்க',
+        body: '{{name}} அனுப்பிய விவரங்களை Alumni → Submissions பகுதியில் சரிபார்க்கவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
     code: TEMPLATES.GRIEVANCE_NEW,
     category: 'alert',
     push: true,
@@ -2593,4 +2897,6 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
   },
   ...LIBRARY_TEMPLATE_CATALOG,
   ...INVENTORY_TEMPLATE_CATALOG,
+  ...GALLERY_TEMPLATE_CATALOG,
+  ...HOSTEL_TEMPLATE_CATALOG,
 ];

@@ -389,6 +389,11 @@ export class EnvironmentVariables {
   FILE_MAX_MB: number = 10;
 
   @IsInt()
+  @Min(10)
+  @Max(4096)
+  GALLERY_MAX_UPLOAD_MB: number = 200;
+
+  @IsInt()
   @Min(60)
   @Max(604800)
   FILE_URL_TTL_SECONDS: number = 3600;

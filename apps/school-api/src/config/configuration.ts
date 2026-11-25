@@ -120,6 +120,7 @@ export const storageConfig = registerAs('storage', () => ({
   driver: (process.env.STORAGE_DRIVER ?? 'local') as 'local',
   localDir: process.env.STORAGE_LOCAL_DIR ?? 'uploads',
   maxFileMb: Number(process.env.FILE_MAX_MB ?? 10),
+  galleryMaxUploadMb: Number(process.env.GALLERY_MAX_UPLOAD_MB ?? 200),
   urlTtlSeconds: Number(process.env.FILE_URL_TTL_SECONDS ?? 3600),
   signingSecret: process.env.FILE_SIGNING_SECRET ?? '',
   virusScan: (process.env.VIRUS_SCAN ?? 'off') as 'off',

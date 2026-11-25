@@ -13,10 +13,14 @@ import { HolidaysService } from './holidays.service';
 import { SetupController } from './setup.controller';
 import { SetupService } from './setup.service';
 import { SubjectsService } from './subjects.service';
+import { AlumniModule } from '../alumni/alumni.module';
 
 @Global()
 @Module({
-  imports: [TypeOrmModule.forFeature([AcademicYear, Term, Holiday, SchoolClass, Section, Subject, ClassSubject])],
+  imports: [
+    TypeOrmModule.forFeature([AcademicYear, Term, Holiday, SchoolClass, Section, Subject, ClassSubject]),
+    AlumniModule,
+  ],
   controllers: [SetupController],
   providers: [SetupService, AcademicYearsService, ClassesService, SubjectsService, HolidaysService],
   exports: [AcademicYearsService, ClassesService, HolidaysService],

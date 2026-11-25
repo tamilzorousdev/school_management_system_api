@@ -376,15 +376,15 @@ function marksTable(doc: Pdf, card: ReportCardDto, layout: Layout): number {
   const tableTop = 184;
 
   let colWidths: { [key: string]: number };
+  const examColWidth = examColumnWidth(width, card.columns.length);
   if (isMultiExam) {
-    const examColWidth = Math.max(36, 120 / card.columns.length);
     colWidths = {
-      index: 22,
-      subject: width - (examColWidth * card.columns.length + 65 + 75 + 65 + 75 + 22),
-      totalMarks: 65,
-      marksObtained: 75,
-      grade: 65,
-      remarks: 75,
+      index: 20,
+      subject: width - (examColWidth * card.columns.length + 52 + 58 + 42 + 66 + 20),
+      totalMarks: 52,
+      marksObtained: 58,
+      grade: 42,
+      remarks: 66,
     };
   } else {
     colWidths = {
@@ -397,7 +397,7 @@ function marksTable(doc: Pdf, card: ReportCardDto, layout: Layout): number {
     };
   }
 
-  const headHeight = 20;
+  const headHeight = isMultiExam ? 30 : 20;
 
   // Header bounding box
   doc.rect(left, tableTop, width, headHeight).lineWidth(0.8).strokeColor('#000000').stroke();
@@ -411,14 +411,15 @@ function marksTable(doc: Pdf, card: ReportCardDto, layout: Layout): number {
       .lineWidth(0.8)
       .strokeColor('#000000')
       .stroke();
+    const textWidth = align === 'left' ? w - 12 : w - 4;
+    doc.font('Helvetica-Bold').fontSize(isMultiExam ? 7.5 : 8);
+    const textHeight = Math.min(doc.heightOfString(title, { width: textWidth }), headHeight - 4);
     doc
-      .font('Helvetica-Bold')
-      .fontSize(8)
       .fillColor('#111827')
-      .text(title, align === 'left' ? curX + 6 : curX, tableTop + 5, {
-        width: align === 'left' ? w - 12 : w,
+      .text(title, align === 'left' ? curX + 6 : curX + 2, tableTop + (headHeight - textHeight) / 2, {
+        width: textWidth,
+        height: headHeight - 4,
         align,
-        lineBreak: false,
       });
     curX += w;
   };
@@ -427,7 +428,6 @@ function marksTable(doc: Pdf, card: ReportCardDto, layout: Layout): number {
   drawHeaderCell(colWidths.subject!, 'Subject', 'left');
 
   if (isMultiExam) {
-    const examColWidth = Math.max(36, 120 / card.columns.length);
     card.columns.forEach((col) => {
       drawHeaderCell(examColWidth, col.name);
     });
@@ -442,7 +442,7 @@ function marksTable(doc: Pdf, card: ReportCardDto, layout: Layout): number {
     .font('Helvetica-Bold')
     .fontSize(8)
     .fillColor('#111827')
-    .text('Remarks', curX, tableTop + 5, {
+    .text('Remarks', curX, tableTop + (headHeight - 9) / 2, {
       width: colWidths.remarks!,
       align: 'center',
       lineBreak: false,
@@ -455,12 +455,14 @@ function marksTable(doc: Pdf, card: ReportCardDto, layout: Layout): number {
   card.subjects.forEach((subj, idx) => {
     doc.rect(left, curY, width, rowHeight).lineWidth(0.8).strokeColor('#000000').stroke();
 
-    const totalMarks = subj.cells[0]?.max_marks ?? subj.max_total;
-    const marksObtained = subj.cells[0]?.is_absent
-      ? 'AB'
-      : subj.cells[0]?.marks !== null
-        ? formatMarks(subj.cells[0]!.marks)
-        : formatMarks(subj.total);
+    const totalMarks = isMultiExam ? subj.max_total : (subj.cells[0]?.max_marks ?? subj.max_total);
+    const marksObtained = isMultiExam
+      ? formatMarks(subj.total)
+      : subj.cells[0]?.is_absent
+        ? 'AB'
+        : subj.cells[0]?.marks !== null
+          ? formatMarks(subj.cells[0]!.marks)
+          : formatMarks(subj.total);
     const grade = subj.grade ?? '—';
     const remark = getSubjectRemark(grade, subj.percent, subj.passed);
 
@@ -489,7 +491,6 @@ function marksTable(doc: Pdf, card: ReportCardDto, layout: Layout): number {
     drawRowCell(colWidths.subject!, subj.name, 'left');
 
     if (isMultiExam) {
-      const examColWidth = Math.max(36, 120 / card.columns.length);
       subj.cells.forEach((cell) => {
         const text = cell?.is_absent ? 'AB' : cell?.marks !== null ? formatMarks(cell!.marks) : '—';
         drawRowCell(examColWidth, text);
@@ -519,10 +520,7 @@ function marksTable(doc: Pdf, card: ReportCardDto, layout: Layout): number {
   doc.rect(left, curY, width, totalHeight).lineWidth(0.8).strokeColor('#000000').stroke();
 
   let totX = left;
-  const spanSubjectW =
-    colWidths.index! +
-    colWidths.subject! +
-    (isMultiExam ? Math.max(36, 120 / card.columns.length) * card.columns.length : 0);
+  const spanSubjectW = colWidths.index! + colWidths.subject! + (isMultiExam ? examColWidth * card.columns.length : 0);
   doc
     .moveTo(totX + spanSubjectW, curY)
     .lineTo(totX + spanSubjectW, curY + totalHeight)
@@ -859,4 +857,10 @@ function signatures(doc: Pdf, data: ReportCardPdfData, layout: Layout, gradingBo
         });
     }
   });
+}
+
+export function examColumnWidth(tableWidth: number, exams: number): number {
+  if (exams <= 1) return 0;
+  const fixed = 20 + 52 + 58 + 42 + 66 + 110;
+  return Math.max(38, Math.min(62, (tableWidth - fixed) / exams));
 }

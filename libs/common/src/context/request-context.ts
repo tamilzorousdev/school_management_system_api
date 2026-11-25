@@ -6,6 +6,7 @@ export interface RequestContextStore {
   requestId: string;
   userId?: number;
   schoolId?: number | null;
+  ip?: string;
 }
 
 const storage = new AsyncLocalStorage<RequestContextStore>();
@@ -27,6 +28,10 @@ export const RequestContext = {
     return storage.getStore()?.schoolId;
   },
 
+  ip(): string | undefined {
+    return storage.getStore()?.ip;
+  },
+
   setUser(userId: number, schoolId: number | null): void {
     const store = storage.getStore();
     if (!store) return;
@@ -41,5 +46,5 @@ export function requestContextMiddleware(req: Request, res: Response, next: Next
   const incoming = req.header('x-request-id');
   const requestId = incoming && REQUEST_ID.test(incoming) ? incoming : randomUUID();
   res.setHeader('X-Request-Id', requestId);
-  RequestContext.run({ requestId }, next);
+  RequestContext.run({ requestId, ip: req.ip }, next);
 }

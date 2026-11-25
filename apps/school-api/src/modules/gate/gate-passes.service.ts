@@ -4,7 +4,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { AppException, AuthUser, listQuery, Paginated } from '@app/common';
 import { yearClause } from '../../shared/year-context';
-import { PERMISSIONS } from '../access/access.catalog';
+import { inWings, wingClause } from '../../shared/wing-context';
+import { PERMISSIONS, ROLES } from '../access/access.catalog';
+import { WingScopeService } from '../office/wing-scope.service';
+import { vehicleOnDay } from '../transport/bus-swaps';
+import { TransportRoute } from '../transport/entities/transport-route.entity';
 import {
   AuthorisedPickupDto,
   AuthorisedPickupInputDto,
@@ -76,6 +80,7 @@ export class GatePassesService {
     private readonly core: GateCoreService,
     private readonly visits: GateVisitsService,
     private readonly dataSource: DataSource,
+    private readonly wings: WingScopeService,
   ) {}
 
   async list(schoolId: number, query: PassQueryDto): Promise<Paginated<GatePassDto>> {
@@ -84,7 +89,8 @@ export class GatePassesService {
       .leftJoin('students', 's', 's.id = p.student_id')
       .leftJoin('academic_years', 'ay', `ay.school_id = p.school_id AND ay.deleted_at IS NULL AND ${yearClause('ay')}`)
       .leftJoin('student_enrollments', 'e', 'e.student_id = p.student_id AND e.academic_year_id = ay.id')
-      .where('p.school_id = :schoolId', { schoolId });
+      .where('p.school_id = :schoolId', { schoolId })
+      .andWhere(wingClause('e.class_id'));
     if (query.from) qb.andWhere('p.pass_date >= :from', { from: query.from });
     if (query.to) qb.andWhere('p.pass_date <= :to', { to: query.to });
     if (query.status) qb.andWhere('p.status = :status', { status: query.status });
@@ -102,7 +108,10 @@ export class GatePassesService {
   }
 
   async get(schoolId: number, id: number, reveal: boolean): Promise<GatePassDto> {
-    return (await this.core.presentPasses(schoolId, [await this.find(schoolId, id)], reveal))[0]!;
+    const view = (await this.core.presentPasses(schoolId, [await this.find(schoolId, id)], reveal))[0]!;
+    if (!inWings(await this.classOf(schoolId, view.student.id)))
+      throw AppException.notFound('Gate pass not found', 'GATE_PASS_NOT_FOUND');
+    return view;
   }
 
   async studentCard(schoolId: number, studentId: number): Promise<GateStudentCardDto> {
@@ -157,7 +166,7 @@ export class GatePassesService {
   async createByStaff(schoolId: number, dto: StaffPassDto, actor: AuthUser, source: PassSource): Promise<GatePassDto> {
     const students = await this.core.students(schoolId, [dto.student_id]);
     const student = students.get(dto.student_id);
-    if (!student) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
+    if (!student || !inWings(student.class_id)) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
     if (dto.approve_now) this.assertCanDecide(actor, student.class_teacher_user_id);
     return this.createPass(schoolId, dto.student_id, dto, actor, source, Boolean(dto.approve_now));
   }
@@ -168,11 +177,16 @@ export class GatePassesService {
       order: { is_emergency: 'DESC', pass_date: 'ASC', id: 'ASC' },
       take: 100,
     });
-    if (this.isOffice(actor)) return this.core.presentPasses(schoolId, rows, false);
     const students = await this.core.students(
       schoolId,
       rows.map((row) => row.student_id),
     );
+    if (this.isOffice(actor))
+      return this.core.presentPasses(
+        schoolId,
+        rows.filter((row) => inWings(students.get(row.student_id)?.class_id)),
+        false,
+      );
     return this.core.presentPasses(
       schoolId,
       rows.filter((row) => students.get(row.student_id)?.class_teacher_user_id === actor.id),
@@ -186,6 +200,8 @@ export class GatePassesService {
       throw AppException.conflict('Someone already decided this gate pass', 'PASS_ALREADY_DECIDED');
     }
     const student = (await this.core.students(schoolId, [pass.student_id])).get(pass.student_id);
+    if (!inWings(student?.class_id))
+      throw AppException.forbidden('This student is not in your wing', 'OUTSIDE_YOUR_WING');
     this.assertCanDecide(actor, student?.class_teacher_user_id ?? null);
     if (dto.approve && pass.needs_consent && pass.consent_status !== 'approved') {
       throw AppException.conflict('Wait until a parent agrees in the app', 'CONSENT_PENDING');
@@ -244,7 +260,10 @@ export class GatePassesService {
   }
 
   async cancelByStaff(schoolId: number, id: number, actor: AuthUser): Promise<GatePassDto> {
-    return this.cancel(schoolId, await this.find(schoolId, id), actor);
+    const pass = await this.find(schoolId, id);
+    if (!inWings(await this.classOf(schoolId, pass.student_id)))
+      throw AppException.notFound('Gate pass not found', 'GATE_PASS_NOT_FOUND');
+    return this.cancel(schoolId, pass, actor);
   }
 
   async check(schoolId: number, dto: CheckDto, actor: AuthUser): Promise<CheckResultDto> {
@@ -391,6 +410,11 @@ export class GatePassesService {
         pass_id: id,
       },
     );
+    if (pass.pickup_kind) {
+      await this.tellBusCrew(schoolId, pass, view.student.name, view.student.class_section ?? '', time).catch(
+        (error: Error) => this.logger.warn(`Gate pass ${id} bus crew notice failed: ${error.message}`),
+      );
+    }
     if (dto.method === 'manual' && settings.notify_office_on_manual) {
       await this.core.notify(
         'GATE_MANUAL_RELEASE',
@@ -749,6 +773,48 @@ export class GatePassesService {
     }
   }
 
+  @Interval('gate-pass-office-escalation', 60000)
+  async escalateToHeadAo(): Promise<void> {
+    const rows: { id: number; school_id: number; student_id: number; minutes: number }[] = await this.dataSource
+      .query(
+        `UPDATE gate_passes p SET office_escalated_at = now()
+         FROM gate_passes p2 LEFT JOIN gate_settings gs ON gs.school_id = p2.school_id
+         WHERE p.id = p2.id AND p.status = 'pending' AND p.is_emergency = false AND p.office_escalated_at IS NULL
+           AND p.deleted_at IS NULL
+           AND p.created_at < now() - make_interval(mins => COALESCE(gs.office_escalate_minutes, 30))
+         RETURNING p.id, p.school_id, p.student_id, COALESCE(gs.office_escalate_minutes, 30) AS minutes`,
+      )
+      .then((result: unknown[]) => (Array.isArray(result[0]) ? (result[0] as never) : (result as never)));
+    for (const row of rows) {
+      const schoolId = Number(row.school_id);
+      const heads = await this.wings.headAoUsers(schoolId);
+      const view = await this.core.presentPasses(schoolId, [await this.find(schoolId, Number(row.id))], false);
+      const pass = view[0];
+      if (!pass) continue;
+      const classId = await this.classOf(schoolId, Number(row.student_id));
+      const wingAos = classId ? await this.wings.aoUsersForClass(schoolId, classId) : [];
+      const wingName = await this.wings.wingNameOfClass(schoolId, classId);
+      await this.core.notify(
+        'GATE_PASS_ESCALATED',
+        heads.length ? { user_ids: heads } : { roles: [ROLES.ADMIN, ROLES.PRINCIPAL], school_id: schoolId },
+        {
+          student: pass.student.name,
+          class_section: pass.student.class_section ?? '',
+          from: pass.from_time,
+          reason: pass.reason,
+          minutes: String(row.minutes),
+          wing: wingName ? `${wingName} AO` : wingAos.length ? 'The wing AO' : 'The office',
+          pass_id: pass.id,
+          role: 'office',
+        },
+      );
+    }
+  }
+
+  private async classOf(schoolId: number, studentId: number): Promise<number | null> {
+    return (await this.core.students(schoolId, [studentId])).get(studentId)?.class_id ?? null;
+  }
+
   private async createPass(
     schoolId: number,
     studentId: number,
@@ -824,7 +890,13 @@ export class GatePassesService {
       };
       if (student?.class_teacher_user_id)
         await this.core.notify('GATE_PASS_REQUESTED', { user_ids: [student.class_teacher_user_id] }, data);
-      await this.core.notify('GATE_PASS_REQUESTED', { roles: OFFICE_ROLES, school_id: schoolId }, data);
+      await this.core.notify(
+        'GATE_PASS_REQUESTED',
+        { roles: [ROLES.ADMIN, ROLES.PRINCIPAL], school_id: schoolId },
+        data,
+      );
+      const aos = await this.wings.aoUsersForClass(schoolId, student?.class_id ?? null);
+      if (aos.length) await this.core.notify('GATE_PASS_REQUESTED', { user_ids: aos }, { ...data, role: 'office' });
     }
     if (approveNow) {
       await this.core.notify(
@@ -902,6 +974,46 @@ export class GatePassesService {
       pass.pass_no,
     );
     return this.get(schoolId, pass.id, true);
+  }
+
+  private async tellBusCrew(
+    schoolId: number,
+    pass: GatePass,
+    student: string,
+    classSection: string,
+    time: string,
+  ): Promise<void> {
+    const today = this.core.today();
+    const [ride]: { route_id: number; mode: string }[] = await this.dataSource.query(
+      `SELECT route_id, mode FROM student_transport WHERE school_id = $1 AND student_id = $2 AND deleted_at IS NULL LIMIT 1`,
+      [schoolId, pass.student_id],
+    );
+    if (!ride || (ride.mode !== 'both' && ride.mode !== 'drop')) return;
+    const route = await this.dataSource.getRepository(TransportRoute).findOneBy({ id: Number(ride.route_id) });
+    if (!route) return;
+    const vehicleId = await vehicleOnDay(this.dataSource, route, today);
+    if (!vehicleId) return;
+    const [bus]: { driver_user_id: number | null; attendant_user_id: number | null }[] = await this.dataSource.query(
+      `SELECT driver_user_id, attendant_user_id FROM vehicles WHERE id = $1`,
+      [vehicleId],
+    );
+    const crew = [bus?.driver_user_id, bus?.attendant_user_id].filter((userId): userId is number => Boolean(userId));
+    if (!crew.length) return;
+    await this.core.notify(
+      'GATE_EARLY_LEAVE_BUS',
+      { user_ids: crew.map(Number) },
+      {
+        student,
+        class_section: classSection,
+        person: pass.pickup_name ?? '',
+        relation: pass.pickup_relation ?? '',
+        time,
+        date: today,
+        route: route.name,
+        student_id: String(pass.student_id),
+        pass_id: pass.id,
+      },
+    );
   }
 
   private async markHalfDay(schoolId: number, pass: GatePass, actor: AuthUser): Promise<number | null> {

@@ -8,6 +8,7 @@ import { DatabaseModule } from './database/database.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { EmergencyModule } from './modules/emergency/emergency.module';
 import { SurveysModule } from './modules/surveys/surveys.module';
+import { GalleryModule } from './modules/gallery/gallery.module';
 import { AppraisalsModule } from './modules/appraisals/appraisals.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { PerformanceModule } from './modules/performance/performance.module';
@@ -40,6 +41,7 @@ import { CrewModule } from './modules/crew/crew.module';
 import { StaffAttendanceModule } from './modules/staff-attendance/staff-attendance.module';
 import { StaffLeaveModule } from './modules/staff-leave/staff-leave.module';
 import { TimetableModule } from './modules/timetable/timetable.module';
+import { AcademicsModule } from './modules/academics/academics.module';
 import { SubstitutesModule } from './modules/substitutes/substitutes.module';
 import { PayrollModule } from './modules/payroll/payroll.module';
 import { FeesModule } from './modules/fees/fees.module';
@@ -50,6 +52,7 @@ import { ExamsModule } from './modules/exams/exams.module';
 import { QuizzesModule } from './modules/quizzes/quizzes.module';
 import { TransportModule } from './modules/transport/transport.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
+import { DriverOpsModule } from './modules/driver-ops/driver-ops.module';
 import { AchievementsModule } from './modules/achievements/achievements.module';
 import { AppBannersModule } from './modules/app-banners/app-banners.module';
 import { StudentLifecycleModule } from './modules/student-lifecycle/student-lifecycle.module';
@@ -57,6 +60,11 @@ import { StudentImportModule } from './modules/student-import/student-import.mod
 import { StudentRecordsModule } from './modules/student-records/student-records.module';
 import { UsersModule } from './modules/users/users.module';
 import { GrievancesModule } from './modules/grievances/grievances.module';
+import { OfficeModule } from './modules/office/office.module';
+import { OfficeScopeModule } from './modules/office/office-scope.module';
+import { WingScopeInterceptor } from './modules/office/wing-scope.interceptor';
+import { AlumniModule } from './modules/alumni/alumni.module';
+import { HostelModule } from './modules/hostel/hostel.module';
 
 @Module({
   imports: [
@@ -77,21 +85,25 @@ import { GrievancesModule } from './modules/grievances/grievances.module';
     StaffAttendanceModule,
     StaffLeaveModule,
     TimetableModule,
+    AcademicsModule,
     SubstitutesModule,
     PayrollModule,
     FeesModule,
     LibraryModule,
+    HostelModule,
     AccountsModule,
     InventoryModule,
     ExamsModule,
     QuizzesModule,
     TransportModule,
     TrackingModule,
+    DriverOpsModule,
     DashboardModule,
     PerformanceModule,
     FeedbackModule,
     EmergencyModule,
     SurveysModule,
+    GalleryModule,
     AppraisalsModule,
     AchievementsModule,
     AppBannersModule,
@@ -112,11 +124,15 @@ import { GrievancesModule } from './modules/grievances/grievances.module';
     FilesModule,
     JobsModule,
     GrievancesModule,
+    OfficeScopeModule,
+    OfficeModule,
+    AlumniModule,
   ],
   providers: [
     { provide: APP_GUARD, useExisting: JwtAuthGuard },
     { provide: APP_GUARD, useExisting: PermissionsGuard },
     { provide: APP_INTERCEPTOR, useClass: YearContextInterceptor },
+    { provide: APP_INTERCEPTOR, useExisting: WingScopeInterceptor },
   ],
 })
 export class AppModule {}

@@ -23,6 +23,6 @@ import { MEDIA_MAX_MB } from './files.service';
   ],
   controllers: [FilesController],
   providers: [FilesService, { provide: FILE_STORAGE, useClass: LocalFileStorage }],
-  exports: [FilesService],
+  exports: [FilesService, FILE_STORAGE],
 })
 export class FilesModule {}

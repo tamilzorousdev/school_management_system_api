@@ -79,6 +79,9 @@ export class GateSettings {
   @Column({ type: 'int', default: 10 })
   emergency_wait_minutes: number;
 
+  @Column({ type: 'int', default: 30 })
+  office_escalate_minutes: number;
+
   @Column({ type: 'boolean', default: true })
   visitor_photo_required: boolean;
 
@@ -213,6 +216,9 @@ export class GatePass extends SchoolScopedEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   escalated_at: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  office_escalated_at: Date | null;
 }
 
 @Entity('authorised_pickups')

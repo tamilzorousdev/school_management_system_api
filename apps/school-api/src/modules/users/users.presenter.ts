@@ -1,5 +1,5 @@
 import { UserAccess } from '../access/access.service';
-import { MOBILE_SECTIONS, MobileSection, SECTION_LABELS } from '../access/entities/role.entity';
+import { MOBILE_SECTIONS, MobileSection, OFFICE_APP_ROLES, SECTION_LABELS } from '../access/entities/role.entity';
 import { RoleSummaryDto, UserListItemDto, UserProfileDto } from './dto/user-response.dto';
 
 export function toRoleSummaries(access: UserAccess): RoleSummaryDto[] {
@@ -46,7 +46,9 @@ export function toUserProfile(
       app,
       label: SECTION_LABELS[app],
       mobile: (MOBILE_SECTIONS as readonly string[]).includes(app),
-      roles: toRoleSummaries(access).filter((role) => role.app === app),
+      roles: toRoleSummaries(access).filter(
+        (role) => role.app === app || (app === 'office' && OFFICE_APP_ROLES.includes(role.code)),
+      ),
     })),
     permissions: access.permissions,
     photo_file_id: user.photo_file_id,

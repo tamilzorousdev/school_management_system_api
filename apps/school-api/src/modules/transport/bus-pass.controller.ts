@@ -21,6 +21,7 @@ import {
   BusPassActionResultDto,
   BusPassDto,
   BusPassInsightsDto,
+  BusPassQrDto,
   BusPassQueryDto,
   BusPassSettingsDto,
   BusPassSettingsInputDto,
@@ -55,6 +56,19 @@ export class BusPassController {
   @ApiErrors(HttpStatus.BAD_REQUEST)
   updateSettings(@SchoolId() schoolId: number, @Body() dto: BusPassSettingsInputDto, @CurrentUser() actor: AuthUser) {
     return this.passes.updateSettings(schoolId, dto, actor);
+  }
+
+  @Get(':studentId/qr')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary: 'QR for the printed bus pass: the student QR token and an SVG image',
+    description:
+      'The driver scans it to mark boarding and see the pass status. It is the ID card QR, so replacing the ID card (card_version) also invalidates the printed pass. 404 TRANSPORT_NOT_FOUND.',
+  })
+  @ApiEnvelope(BusPassQrDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  qr(@SchoolId() schoolId: number, @Param('studentId', ParseIntPipe) studentId: number) {
+    return this.passes.qrFor(schoolId, studentId);
   }
 
   @Get('insights')
