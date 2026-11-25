@@ -11,8 +11,10 @@ import {
   StopStatus,
   TRIP_KINDS,
   TRIP_STATUSES,
+  TRIP_TRACKING,
   TripKind,
   TripStatus,
+  TripTracking,
 } from '../entities/transport-trip.entity';
 import { TRIP_EVENT_TYPES, TripEventType } from '../entities/trip-event.entity';
 import { CHILD_BUS_STATUSES, ChildBusStatus } from '../tracking.logic';
@@ -246,6 +248,21 @@ export class TripDto {
 
   @ApiProperty({ nullable: true, type: Number, example: null, description: 'This trip was handed over to that trip' })
   replaced_by: number | null;
+
+  @ApiProperty({
+    enum: TRIP_TRACKING,
+    example: 'phone',
+    description:
+      'telematics: the GPS tracker moves the stops by itself. phone: no tracker, the driver taps Reached, Left and Skip on each stop',
+  })
+  tracking: TripTracking;
+
+  @ApiProperty({
+    nullable: true,
+    type: Date,
+    description: 'When the driver checked that no child was left on the bus (end-of-trip sweep)',
+  })
+  swept_at: Date | null;
 }
 
 export class HandoverInputDto {
@@ -382,6 +399,9 @@ export class RiderDto {
     description: 'Not expected on this trip: leave (half-day leave only for its half), sports OD or marked absent',
   })
   away_today: boolean;
+
+  @ApiProperty({ example: false, description: 'The driver marked "not at stop" on this trip' })
+  missed: boolean;
 
   @ApiProperty({
     nullable: true,
@@ -583,7 +603,7 @@ export class ChildBusV2Dto extends ChildBusDto {
   @ApiProperty({
     enum: BOARDING_STATUSES,
     example: 'boarded',
-    description: 'not_yet, boarded or alighted on today’s trip',
+    description: 'not_yet, boarded, alighted or not_at_stop (the bus came and the child was not there) on today’s trip',
   })
   boarding_status: BoardingStatus;
 
@@ -596,4 +616,40 @@ export class ChildBusV2Dto extends ChildBusDto {
     description: 'Stop timeline of the running trip, or of the next scheduled trip when none is running',
   })
   timeline: ChildBusTimelineDto | null;
+}
+
+export const STOP_ACTIONS = ['arrived', 'departed', 'skipped'] as const;
+export type StopAction = (typeof STOP_ACTIONS)[number];
+
+export class StopActionInputDto {
+  @ApiPropertyOptional({
+    example: 'No students at this stop today',
+    maxLength: 200,
+    description: 'Only for skipped: why the bus did not stop. Parents of that stop see it.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+
+  @ApiPropertyOptional({ example: 13.0849, description: 'Phone location when the driver tapped' })
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat?: number;
+
+  @ApiPropertyOptional({ example: 80.2105 })
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng?: number;
+}
+
+export class TripSweepInputDto {
+  @ApiProperty({ example: 812, description: 'Photo of the empty bus, uploaded first with POST /files' })
+  @Type(() => Number)
+  @IsInt()
+  photo_file_id: number;
 }

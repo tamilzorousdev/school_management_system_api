@@ -32,7 +32,10 @@ import {
   DriverTodayDto,
   PhonePositionDto,
   StartTripDto,
+  StopAction,
+  StopActionInputDto,
   TripDetailDto,
+  TripSweepInputDto,
   BusDelayInputDto,
   HandoverInputDto,
   HandoverResultDto,
@@ -57,6 +60,7 @@ export class AdminTripsController {
     private readonly trips: TripsService,
     private readonly checklist: BoardingChecklistService,
     private readonly handovers: TripHandoverService,
+    private readonly events: TripEventsService,
   ) {}
 
   @Get()
@@ -107,8 +111,10 @@ export class AdminTripsController {
   })
   @ApiEnvelope(TripDetailDto, { status: HttpStatus.CREATED, message: 'Trip started' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT, HttpStatus.SERVICE_UNAVAILABLE)
-  start(@SchoolId() schoolId: number, @Body() dto: StartTripDto, @CurrentUser() actor: AuthUser) {
-    return this.trips.start(schoolId, dto, actor);
+  async start(@SchoolId() schoolId: number, @Body() dto: StartTripDto, @CurrentUser() actor: AuthUser) {
+    const started = await this.trips.start(schoolId, dto, actor);
+    await this.events.phoneStarted(await this.trips.find(schoolId, started.id));
+    return this.trips.detail(schoolId, started.id);
   }
 
   @Post(':id/handover')
@@ -139,9 +145,9 @@ export class AdminTripsController {
   @ApiEnvelope(TripDetailDto, { message: 'Trip ended' })
   @ApiErrors(HttpStatus.NOT_FOUND)
   async end(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
-    const detail = await this.trips.end(schoolId, id, 'admin');
-    await this.checklist.afterTripEnded(await this.trips.find(schoolId, id));
-    return detail;
+    await this.trips.end(schoolId, id, 'admin');
+    await this.events.afterManualEnd(await this.trips.find(schoolId, id), 'admin');
+    return this.trips.detail(schoolId, id);
   }
 }
 
@@ -179,6 +185,7 @@ export class DriverTripsController {
     private readonly trips: TripsService,
     private readonly checklist: BoardingChecklistService,
     private readonly delays: TripDelayService,
+    private readonly events: TripEventsService,
   ) {}
 
   @Get('today')
@@ -239,13 +246,87 @@ export class DriverTripsController {
   @ApiOperation({
     summary: 'Start a trip on my bus',
     description:
-      'pickup = stops to school, drop = school to stops. Parents of the route get "Bus has started". The trip ends by itself inside the school gate (pickup) or after the last stop (drop).',
+      'pickup = stops to school, drop = school to stops. Parents of the route get "Bus has started". ' +
+      'tracking telematics: the GPS tracker moves the stops and ends the trip by itself. ' +
+      'tracking phone (no tracker, or tracking is down): tap Reached, Left or Skip on each stop and End at the last one; send the phone location every 10 s.',
   })
   @ApiEnvelope(TripDetailDto, { status: HttpStatus.CREATED, message: 'Trip started' })
-  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT, HttpStatus.SERVICE_UNAVAILABLE)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
   async start(@CurrentUser() user: AuthUser, @Body() dto: StartTripDto) {
     const vehicle = await this.vehicleOf(user);
-    return this.trips.start(user.school_id!, dto, user, vehicle);
+    const started = await this.trips.start(user.school_id!, dto, user, vehicle);
+    await this.events.phoneStarted(await this.trips.find(user.school_id!, started.id));
+    return this.trips.detail(user.school_id!, started.id);
+  }
+
+  @Post(':id/stops/:stopId/arrived')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_2)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Stop reached')
+  @ApiOperation({
+    summary: 'Reached this stop (phone trips): parents of this stop get "Bus has arrived"',
+    description: '409 TRIP_ENDED, TRIP_TRACKED_BY_GPS (the tracker does this); 404 STOP_NOT_FOUND.',
+  })
+  @ApiEnvelope(TripDetailDto, { message: 'Stop reached' })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  async arrived(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('stopId', ParseIntPipe) stopId: number,
+  ) {
+    return this.stopAction(user, id, stopId, 'arrived');
+  }
+
+  @Post(':id/stops/:stopId/departed')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_2)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Left the stop')
+  @ApiOperation({
+    summary: 'Left this stop (phone trips): parents of the next stop get "Bus is coming"',
+    description:
+      'Earlier stops not reached are marked skipped. 409 TRIP_ENDED, TRIP_TRACKED_BY_GPS; 404 STOP_NOT_FOUND.',
+  })
+  @ApiEnvelope(TripDetailDto, { message: 'Left the stop' })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  async departed(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('stopId', ParseIntPipe) stopId: number,
+  ) {
+    return this.stopAction(user, id, stopId, 'departed');
+  }
+
+  @Post(':id/stops/:stopId/skip')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_2)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Stop skipped')
+  @ApiOperation({
+    summary: 'Skip this stop (phone trips): parents of this stop get "Bus did not stop" with the reason',
+    description: 'The next stop then gets "Bus is coming". 409 TRIP_ENDED, TRIP_TRACKED_BY_GPS; 404 STOP_NOT_FOUND.',
+  })
+  @ApiEnvelope(TripDetailDto, { message: 'Stop skipped' })
+  @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
+  async skip(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('stopId', ParseIntPipe) stopId: number,
+    @Body() dto: StopActionInputDto,
+  ) {
+    return this.stopAction(user, id, stopId, 'skipped', dto.reason);
+  }
+
+  @Post(':id/sweep')
+  @ApiTags(DRIVER_MODULE_TAGS.MODULE_4)
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('No child left on the bus')
+  @ApiOperation({
+    summary: 'End-of-trip sweep: I walked the bus and no child is left, with a photo of the empty bus',
+    description: 'Do it before or after ending the trip. The office board shows trips ended without a sweep.',
+  })
+  @ApiEnvelope(TripDetailDto, { message: 'No child left on the bus' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  async sweep(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: TripSweepInputDto) {
+    return this.trips.sweep(user.school_id!, id, dto.photo_file_id, user, await this.vehicleOf(user));
   }
 
   @Get(':id')
@@ -270,9 +351,9 @@ export class DriverTripsController {
   @ApiEnvelope(TripDetailDto, { message: 'Trip ended' })
   @ApiErrors(HttpStatus.NOT_FOUND)
   async end(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
-    const detail = await this.trips.end(user.school_id!, id, 'driver', await this.vehicleOf(user));
-    await this.checklist.afterTripEnded(await this.trips.find(user.school_id!, id));
-    return detail;
+    await this.trips.end(user.school_id!, id, 'driver', await this.vehicleOf(user));
+    await this.events.afterManualEnd(await this.trips.find(user.school_id!, id), 'driver');
+    return this.trips.detail(user.school_id!, id);
   }
 
   @Post(':id/positions')
@@ -285,8 +366,17 @@ export class DriverTripsController {
   })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.CONFLICT)
   async position(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: PhonePositionDto) {
-    await this.trips.phonePosition(user.school_id!, id, dto, await this.vehicleOf(user));
+    const local = await this.trips.phonePosition(user.school_id!, id, dto, await this.vehicleOf(user));
+    if (local) await this.events.phonePosition(await this.trips.find(user.school_id!, id), local);
     return null;
+  }
+
+  private async stopAction(user: AuthUser, tripId: number, stopId: number, action: StopAction, reason?: string) {
+    const vehicle = await this.vehicleOf(user);
+    const trip = await this.trips.find(user.school_id!, tripId);
+    if (trip.vehicle_id !== vehicle) throw AppException.forbidden('This trip is not on your bus', 'NOT_YOUR_TRIP');
+    await this.events.driverStop(trip, stopId, action, reason);
+    return this.trips.detail(user.school_id!, tripId);
   }
 
   private async vehicleOf(user: AuthUser): Promise<number> {

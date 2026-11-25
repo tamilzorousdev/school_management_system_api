@@ -196,6 +196,10 @@ const TAGS: [string, string][] = [
     'Live bus trips: start and end, stop timeline with ETA, riders and not-boarded list. Live updates over the /live socket.',
   ],
   [
+    'Admin · Transport operations',
+    'Today’s board of every route with exceptions, driver duty attendance, student bus attendance with class mismatch, and incidents reported by drivers',
+  ],
+  [
     'Mobile · Driver · Module 1: Home, My Bus & Duty',
     'Home screen with my bus, the trip running now and today’s trips; my routes and stops in order with the students at each stop',
   ],

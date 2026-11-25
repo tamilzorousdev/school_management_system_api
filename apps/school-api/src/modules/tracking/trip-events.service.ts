@@ -9,12 +9,13 @@ import { VehicleFaultEvent } from '../fleet-ops/fleet-ops.logic';
 import { MaintenanceService } from '../fleet-ops/maintenance.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BoardingChecklistService } from './boarding-checklist.service';
-import { TransportTrip, TripPosition } from './entities/transport-trip.entity';
+import { TransportTrip, TripPosition, TripStop } from './entities/transport-trip.entity';
+import { StopAction } from './dto/tracking.dto';
 import { TripEvent, TripEventType } from './entities/trip-event.entity';
 import { TelematicsAlertEvent } from './fleet-alerts.logic';
 import { FleetAlertsService } from './fleet-alerts.service';
 import { LiveGateway } from './live.gateway';
-import { applyStopEvent, minutesFrom, signatureValid } from './tracking.logic';
+import { applyStopEvent, minutesFrom, plannedGapSeconds, signatureValid } from './tracking.logic';
 import { TripsService } from './trips.service';
 
 export interface TelematicsEvent {
@@ -142,6 +143,87 @@ export class TripEventsService {
       end_reason: event.end_reason ?? null,
       notified,
     });
+  }
+
+  async phoneStarted(trip: TransportTrip): Promise<void> {
+    if (trip.tracking !== 'phone') return;
+    await this.handle(trip, this.localEvent(trip, 'trip.started', null));
+  }
+
+  async afterManualEnd(trip: TransportTrip, reason: string): Promise<void> {
+    await this.handle(trip, { ...this.localEvent(trip, 'trip.ended', null), end_reason: reason });
+  }
+
+  async phonePosition(trip: TransportTrip, position: TripPosition): Promise<void> {
+    await this.handle(trip, { ...this.localEvent(trip, 'trip.position', null), at: position.recorded_at, position });
+  }
+
+  async driverStop(trip: TransportTrip, stopId: number, action: StopAction, reason?: string): Promise<void> {
+    if (trip.status !== 'active') throw AppException.conflict('This trip has ended', 'TRIP_ENDED');
+    if (trip.tracking !== 'phone') {
+      throw AppException.conflict('The GPS tracker moves the stops on this bus', 'TRIP_TRACKED_BY_GPS');
+    }
+    const index = trip.stops.findIndex((stop) => stop.stop_id === stopId);
+    if (index < 0) throw AppException.notFound('This stop is not on the trip', 'STOP_NOT_FOUND');
+    const stop = trip.stops[index]!;
+    if (action === 'skipped') {
+      await this.skipStop(trip, index, reason);
+    } else {
+      await this.handle(trip, this.localEvent(trip, action === 'arrived' ? 'stop.arrived' : 'stop.departed', stop));
+    }
+    if (action !== 'arrived') await this.approachNext(trip, index);
+  }
+
+  private async skipStop(trip: TransportTrip, index: number, reason?: string): Promise<void> {
+    const stop = trip.stops[index]!;
+    if (stop.status === 'departed' || stop.status === 'skipped') return;
+    const at = new Date();
+    trip.stops = trip.stops.map((item, position) =>
+      position === index ? { ...item, status: 'skipped' as const, eta_seconds: null } : item,
+    );
+    await this.trips.update(trip.id, { stops: trip.stops });
+    const [info] = await this.dataSource.query(
+      `SELECT v.registration_no, v.name AS bus FROM vehicles v WHERE v.id = $1`,
+      [trip.vehicle_id],
+    );
+    const bus = info ? `${info.bus} (${info.registration_no})` : 'The school bus';
+    const notified = await this.send('BUS_STOP_SKIPPED', await this.parents(trip, stop.stop_id), {
+      bus,
+      stop: stop.name,
+      reason: reason?.trim() ? ` Reason: ${reason.trim()}` : '',
+    }).catch((error: Error) => {
+      this.logger.warn(`Trip ${trip.id} skip notice failed: ${error.message}`);
+      return 0;
+    });
+    this.gateway.event(trip, {
+      type: 'stop.skipped',
+      at: at.toISOString(),
+      stop: { id: stop.stop_id, name: stop.name, sequence: stop.sequence },
+      eta_seconds: null,
+      position: trip.last_position,
+      end_reason: null,
+      notified,
+    });
+  }
+
+  private async approachNext(trip: TransportTrip, index: number): Promise<void> {
+    const next = trip.stops.slice(index + 1).find((stop) => stop.status === 'pending');
+    if (!next) return;
+    await this.handle(trip, {
+      ...this.localEvent(trip, 'stop.approaching', next),
+      eta_seconds: plannedGapSeconds(trip.stops[index]!.planned_time, next.planned_time),
+    });
+  }
+
+  private localEvent(trip: TransportTrip, type: TelematicsEvent['type'], stop: TripStop | null): TelematicsEvent {
+    return {
+      type,
+      at: new Date().toISOString(),
+      trip: { id: 0, ref: '', device_id: 0, kind: trip.kind },
+      stop: stop ? { ref: String(stop.stop_id), name: stop.name, sequence: stop.sequence } : null,
+      eta_seconds: null,
+      position: null,
+    };
   }
 
   private async notify(trip: TransportTrip, event: TelematicsEvent, stopId: number | null, at: Date): Promise<number> {

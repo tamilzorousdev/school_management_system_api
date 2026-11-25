@@ -52,6 +52,7 @@ import { ExamsModule } from './modules/exams/exams.module';
 import { QuizzesModule } from './modules/quizzes/quizzes.module';
 import { TransportModule } from './modules/transport/transport.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
+import { DriverOpsModule } from './modules/driver-ops/driver-ops.module';
 import { AchievementsModule } from './modules/achievements/achievements.module';
 import { AppBannersModule } from './modules/app-banners/app-banners.module';
 import { StudentLifecycleModule } from './modules/student-lifecycle/student-lifecycle.module';
@@ -96,6 +97,7 @@ import { HostelModule } from './modules/hostel/hostel.module';
     QuizzesModule,
     TransportModule,
     TrackingModule,
+    DriverOpsModule,
     DashboardModule,
     PerformanceModule,
     FeedbackModule,

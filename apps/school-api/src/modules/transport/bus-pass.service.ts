@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import QRCode from 'qrcode';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -34,6 +35,7 @@ import {
   BusPassQueryDto,
   BusPassSettingsDto,
   BusPassSettingsInputDto,
+  BusPassQrDto,
   CrewHeldPassDto,
   ParentBusPassDto,
 } from './dto/bus-pass.dto';
@@ -165,7 +167,10 @@ export class BusPassService {
       hold_note: row.state === 'on_hold' ? row.hold_note : null,
       school: school?.name ?? '',
       message: PASS_MESSAGES[row.state],
-      qr: row.state === 'active' ? this.qr.student(studentId, Number(student?.card_version ?? 1)) : null,
+      qr:
+        row.state === 'active' || row.state === 'on_hold'
+          ? this.qr.student(studentId, Number(student?.card_version ?? 1))
+          : null,
     };
   }
 
@@ -245,7 +250,22 @@ export class BusPassService {
       route: { id: Number(row.route_id), name: row.route_name },
       stop: row.mode === 'drop' ? (row.drop_name ?? row.pickup_name) : row.pickup_name,
       label: crewLabel(row.pass_status, row.hold_kind)!,
+      hold_kind: row.hold_kind,
+      reason: row.pass_note,
     }));
+  }
+
+  async qrFor(schoolId: number, studentId: number): Promise<BusPassQrDto> {
+    const [student]: { card_version: number }[] = await this.dataSource.query(
+      `SELECT s.card_version FROM students s
+       JOIN student_transport t ON t.student_id = s.id AND t.deleted_at IS NULL
+       WHERE s.id = $1 AND s.school_id = $2 AND s.deleted_at IS NULL LIMIT 1`,
+      [studentId, schoolId],
+    );
+    if (!student) throw AppException.notFound('This student has no bus', 'TRANSPORT_NOT_FOUND');
+    const token = this.qr.student(studentId, Number(student.card_version ?? 1));
+    const svg = await QRCode.toString(token, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+    return { token, svg };
   }
 
   @Cron(CronExpression.EVERY_10_MINUTES, { name: 'bus-pass-sync' })

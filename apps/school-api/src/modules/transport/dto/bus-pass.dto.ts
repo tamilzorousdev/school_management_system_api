@@ -262,4 +262,21 @@ export class CrewHeldPassDto {
 
   @ApiProperty({ example: 'Pass on hold – fee pending, contact office' })
   label: string;
+
+  @ApiProperty({ enum: ['fee', 'office'], nullable: true, example: 'fee', description: 'Why it is on hold' })
+  hold_kind: 'fee' | 'office' | null;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Term 2 bus fee pending', description: 'The office note' })
+  reason: string | null;
+}
+
+export class BusPassQrDto {
+  @ApiProperty({
+    example: 'TZS1.12.1.q2W9xP0aLk3mNc7Rt5Vb1z',
+    description: 'The student QR token (same as the ID card)',
+  })
+  token: string;
+
+  @ApiProperty({ example: '<svg …>', description: 'QR image as SVG, ready to print on the bus pass' })
+  svg: string;
 }
