@@ -109,6 +109,7 @@ export class ApplicationInputDto {
 }
 
 export class ApplicationQueryDto extends ListQueryDto {
+  @ApiPropertyOptional() @IsOptional() @IsInt() @Min(1) student_id?: number;
   @ApiPropertyOptional({ enum: APPLICATION_STATUSES })
   @IsOptional()
   @IsIn(APPLICATION_STATUSES)
@@ -314,6 +315,9 @@ export class CheckoutDto {
   @ApiProperty({ nullable: true, type: String }) forwarding_address: string | null;
   @ApiProperty({ nullable: true, type: String }) remarks: string | null;
   @ApiProperty({ example: 2 }) pending_items: number;
+  @ApiProperty({ example: 0, description: 'Unpaid hostel fee; checkout is blocked unless fee_dues is waived' })
+  hostel_dues: number;
+  @ApiProperty({ example: 5000, description: 'Caution deposit paid and not settled yet' }) deposit_held: number;
   @ApiProperty({ type: [ClearanceItemDto] }) items: ClearanceItemDto[];
   @ApiProperty({ nullable: true, type: String }) completed_at: Date | null;
   @ApiProperty() created_at: Date;

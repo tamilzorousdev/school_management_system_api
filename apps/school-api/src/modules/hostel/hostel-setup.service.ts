@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { AppException, AuthUser, Paginated, paginate } from '@app/common';
+import { escapeLike } from './hostel-sql';
 import { yearClause } from '../../shared/year-context';
 import { ROLES } from '../access/access.catalog';
 import {
@@ -51,8 +52,6 @@ interface Counts {
   beds: number;
   occupied: number;
 }
-
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, (match) => `\\${match}`);
 
 @Injectable()
 export class HostelSetupService {

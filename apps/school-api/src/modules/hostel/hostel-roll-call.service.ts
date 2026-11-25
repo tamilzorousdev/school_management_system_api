@@ -18,7 +18,8 @@ import {
   RollSheetDto,
   RollSheetQueryDto,
 } from './dto/hostel-movement.dto';
-import { STUDENT_COLUMNS, studentFromRow, studentJoins } from './hostel-admissions.service';
+import { STUDENT_COLUMNS, studentFromRow, studentJoins } from './hostel-sql';
+import { HostelHealthService } from './hostel-health.service';
 import { HostelNotifyService } from './hostel-notify.service';
 import { HostelSettingsService } from './hostel-settings.service';
 import { addDays, ROLL_STATUSES, rollStatusFromLeave, RollSlot, RollStatus } from './hostel.logic';
@@ -46,6 +47,7 @@ export class HostelRollCallService {
     private readonly settings: HostelSettingsService,
     private readonly notify: HostelNotifyService,
     private readonly qr: QrTokens,
+    private readonly health: HostelHealthService,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
@@ -338,6 +340,7 @@ export class HostelRollCallService {
        ORDER BY b.sort_order NULLS LAST, r.room_no NULLS LAST, bd.bed_no, s.first_name`,
       params,
     );
+    const sick = date === this.today() ? await this.health.inSickBay(schoolId, hostelId) : new Set<number>();
     return rows.map((row: Record<string, unknown>) => ({
       admission_id: row.admission_id as number,
       student: studentFromRow(row),
@@ -345,7 +348,9 @@ export class HostelRollCallService {
       bed_no: (row.bed_no as string | null) ?? null,
       block_name: (row.block_name as string | null) ?? null,
       status: (row.status as RollStatus | null) ?? null,
-      suggested_status: rollStatusFromLeave((row.leave_kind as string | null) ?? null, row.leave_kind ? 'out' : null),
+      suggested_status:
+        rollStatusFromLeave((row.leave_kind as string | null) ?? null, row.leave_kind ? 'out' : null) ??
+        (sick.has(row.admission_id as number) ? 'sick' : null),
       method: (row.method as RollEntryDto['method']) ?? null,
       note: (row.note as string | null) ?? null,
       marked_at: (row.marked_at as Date | null) ?? null,

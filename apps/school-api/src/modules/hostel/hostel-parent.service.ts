@@ -13,12 +13,22 @@ import {
   RollHistoryQueryDto,
   VisitDto,
 } from './dto/hostel-movement.dto';
+import {
+  CaseDto,
+  ComplaintDetailDto,
+  ComplaintDto,
+  ParentComplaintInputDto,
+  RatingDto,
+} from './dto/hostel-conduct.dto';
+import { HostelDisciplineService } from './hostel-discipline.service';
+import { HostelFeesService } from './hostel-fees.service';
 import { HostelLeavesService } from './hostel-leaves.service';
+import { HostelTicketsService } from './hostel-tickets.service';
 import { HostelRollCallService } from './hostel-roll-call.service';
 import { HostelVisitorsService } from './hostel-visitors.service';
 import { OPEN_LEAVE_STATES } from './hostel.logic';
 
-interface ChildStay {
+export interface ChildStay {
   school_id: number;
   admission_id: number | null;
 }
@@ -30,6 +40,9 @@ export class HostelParentService {
     private readonly leaves: HostelLeavesService,
     private readonly rollCalls: HostelRollCallService,
     private readonly visitors: HostelVisitorsService,
+    private readonly fees: HostelFeesService,
+    private readonly tickets: HostelTicketsService,
+    private readonly discipline: HostelDisciplineService,
   ) {}
 
   async overview(user: AuthUser, studentId: number): Promise<ParentHostelDto> {
@@ -47,8 +60,11 @@ export class HostelParentService {
       today: [],
       current_leave: null,
       consent_waiting: 0,
+      fees: null,
     };
     if (!stay.admission_id) return empty;
+    const money = await this.fees.residentFees(stay.school_id, stay.admission_id);
+    const deposit = money.charges.find((charge) => charge.kind === 'deposit' && charge.invoice_status !== 'cancelled');
     const [row] = await this.dataSource.query(
       `SELECT a.id, a.admission_no, a.status, a.diet, h.name AS hostel_name, b.name AS block_name,
          CASE WHEN r.id IS NULL THEN NULL ELSE CONCAT(r.room_no, ' / ', bd.bed_no) END AS bed,
@@ -88,7 +104,48 @@ export class HostelParentService {
       today: await this.rollCalls.history(stay.school_id, stay.admission_id, { from: today, to: today }),
       current_leave: live.find((leave) => leave.status === 'out') ?? live[0] ?? null,
       consent_waiting: live.filter((leave) => leave.status === 'awaiting_parent').length,
+      fees: {
+        billed: money.billed,
+        paid: money.paid,
+        balance: money.balance,
+        deposit_paid: deposit && !deposit.settled_at ? deposit.paid : 0,
+      },
     };
+  }
+
+  async complaints(user: AuthUser, studentId: number, query: ListQueryDto): Promise<Paginated<ComplaintDto>> {
+    const stay = await this.resident(user, studentId);
+    return this.tickets.complaints(
+      stay.school_id,
+      Object.assign(query, { admission_id: stay.admission_id, sort: 'created_at' }),
+    );
+  }
+
+  async complaint(user: AuthUser, studentId: number, id: number): Promise<ComplaintDetailDto> {
+    const stay = await this.resident(user, studentId);
+    const item = await this.tickets.complaint(stay.school_id, id);
+    if (item.admission_id !== stay.admission_id)
+      throw AppException.notFound('Complaint not found', 'HOSTEL_COMPLAINT_NOT_FOUND');
+    return item;
+  }
+
+  async raiseComplaint(user: AuthUser, studentId: number, dto: ParentComplaintInputDto): Promise<ComplaintDetailDto> {
+    const stay = await this.resident(user, studentId);
+    return this.tickets.createParentComplaint(stay.school_id, stay.admission_id, dto, user);
+  }
+
+  async rateComplaint(user: AuthUser, studentId: number, id: number, dto: RatingDto): Promise<ComplaintDetailDto> {
+    const stay = await this.resident(user, studentId);
+    return this.tickets.rate(stay.school_id, id, stay.admission_id, dto, user);
+  }
+
+  async conduct(user: AuthUser, studentId: number, query: ListQueryDto): Promise<Paginated<CaseDto>> {
+    const stay = await this.resident(user, studentId);
+    return this.discipline.list(
+      stay.school_id,
+      Object.assign(query, { admission_id: stay.admission_id, sort: 'created_at' }),
+      true,
+    );
   }
 
   async attendance(user: AuthUser, studentId: number, query: RollHistoryQueryDto): Promise<RollHistoryItemDto[]> {
@@ -146,7 +203,7 @@ export class HostelParentService {
     await this.visitors.removeApprovedVisitor(stay.school_id, studentId, id, user);
   }
 
-  private async child(user: AuthUser, studentId: number): Promise<ChildStay> {
+  async child(user: AuthUser, studentId: number): Promise<ChildStay> {
     const [row] = await this.dataSource.query(
       `SELECT s.school_id, a.id AS admission_id FROM student_guardians sg
        JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
@@ -159,7 +216,7 @@ export class HostelParentService {
     return { school_id: Number(row.school_id), admission_id: row.admission_id ? Number(row.admission_id) : null };
   }
 
-  private async resident(user: AuthUser, studentId: number): Promise<{ school_id: number; admission_id: number }> {
+  async resident(user: AuthUser, studentId: number): Promise<{ school_id: number; admission_id: number }> {
     const stay = await this.child(user, studentId);
     if (!stay.admission_id) {
       throw AppException.notFound('Your child is not staying in the hostel', 'HOSTEL_NOT_RESIDENT');

@@ -91,6 +91,8 @@ In development the OTP is always `123456` and no SMS is sent. Demo users (all sc
 | 9000000011               | Gate in-charge (Tamil)                                                              |
 | 9000000013               | AO for Pre-primary and Primary (wing AO)                                            |
 | 9000000014               | AO for Secondary and Higher Secondary (wing AO)                                     |
+| 9000000019               | Hostel warden (Boys Hostel; Staff app Module 14)                                    |
+| 9000000020               | Assistant warden (Girls Hostel; Staff app Module 14)                                |
 | 9000000021 to 9000000024 | AOs: Primary + Secondary + Higher; Primary + Secondary; Higher only; Secondary only |
 | 9000000401 to 9000000406 | Teachers: Tamil, English, Social Science, PE, Computer Science, Hindi               |
 
@@ -1617,19 +1619,157 @@ For `WARDEN` and `ASSISTANT_WARDEN`. Same services and shapes as the admin calls
 
 ### Parent app (Module 11: Hostel)
 
-| Call                                                                    | Screen                                                                                                                |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `GET /mobile/parent/children/:id/hostel`                                | Hostel card: `in_hostel`, room and bed, warden name and phone, `today` roll calls, `current_leave`, `consent_waiting` |
-| `GET /mobile/parent/children/:id/hostel/attendance?from=&to=`           | Roll call history                                                                                                     |
-| `GET/POST /mobile/parent/children/:id/hostel/leaves`                    | My child’s leave (with `qr_token` when approved); ask for leave or an outing                                          |
-| `POST .../hostel/leaves/:leaveId/consent` `{ agree, note? }`            | Answer `HOSTEL_LEAVE_CONSENT_NEEDED`                                                                                  |
-| `POST .../hostel/leaves/:leaveId/cancel`                                | Cancel before the child leaves                                                                                        |
-| `GET .../hostel/visits`                                                 | Who visited                                                                                                           |
-| `GET/POST .../hostel/visitors`, `DELETE .../hostel/visitors/:visitorId` | My approved visitors                                                                                                  |
+| Call                                                                           | Screen                                                                                                                |
+| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/parent/children/:id/hostel`                                       | Hostel card: `in_hostel`, room and bed, warden name and phone, `today` roll calls, `current_leave`, `consent_waiting` |
+| `GET /mobile/parent/children/:id/hostel/attendance?from=&to=`                  | Roll call history                                                                                                     |
+| `GET/POST /mobile/parent/children/:id/hostel/leaves`                           | My child’s leave (with `qr_token` when approved); ask for leave or an outing                                          |
+| `POST .../hostel/leaves/:leaveId/consent` `{ agree, note? }`                   | Answer `HOSTEL_LEAVE_CONSENT_NEEDED`                                                                                  |
+| `POST .../hostel/leaves/:leaveId/cancel`                                       | Cancel before the child leaves                                                                                        |
+| `GET .../hostel/visits`                                                        | Who visited                                                                                                           |
+| `GET/POST .../hostel/visitors`, `DELETE .../hostel/visitors/:visitorId`        | My approved visitors                                                                                                  |
+| `GET/POST .../hostel/complaints`, `GET .../complaints/:complaintId`            | My complaints with their timeline; raise one (room is taken from the bed)                                             |
+| `POST .../hostel/complaints/:complaintId/rate` `{ rating, comment?, reopen? }` | Rate a resolved complaint (closes it) or reopen it                                                                    |
+| `GET .../hostel/conduct`                                                       | Conduct notes the school shares with me                                                                               |
+
+The hostel card (`GET /mobile/parent/children/:id/hostel`) also has `fees` `{ billed, paid, balance, deposit_paid }`. Hostel fee invoices are ordinary fee invoices: they appear and are paid in Module 7 (Student Fees).
 
 Notifications (category `hostel`): to parents `HOSTEL_ADMITTED`, `HOSTEL_BED_CHANGED`, `HOSTEL_CHECKED_OUT`, `HOSTEL_ABSENT`, `HOSTEL_LEAVE_CONSENT_NEEDED`, `HOSTEL_LEAVE_DECIDED`, `HOSTEL_STUDENT_LEFT`, `HOSTEL_STUDENT_RETURNED`, `HOSTEL_LATE_RETURN`, `HOSTEL_VISITOR_ARRIVED`; to wardens `HOSTEL_LEAVE_REQUESTED`, `HOSTEL_OVERDUE_RETURN` (the hostel warden and the block in-charge, or every `WARDEN` when none is set). Push data carries `student_id` and, where it applies, `leave_id` or `visit_id`. Run `npm run seed` so the templates exist.
 
 Error codes: `HOSTEL_HOLIDAY_MODE`, `HOSTEL_NOT_RESIDENT`, `HOSTEL_ROLL_DUPLICATE`, `HOSTEL_QR_INVALID`, `HOSTEL_QR_OLD_CARD`, `HOSTEL_LEAVE_NOT_FOUND`, `HOSTEL_LEAVE_STATE`, `HOSTEL_LEAVE_OVERLAP`, `HOSTEL_OUTING_OUTSIDE_WINDOW`, `HOSTEL_PASS_NOT_VALID`, `HOSTEL_VISIT_NOT_FOUND`, `HOSTEL_VISIT_NOT_INSIDE`, `HOSTEL_VISITOR_BLOCKED`, `HOSTEL_VISITOR_EXISTS`, `HOSTEL_VISITOR_LIMIT`, `HOSTEL_VISITOR_NOT_FOUND`, `HOSTEL_ALREADY_BLOCKED`, `HOSTEL_BLOCK_NOT_FOUND`, `CHILD_NOT_FOUND`.
+
+### Hostel fees, discipline, complaints and maintenance
+
+**Fees.** Each room type has an `annual_fee`. The current year's instalments (`PUT /admin/hostel/fees/schedule` `{ items: [{ label, due_date, share_percent }] }`, shares add up to 100) split it. `POST /admin/hostel/fees/bill` `{ admission_ids?, hostel_id? }` creates **normal fee invoices** (head "Hostel fee", installment `Hostel Term 1`) for every instalment a resident with a bed has not been billed for, plus the one-time caution deposit from settings (`caution_deposit`). It is safe to run again. With `bill_on_admission` on (default) this also happens when a student is admitted into a bed or gets a first bed. Invoices are paid in the Fees module, the Parent app and online payment like any other; advance credit is applied at once. Mid-year admissions are billed from the instalment they joined in; a bed transfer does not re-price invoices already raised. Once any instalment is billed, only labels can change (`409 HOSTEL_SCHEDULE_LOCKED`).
+
+| Call                                                                                                                          | Purpose                                                                                              |
+| ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `GET/PUT /admin/hostel/fees/schedule`                                                                                         | Instalments with `invoiced` counts and `locked`                                                      |
+| `POST /admin/hostel/fees/bill`                                                                                                | `{ invoices_created, deposits_created, amount, skipped: [{ admission_id, student_name, reason }] }`  |
+| `GET /admin/hostel/fees/insights`                                                                                             | `billed`, `collected`, `outstanding`, `residents_with_dues`, `unbilled_residents`, `deposits_held`   |
+| `GET /admin/hostel/fees/dues`                                                                                                 | Residents with billed, paid, balance, `unbilled`, `deposit_status`; sort `balance`, `name`, `billed` |
+| `GET /admin/hostel/admissions/:id/fees`                                                                                       | One resident's charges (invoice no, due date, paid, balance, deposit settlement)                     |
+| `POST /admin/hostel/admissions/:id/deposit/settle` `{ deduction_amount?, deduction_reason?, refund_mode, refund_reference? }` | Records the refund of a paid deposit and ticks the `deposit_refund` checkout item                    |
+
+**Checkout and fees.** `CheckoutDto` now has `hostel_dues` and `deposit_held`. Completing a checkout first ticks `fee_dues` when nothing is due and `deposit_refund` when no deposit is held; it then refuses with `409 HOSTEL_FEE_DUES` while hostel fee is unpaid (unless `fee_dues` is waived) and `409 HOSTEL_DEPOSIT_NOT_SETTLED` while a paid deposit is not settled (unless `deposit_refund` is waived).
+
+**Discipline.** Categories `late_return`, `curfew`, `misconduct`, `ragging`, `fighting`, `damage`, `contraband`, `absent_without_leave`, `other`; severity `minor`, `major`, `critical`; status `open` → `action_taken` → `closed` (or `withdrawn`). Actions `warning`, `counselling`, `parent_meeting`, `fine`, `hostel_suspension` (`suspended_from`, `suspended_to`), `expulsion`, `no_action`. A **fine is raised as a fee fine** (`fee_fine_id`, `fine_status`) and goes through the normal fine approval (`fees.approve`, someone other than the person who raised it), then becomes an invoice. `strikes` counts the resident's cases in the academic year. Parents get `HOSTEL_DISCIPLINE` when `visible_to_parent`.
+
+**Complaints.** Raised by staff (for a hostel, room or resident) or by parents. Priority sets `due_at` (urgent 4 h, high 24 h, normal 3 days, low 7 days); `overdue` when still open after it. Flow `open` → `in_progress` → `resolved` → `closed` (parent rating or staff), or `rejected`; `reopen` from resolved. `resolve` and `reject` need a `note`. Assigning a staff member sends `HOSTEL_TICKET_ASSIGNED`; parents get `HOSTEL_COMPLAINT_UPDATE`; wardens get `HOSTEL_COMPLAINT_NEW` for parent complaints. `POST complaints/:id/maintenance` turns it into a maintenance ticket; finishing the ticket resolves the complaint.
+
+**Maintenance.** Tickets for a hostel, room or bed; `blocks_room: true` sets the room to `maintenance` (no new allocations) until every blocking ticket is done or cancelled. Statuses `open`, `assigned`, `in_progress`, `on_hold`, `done`, `cancelled` (done and cancelled are final). `POST maintenance/:id/charge` `{ admission_id, amount, reason }` raises a damage fee fine for approval (once per ticket).
+
+| Call                                                                                     | Purpose                                                        |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `GET /admin/hostel/conduct/insights`                                                     | Open and overdue cases, complaints and tickets, average rating |
+| `GET/POST /admin/hostel/discipline`, `GET .../discipline/:id`                            | Cases; sort `created_at`, `incident_at`, `severity`            |
+| `POST /admin/hostel/discipline/:id/{action\|close\|withdraw}`                            | Decide, close or withdraw                                      |
+| `GET/POST /admin/hostel/complaints`, `GET/PATCH .../complaints/:id`                      | Complaints; PATCH priority, `assigned_to`, note                |
+| `POST /admin/hostel/complaints/:id/{start\|resolve\|close\|reject\|reopen}`              | Move a complaint                                               |
+| `POST /admin/hostel/complaints/:id/maintenance`                                          | Complaint to ticket                                            |
+| `GET/POST /admin/hostel/maintenance`, `GET/PATCH .../maintenance/:id`, `POST .../charge` | Tickets                                                        |
+
+The Staff app (Module 14) has the same calls under `/mobile/teacher/hostel/...`: `residents/:id/fees`, `conduct/insights`, `discipline` (list, record, action, close), `complaints` (all actions and to-ticket) and `maintenance` (list, raise, update). Fee schedule, billing and deposit settlement stay in the admin web (`hostel.fees`: Admin, AO, Accountant).
+
+New notifications: `HOSTEL_FEE_BILLED`, `HOSTEL_DISCIPLINE`, `HOSTEL_COMPLAINT_UPDATE` (parents); `HOSTEL_COMPLAINT_NEW`, `HOSTEL_TICKET_ASSIGNED` (staff). Run `npm run seed`.
+
+Error codes: `HOSTEL_SCHEDULE_LOCKED`, `HOSTEL_DEPOSIT_NOT_FOUND`, `HOSTEL_DEPOSIT_SETTLED`, `HOSTEL_DEPOSIT_UNPAID`, `HOSTEL_FEE_DUES`, `HOSTEL_DEPOSIT_NOT_SETTLED`, `HOSTEL_CASE_NOT_FOUND`, `HOSTEL_CASE_STATE`, `HOSTEL_COMPLAINT_NOT_FOUND`, `HOSTEL_COMPLAINT_STATE`, `HOSTEL_TICKET_NOT_FOUND`, `HOSTEL_TICKET_STATE`, `HOSTEL_TICKET_EXISTS`, `HOSTEL_ALREADY_CHARGED`, plus the fee fine codes (`STUDENT_NOT_ENROLLED`, `YEAR_CLOSED`) when a fine is raised.
+
+### Hostel life: mess, health, laundry, staff duty, study, lockers, inspections
+
+**Optional modules.** Mess (`mess`), health (`medical`), laundry (`laundry`), staff duty (`staff_duty`), study halls (`study_hall`) and lockers (`lockers`) are switched in `PUT /admin/hostel/settings` `{ enabled_modules }`. While one is off its admin and Staff app routes answer `403 HOSTEL_MODULE_DISABLED`, and its Parent app calls answer the same. Study hours, room assets, inspections and belongings are always on. Data is kept when a module is turned off. New permissions: `hostel.medical`, `hostel.laundry` (wardens; the assistant warden also gets mess, medical and laundry). Run `npm run seed`.
+
+Every call below exists under `/admin/hostel/...` (admin web) and, unless marked, under `/mobile/teacher/hostel/...` (Staff app Module 14) with the same body. Reads need `hostel.view`.
+
+**Mess** (`hostel.mess` to write)
+
+| Call                                                                                                      | Purpose                                                                                                                    |
+| --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `GET/PUT mess/menu?hostel_id`                                                                             | Weekly menu, 7 days × `breakfast`, `lunch`, `snacks`, `dinner` (0 = Sunday); a hostel's own rows win over school-wide rows |
+| `GET/POST mess/overrides`, `DELETE mess/overrides/:id`                                                    | Menu for one date (festival, special day)                                                                                  |
+| `GET mess/day?date&hostel_id`                                                                             | Resolved menu per meal with its `source`                                                                                   |
+| `GET mess/headcount?hostel_id&date&meal`                                                                  | Expected eaters by diet (minus students away on leave and meal skips), ate, skipped                                        |
+| `GET mess/attendance`, `POST mess/attendance/mark`, `POST mess/attendance/scan` `{ hostel_id, meal, qr }` | Meal attendance (today or yesterday); scan the ID card QR                                                                  |
+| `GET/POST mess/skips`, `POST mess/skips/:id/cancel`                                                       | Meal skips (from today, at most 30 days; no overlap: `HOSTEL_MEAL_SKIP_OVERLAP`)                                           |
+| `GET/POST mess/feedback`, `GET mess/feedback/summary`                                                     | Ratings 1–5 and averages per meal                                                                                          |
+
+**Health and sick bay** (`hostel.medical`)
+
+| Call                                                                                                                                                  | Purpose                                                  |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `GET health` (filters `status`, `kind`, `admission_id`, `in_sick_bay`), `GET health/:id`                                                              | Health log                                               |
+| `POST health` `{ admission_id, kind, symptoms, temperature?, action_taken?, doctor_name?, hospital_visit?, sick_bay?, notify_parent (default true) }` | Record; parents get `HOSTEL_HEALTH` (push, SMS fallback) |
+| `PATCH health/:id`, `POST health/:id/discharge`, `POST health/:id/close`                                                                              | Update, leave the sick bay, close                        |
+| `GET/POST medications`, `POST medications/:id/stop`                                                                                                   | Medication plans (`times` as `HH:mm`)                    |
+| `GET medications/due?hostel_id&date`, `POST medications/:id/doses` `{ dose_date, dose_time, status given\|missed\|refused, note? }`                   | Medication round                                         |
+
+Students in the sick bay are suggested `sick` in today's roll call.
+
+**Laundry** (`hostel.laundry`): `GET laundry`, `GET laundry/missing`, `GET laundry/:id`, `POST laundry` `{ hostel_id, collected_on?, vendor_name?, items: [{ admission_id, items_given }] }` (`HLB-2026-0001`), `PUT laundry/:id/items`, `POST laundry/:id/sent`, `POST laundry/:id/returned` `{ items: [{ admission_id, items_returned, missing_note? }] }` (residents left out got everything back), `POST laundry/:id/close`.
+
+**Staff duty** (manage with `hostel.staff_duty`; self-service needs only `hostel.view`)
+
+| Call                                                                                                                                  | Purpose                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `GET/POST duty/shifts`, `PATCH/DELETE duty/shifts/:id`                                                                                | Shifts (night shifts may end the next day)                                            |
+| `GET duty/roster?hostel_id&from&to`, `POST duty/roster` `{ entries: [...] }`, `DELETE duty/roster/:id`, `POST duty/roster/:id/absent` | Roster; each staff member gets `HOSTEL_DUTY_ASSIGNED`                                 |
+| `GET duty/today?hostel_id`                                                                                                            | Today's board with `running_late` and `swap_pending`                                  |
+| `GET duty/mine`, `POST duty/roster/:id/check-in`, `POST duty/roster/:id/check-out`                                                    | My duties; check-in opens 30 minutes before the shift, `late_minutes` after the start |
+| `POST duty/roster/:id/swap` `{ to_user_id, reason? }`, `GET duty/swaps`, `POST duty/swaps/:id/{approve\|reject\|cancel}`              | Swaps (`HOSTEL_SWAP_REQUEST`); approval moves the duty to the other person            |
+| `POST/GET duty/rounds`                                                                                                                | Night rounds                                                                          |
+| `GET duty/report?from&to&hostel_id`                                                                                                   | Scheduled, attended, late, absent per staff member (admin only)                       |
+
+**Study hours** (`hostel.study`; always on) and **study halls** (`hostel.study_hall`, module `study_hall`)
+
+| Call                                                                                                                                       | Purpose                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `GET/POST study/schedules`, `PATCH/DELETE study/schedules/:id`                                                                             | Study sessions for a hostel, block or hall, by weekday                                           |
+| `GET study/today`, `GET study/sheet?schedule_id&date`, `POST study/mark`                                                                   | Study attendance (`present`, `absent`, `late`, `excused`; students away are suggested `excused`) |
+| `GET study/report` (admin), `GET admissions/:id/study` (Staff app: `study/residents/:id`)                                                  | Attendance percent per resident, one resident's history                                          |
+| `GET/POST study/halls`, `PATCH/DELETE study/halls/:id`, `GET study/halls/:id/seats`                                                        | Halls; capacity creates seats `S1..Sn`                                                           |
+| `POST study/halls/:id/allocate` `{ seat_id, admission_id }`, `POST study/seat-allocations/:id/release`, `POST study/halls/:id/auto-assign` | Seats (auto-assign is admin only)                                                                |
+
+**Lockers** (`hostel.locker`, module `lockers`): `GET lockers/summary`, `GET lockers`, `GET lockers/:id`, `POST lockers`, `POST lockers/bulk`, `PATCH/DELETE lockers/:id`, `POST lockers/:id/allocate` `{ admission_id, keys_given, lock_type, deposit? }` (one per student: `HOSTEL_LOCKER_HELD`), `POST locker-allocations/:id/return` `{ keys_returned, damaged?, note? }`. Checkout ticks `locker_return` when no locker is held and refuses with `409 HOSTEL_LOCKER_NOT_RETURNED` while one is (unless waived).
+
+**Room assets, inspections and belongings** (always on)
+
+| Call                                                                                                                                               | Purpose                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET/POST rooms/:roomId/assets`, `PATCH/DELETE assets/:id`, `GET assets?condition`, `POST assets/apply`                                            | Furniture and fittings per room (`hostel.inventory`)                                                                                 |
+| `GET inspections/checklist`, `GET inspections/due?days=30`, `GET inspections`, `GET inspections/:id`                                               | Inspections and rooms due                                                                                                            |
+| `POST inspections` `{ room_id, items: [{ item, result ok\|issue\|na, note? }], cleanliness?, notes?, update_assets?, raise_ticket?, raise_case? }` | Inspect a room (`hostel.maintenance`); score = ok ÷ (ok + issue); can raise a repair ticket and a conduct case (`hostel.discipline`) |
+| `GET/POST admissions/:id/belongings` (Staff app: `residents/:id/belongings`), `PATCH/DELETE belongings/:id`                                        | Student belongings (`with_student`, `returned_home`, `lost`, `confiscated`)                                                          |
+
+**Parent app (Module 11)** under `/mobile/parent/children/:id/hostel`: `GET mess/menu`, `GET mess/day`, `GET/POST mess/skips`, `POST mess/skips/:skipId/cancel`, `POST mess/feedback` (once per meal, up to 7 days back), `GET health`, `GET medications`, `GET laundry`, `GET study` (schedules, last 30 days of marks, seat), `GET locker`, `GET/POST belongings`.
+
+New notifications: `HOSTEL_HEALTH` (parents), `HOSTEL_DUTY_ASSIGNED`, `HOSTEL_SWAP_REQUEST` (staff).
+
+### Emergency alerts (SOS), hostel rules and parent applications
+
+**SOS.** Any hostel staff member (`hostel.view`) can raise an alert: `POST sos` `{ hostel_id, kind: fire|medical|security|missing_student|natural_disaster|drill|other, message, admission_id?, is_drill?, notify_parents? }` (`SOS-2026-0001`). Wardens, assistant wardens, the principal and admins get `HOSTEL_SOS` by push **and SMS**. With `notify_parents` (never for drills) every resident's parents get `HOSTEL_SOS_PARENT`. The headcount (`GET sos/:id`) lists every resident with `status` `safe` / `missing` / `injured` / `away` (students out on a pass are suggested `away`) and `counts`; `POST sos/:id/mark` `{ entries: [{ admission_id, status }] }`, `POST sos/:id/resolve|cancel` `{ note? }` need `hostel.attendance`. `GET sos/active` drives a red banner on the hostel home. Same calls in the Staff app under `/mobile/teacher/hostel/sos...`.
+
+**Rules.** The rules text and timings from settings have a `version` (it changes when either changes). Parents read `GET /mobile/parent/children/:id/hostel/rules` and agree with `POST .../rules/acknowledge`. Staff see who agreed: `GET /admin/hostel/rules/acknowledgements?acknowledged=false` (also in the Staff app) and `GET /admin/hostel/rules/acknowledgements/summary`.
+
+**Parent applications.** `GET /mobile/parent/children/:id/hostel/options` (hostels that fit the child's gender with vacant beds, room types with annual fee, caution deposit, `in_hostel`), `GET/POST .../hostel/applications` `{ hostel_id?, room_type_id?, wanted_from?, reason? }` (source `parent`; wardens and admins get `HOSTEL_APPLICATION_NEW`). The office decides as usual.
+
+Error codes: `HOSTEL_SOS_NOT_FOUND`, `HOSTEL_SOS_CLOSED`.
+
+### Hostel reports
+
+`GET /admin/hostel/reports/{summary|occupancy|attendance|leaves|visitors|fees|discipline|complaints|mess|health}` with `hostel_id?`, `from?`, `to?` (default the last 30 days, at most 366 days; `from` after `to` → `400`), `top?` (1–50, default 10). Permission `hostel.reports` (Admin, Principal, AO, Warden). `/export` returns an Excel file for `occupancy`, `attendance`, `leaves`, `fees` and `discipline`.
+
+- `occupancy` is a snapshot (beds per hostel, block and room type). `fees` covers the academic year being viewed (`X-Academic-Year-Id`), rent only.
+- `attendance`: present % = (present + late) ÷ (present + late + absent); away and sick are left out. Daily trend and top absentees.
+- `leaves`: by kind and status, late returns with average late minutes, parent vs warden requests. `visitors`: by day, denied, unknown visitors, average stay.
+- `discipline`: by category, severity, month and action, fines raised, residents with 3 or more cases. `complaints`: by category and status, average resolution hours, SLA met %, average rating, plus maintenance tickets, cost and days to fix.
+- `mess` and `health` follow their modules (`403 HOSTEL_MODULE_DISABLED` when off).
+- `summary` returns the headline numbers of all of them in one call.
+
+### Demo data
+
+`npm run seed:demo` (after the migrations and `npm run seed`) adds a Boys and a Girls hostel with blocks, floors, room types, 48 rooms and 160 beds, about 30 residents, applications, roll calls, leave, visitors, cases, complaints, tickets, a weekly menu, health and medication, laundry, duty roster, a study hall, lockers, room assets and an inspection. Sign in as the warden `9000000019` or the assistant warden `9000000020`. Hostel fees are not invoiced by the seed: click **Bill hostel fees** on the Hostel fees page (or `POST /admin/hostel/fees/bill`).
+
+Error codes: mess `HOSTEL_MENU_OVERRIDE_NOT_FOUND`, `HOSTEL_MEAL_SKIP_NOT_FOUND`, `HOSTEL_MEAL_SKIP_STATE`, `HOSTEL_MEAL_SKIP_OVERLAP`, `HOSTEL_MEAL_DUPLICATE`, `HOSTEL_MESS_FEEDBACK_EXISTS`; health `HOSTEL_HEALTH_NOT_FOUND`, `HOSTEL_HEALTH_CLOSED`, `HOSTEL_SICK_BAY_STATE`, `HOSTEL_MEDICATION_NOT_FOUND`, `HOSTEL_MEDICATION_STOPPED`, `HOSTEL_MEDICATION_NOT_DUE`; laundry `HOSTEL_LAUNDRY_NOT_FOUND`, `HOSTEL_LAUNDRY_STATE`, `HOSTEL_LAUNDRY_DUPLICATE`, `HOSTEL_LAUNDRY_NOT_IN_BATCH`; duty `HOSTEL_SHIFT_NOT_FOUND`, `HOSTEL_SHIFT_INACTIVE`, `HOSTEL_SHIFT_IN_USE`, `HOSTEL_SHIFT_NAME_TAKEN`, `HOSTEL_DUTY_NOT_FOUND`, `HOSTEL_DUTY_STATE`, `HOSTEL_DUTY_CLASH`, `HOSTEL_DUTY_NOT_YOURS`, `HOSTEL_DUTY_TOO_EARLY`, `HOSTEL_DUTY_OVER`, `HOSTEL_DUTY_NOT_STARTED`, `HOSTEL_SWAP_NOT_FOUND`, `HOSTEL_SWAP_STATE`, `HOSTEL_SWAP_PENDING`, `HOSTEL_SWAP_NOT_YOURS`; study `HOSTEL_STUDY_SCHEDULE_NOT_FOUND`, `HOSTEL_STUDY_INACTIVE`, `HOSTEL_STUDY_NOT_SCHEDULED`, `HOSTEL_STUDY_DUPLICATE`, `HOSTEL_STUDY_HALL_NOT_FOUND`, `HOSTEL_STUDY_HALL_CLOSED`, `HOSTEL_STUDY_HALL_OCCUPIED`, `HOSTEL_STUDY_HALL_IN_USE`, `HOSTEL_STUDY_HALL_NAME_TAKEN`, `HOSTEL_STUDY_HALL_SEATS_TAKEN`, `HOSTEL_SEAT_NOT_FOUND`, `HOSTEL_SEAT_INACTIVE`, `HOSTEL_SEAT_TAKEN`, `HOSTEL_SEAT_ALREADY_GIVEN`, `HOSTEL_SEAT_ALLOCATION_NOT_FOUND`, `HOSTEL_SEAT_RELEASED`; lockers `HOSTEL_LOCKER_NOT_FOUND`, `HOSTEL_LOCKER_NO_TAKEN`, `HOSTEL_LOCKER_ALLOTTED`, `HOSTEL_LOCKER_NOT_AVAILABLE`, `HOSTEL_LOCKER_HELD`, `HOSTEL_LOCKER_ALLOCATION_NOT_FOUND`, `HOSTEL_LOCKER_RETURNED`, `HOSTEL_LOCKER_NOT_RETURNED`; rooms `HOSTEL_ASSET_NOT_FOUND`, `HOSTEL_BELONGING_NOT_FOUND`, `HOSTEL_INSPECTION_NOT_FOUND`, `ASSET_NOT_FOUND`.
 
 ## Academic year
 

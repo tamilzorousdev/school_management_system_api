@@ -13,6 +13,17 @@ export const HOSTEL_TEMPLATES = {
   HOSTEL_VISITOR_ARRIVED: 'HOSTEL_VISITOR_ARRIVED',
   HOSTEL_LEAVE_REQUESTED: 'HOSTEL_LEAVE_REQUESTED',
   HOSTEL_OVERDUE_RETURN: 'HOSTEL_OVERDUE_RETURN',
+  HOSTEL_DISCIPLINE: 'HOSTEL_DISCIPLINE',
+  HOSTEL_COMPLAINT_UPDATE: 'HOSTEL_COMPLAINT_UPDATE',
+  HOSTEL_FEE_BILLED: 'HOSTEL_FEE_BILLED',
+  HOSTEL_COMPLAINT_NEW: 'HOSTEL_COMPLAINT_NEW',
+  HOSTEL_TICKET_ASSIGNED: 'HOSTEL_TICKET_ASSIGNED',
+  HOSTEL_HEALTH: 'HOSTEL_HEALTH',
+  HOSTEL_DUTY_ASSIGNED: 'HOSTEL_DUTY_ASSIGNED',
+  HOSTEL_SWAP_REQUEST: 'HOSTEL_SWAP_REQUEST',
+  HOSTEL_SOS: 'HOSTEL_SOS',
+  HOSTEL_SOS_PARENT: 'HOSTEL_SOS_PARENT',
+  HOSTEL_APPLICATION_NEW: 'HOSTEL_APPLICATION_NEW',
 } as const;
 
 export const HOSTEL_PARENT_TEMPLATES: string[] = [
@@ -26,11 +37,22 @@ export const HOSTEL_PARENT_TEMPLATES: string[] = [
   HOSTEL_TEMPLATES.HOSTEL_STUDENT_RETURNED,
   HOSTEL_TEMPLATES.HOSTEL_LATE_RETURN,
   HOSTEL_TEMPLATES.HOSTEL_VISITOR_ARRIVED,
+  HOSTEL_TEMPLATES.HOSTEL_DISCIPLINE,
+  HOSTEL_TEMPLATES.HOSTEL_COMPLAINT_UPDATE,
+  HOSTEL_TEMPLATES.HOSTEL_FEE_BILLED,
+  HOSTEL_TEMPLATES.HOSTEL_HEALTH,
+  HOSTEL_TEMPLATES.HOSTEL_SOS_PARENT,
 ];
 
 export const HOSTEL_STAFF_TEMPLATES: string[] = [
   HOSTEL_TEMPLATES.HOSTEL_LEAVE_REQUESTED,
   HOSTEL_TEMPLATES.HOSTEL_OVERDUE_RETURN,
+  HOSTEL_TEMPLATES.HOSTEL_COMPLAINT_NEW,
+  HOSTEL_TEMPLATES.HOSTEL_TICKET_ASSIGNED,
+  HOSTEL_TEMPLATES.HOSTEL_DUTY_ASSIGNED,
+  HOSTEL_TEMPLATES.HOSTEL_SWAP_REQUEST,
+  HOSTEL_TEMPLATES.HOSTEL_SOS,
+  HOSTEL_TEMPLATES.HOSTEL_APPLICATION_NEW,
 ];
 
 export const HOSTEL_TEMPLATE_CATALOG: TemplateDefinition[] = [
@@ -245,6 +267,218 @@ export const HOSTEL_TEMPLATE_CATALOG: TemplateDefinition[] = [
       ta: {
         title: 'விடுதி விடுப்புக் கோரிக்கை: {{student}}',
         body: '{{from_date}} முதல் {{to_date}} வரை {{kind}} விடுப்பு ({{room}}): {{reason}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_DISCIPLINE,
+    category: 'hostel',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Hostel conduct note for {{student}}',
+        body: 'Case {{case_no}} ({{category}}) for {{student}} was {{what}}. Please talk to the warden {{warden_phone}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} விடுதி நடத்தைக் குறிப்பு',
+        body: '{{student}} அவர்களுக்கான {{case_no}} ({{category}}) பதிவு: {{what}}. காப்பாளரை {{warden_phone}} எண்ணில் தொடர்பு கொள்ளவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_COMPLAINT_UPDATE,
+    category: 'hostel',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Hostel complaint {{complaint_no}}: {{status}}',
+        body: '"{{title}}" is now {{status}}. {{note}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'விடுதிப் புகார் {{complaint_no}}: {{status}}',
+        body: '"{{title}}" இப்போது {{status}}. {{note}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_FEE_BILLED,
+    category: 'fees',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Hostel fee for {{student}}',
+        body: 'Hostel fee of {{amount}} is added to {{student}}’s fees. Pay it in the Fees section of the app.',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{student}} விடுதிக் கட்டணம்',
+        body: '{{student}} அவர்களின் கட்டணத்தில் {{amount}} விடுதிக் கட்டணம் சேர்க்கப்பட்டுள்ளது. செயலியின் கட்டணப் பகுதியில் செலுத்தவும்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_COMPLAINT_NEW,
+    category: 'hostel',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Hostel complaint {{complaint_no}}',
+        body: '{{title}} ({{student}}, {{room}})',
+        sms_body: null,
+      },
+      ta: {
+        title: 'விடுதிப் புகார் {{complaint_no}}',
+        body: '{{title}} ({{student}}, {{room}})',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_TICKET_ASSIGNED,
+    category: 'hostel',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Hostel job for you: {{number}}',
+        body: '{{title}} at {{place}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'உங்களுக்கான விடுதிப் பணி: {{number}}',
+        body: '{{place}}: {{title}}.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_HEALTH,
+    category: 'hostel',
+    push: true,
+    sms: 'fallback',
+    critical: true,
+    text: {
+      en: {
+        title: 'Health update for {{student}}',
+        body: '{{student}} at {{hostel}}: {{what}}. {{action}} Call the warden {{warden_phone}} for details.',
+        sms_body:
+          'Dear parent, health update for {{student}} at the hostel: {{what}}. Please call the warden {{warden_phone}}. -TAMILZOROUS',
+      },
+      ta: {
+        title: '{{student}} உடல்நலத் தகவல்',
+        body: '{{hostel}} விடுதியில் {{student}}: {{what}}. {{action}} விவரங்களுக்கு காப்பாளரை {{warden_phone}} எண்ணில் அழைக்கவும்.',
+        sms_body:
+          'அன்புள்ள பெற்றோரே, விடுதியில் {{student}} உடல்நலத் தகவல்: {{what}}. காப்பாளரை {{warden_phone}} எண்ணில் அழைக்கவும். -TAMILZOROUS',
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_DUTY_ASSIGNED,
+    category: 'hostel',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Hostel duty: {{shift}} on {{date}}',
+        body: 'You are on {{shift}} duty ({{time}}) at {{hostel}} on {{date}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'விடுதிப் பணி: {{date}} {{shift}}',
+        body: '{{date}} அன்று {{hostel}} விடுதியில் {{shift}} பணி ({{time}}).',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_SWAP_REQUEST,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Duty swap request',
+        body: '{{from}} asks you to take their {{shift}} duty on {{date}}.',
+        sms_body: null,
+      },
+      ta: {
+        title: 'பணி மாற்றக் கோரிக்கை',
+        body: '{{date}} அன்று {{from}} அவர்களின் {{shift}} பணியை நீங்கள் ஏற்க வேண்டுமென்று கேட்கிறார்.',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_SOS,
+    category: 'alert',
+    push: true,
+    sms: 'always',
+    critical: true,
+    text: {
+      en: {
+        title: '{{label}} at {{hostel}}',
+        body: '{{kind}}: {{message}} Raised by {{raised_by}} ({{sos_no}}). Open the app for the headcount.',
+        sms_body: '{{label}} at {{hostel}}: {{message}} Raised by {{raised_by}}. -TAMILZOROUS',
+      },
+      ta: {
+        title: '{{hostel}} விடுதியில் {{label}}',
+        body: '{{kind}}: {{message}} எழுப்பியவர் {{raised_by}} ({{sos_no}}). தலைக்கணக்கிற்கு செயலியைத் திறக்கவும்.',
+        sms_body: '{{hostel}} விடுதியில் {{label}}: {{message}} எழுப்பியவர் {{raised_by}}. -TAMILZOROUS',
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_SOS_PARENT,
+    category: 'alert',
+    push: true,
+    sms: 'fallback',
+    critical: true,
+    text: {
+      en: {
+        title: 'Important message from {{hostel}}',
+        body: '{{message}} The school is taking care of the students and will update you. Warden: {{warden_phone}}.',
+        sms_body: 'Dear parent, message from {{hostel}}: {{message}} Warden: {{warden_phone}}. -TAMILZOROUS',
+      },
+      ta: {
+        title: '{{hostel}} விடுதியிலிருந்து முக்கியச் செய்தி',
+        body: '{{message}} பள்ளி மாணவர்களைக் கவனித்துக்கொள்கிறது; உங்களுக்குத் தகவல் தெரிவிக்கப்படும். காப்பாளர்: {{warden_phone}}.',
+        sms_body:
+          'அன்புள்ள பெற்றோரே, {{hostel}} விடுதியிலிருந்து: {{message}} காப்பாளர்: {{warden_phone}}. -TAMILZOROUS',
+      },
+    },
+  },
+  {
+    code: HOSTEL_TEMPLATES.HOSTEL_APPLICATION_NEW,
+    category: 'approval',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'New hostel application: {{student}}',
+        body: '{{student}} ({{class}}) applied for {{hostel}}. {{reason}}',
+        sms_body: null,
+      },
+      ta: {
+        title: 'புதிய விடுதி விண்ணப்பம்: {{student}}',
+        body: '{{student}} ({{class}}) {{hostel}} விடுதிக்கு விண்ணப்பித்துள்ளார். {{reason}}',
         sms_body: null,
       },
     },

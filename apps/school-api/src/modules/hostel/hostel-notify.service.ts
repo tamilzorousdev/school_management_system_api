@@ -67,6 +67,70 @@ export class HostelNotifyService {
     }
   }
 
+  async tellUsers(userIds: number[], template: string, data: Record<string, string | number | null> = {}) {
+    const ids = [...new Set(userIds.filter(Boolean))];
+    if (!ids.length) return 0;
+    try {
+      const result = await this.notifications.dispatch({
+        template,
+        audience: { user_ids: ids },
+        data: { ...data, role: 'staff' },
+      });
+      return result.recipients;
+    } catch (error) {
+      this.logger.warn(`Hostel notice ${template} to users ${ids.join(', ')} failed: ${(error as Error).message}`);
+      return 0;
+    }
+  }
+
+  async tellRoles(
+    schoolId: number,
+    roles: string[],
+    template: string,
+    data: Record<string, string | number | null> = {},
+  ) {
+    try {
+      const result = await this.notifications.dispatch({
+        template,
+        audience: { roles, school_id: schoolId },
+        data: { ...data, role: 'staff' },
+      });
+      return result.recipients;
+    } catch (error) {
+      this.logger.warn(`Hostel notice ${template} to ${roles.join(', ')} failed: ${(error as Error).message}`);
+      return 0;
+    }
+  }
+
+  async tellHostelParents(
+    schoolId: number,
+    hostelId: number,
+    template: string,
+    data: Record<string, string | number | null> = {},
+  ) {
+    try {
+      const rows: { user_id: number }[] = await this.dataSource.query(
+        `SELECT DISTINCT g.user_id FROM hostel_admissions a
+         JOIN student_guardians sg ON sg.student_id = a.student_id AND sg.receives_alerts = true
+         JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL AND g.user_id IS NOT NULL
+         WHERE a.school_id = $1 AND a.hostel_id = $2 AND a.deleted_at IS NULL AND a.status <> 'checked_out'`,
+        [schoolId, hostelId],
+      );
+      if (!rows.length) return 0;
+      const result = await this.notifications.dispatch({
+        template,
+        audience: { user_ids: rows.map((row) => Number(row.user_id)) },
+        data: { ...data, role: 'parent' },
+      });
+      return result.recipients;
+    } catch (error) {
+      this.logger.warn(
+        `Hostel notice ${template} to parents of hostel ${hostelId} failed: ${(error as Error).message}`,
+      );
+      return 0;
+    }
+  }
+
   async tellWardens(
     schoolId: number,
     admissionId: number,

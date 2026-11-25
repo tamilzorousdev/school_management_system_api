@@ -173,6 +173,85 @@ export function rollStatusFromLeave(kind: string | null, leaveStatus: string | n
   return kind === 'outing' ? 'outing' : 'on_leave';
 }
 
+export interface ScheduleItem {
+  id: number;
+  label: string;
+  due_date: string;
+  share_percent: number;
+}
+
+export function billableItems<T extends ScheduleItem>(items: T[], admittedOn: string, yearEnd: string): T[] {
+  const sorted = [...items].sort((a, b) => a.due_date.localeCompare(b.due_date));
+  return sorted.filter((item, index) => {
+    const periodEnd = sorted[index + 1]?.due_date ?? addDays(yearEnd, 1);
+    return periodEnd > admittedOn;
+  });
+}
+
+export function scheduleErrors(
+  items: { due_date: string; share_percent: number }[],
+  year: { start_date: string; end_date: string },
+) {
+  const errors: { field: string; message: string }[] = [];
+  const total = Math.round(items.reduce((sum, item) => sum + item.share_percent, 0) * 100) / 100;
+  if (total !== 100) errors.push({ field: 'items', message: `Shares must add up to 100 (now ${total})` });
+  if (items.some((item) => item.due_date < year.start_date || item.due_date > year.end_date)) {
+    errors.push({ field: 'items', message: `Due dates must be between ${year.start_date} and ${year.end_date}` });
+  }
+  if (new Set(items.map((item) => item.due_date)).size !== items.length) {
+    errors.push({ field: 'items', message: 'Two instalments cannot share a due date' });
+  }
+  return errors;
+}
+
+export function shareOf(annualFee: number, sharePercent: number): number {
+  return Math.round(annualFee * sharePercent) / 100;
+}
+
+export function depositRefund(paid: number, deduction: number): number {
+  return Math.max(0, Math.round((paid - deduction) * 100) / 100);
+}
+
+export const TICKET_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
+
+const SLA_HOURS: Record<TicketPriority, number> = { urgent: 4, high: 24, normal: 72, low: 168 };
+
+export function slaDueAt(createdAt: Date, priority: TicketPriority): Date {
+  return new Date(createdAt.getTime() + SLA_HOURS[priority] * 3600000);
+}
+
+export type ComplaintState = 'open' | 'in_progress' | 'resolved' | 'closed' | 'rejected';
+export type ComplaintAction = 'start' | 'resolve' | 'close' | 'reject' | 'reopen';
+
+const COMPLAINT_MOVES: Record<ComplaintAction, { from: ComplaintState[]; to: ComplaintState }> = {
+  start: { from: ['open'], to: 'in_progress' },
+  resolve: { from: ['open', 'in_progress'], to: 'resolved' },
+  close: { from: ['resolved'], to: 'closed' },
+  reject: { from: ['open', 'in_progress'], to: 'rejected' },
+  reopen: { from: ['resolved'], to: 'in_progress' },
+};
+
+export function complaintMove(current: ComplaintState, action: ComplaintAction): ComplaintState | null {
+  const move = COMPLAINT_MOVES[action];
+  return move.from.includes(current) ? move.to : null;
+}
+
+export type TicketState = 'open' | 'assigned' | 'in_progress' | 'on_hold' | 'done' | 'cancelled';
+
+const TICKET_NEXT: Record<TicketState, TicketState[]> = {
+  open: ['assigned', 'in_progress', 'on_hold', 'done', 'cancelled'],
+  assigned: ['in_progress', 'on_hold', 'done', 'cancelled'],
+  in_progress: ['on_hold', 'done', 'cancelled'],
+  on_hold: ['assigned', 'in_progress', 'done', 'cancelled'],
+  done: [],
+  cancelled: [],
+};
+
+export function ticketCanMove(current: TicketState, next: TicketState): boolean {
+  return TICKET_NEXT[current].includes(next);
+}
+
 export function occupancyPercent(occupied: number, total: number): number {
   if (!total) return 0;
   return Math.round((occupied / total) * 1000) / 10;

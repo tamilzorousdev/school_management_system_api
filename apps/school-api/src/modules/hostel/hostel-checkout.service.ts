@@ -9,9 +9,12 @@ import {
   ClearanceUpdateDto,
 } from './dto/hostel-admission.dto';
 import { HostelCheckout, HostelCheckoutItem } from './entities/hostel-admission.entity';
-import { HostelAdmissionsService, STUDENT_COLUMNS, studentFromRow, studentJoins } from './hostel-admissions.service';
+import { HostelAdmissionsService } from './hostel-admissions.service';
+import { STUDENT_COLUMNS, studentFromRow, studentJoins, escapeLike } from './hostel-sql';
 import { HOSTEL_TEMPLATES } from '../notifications/hostel-templates.catalog';
 import { HostelAuditService } from './hostel-audit.service';
+import { HostelFeesService } from './hostel-fees.service';
+import { HostelLockersService } from './hostel-lockers.service';
 import { HostelNotifyService } from './hostel-notify.service';
 import { HostelSettingsService } from './hostel-settings.service';
 import { checkoutItems } from './hostel.logic';
@@ -21,8 +24,6 @@ const CHECKOUT_SORTS: Record<string, string> = {
   checkout_date: 'k.checkout_date',
 };
 
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, (match) => `\\${match}`);
-
 @Injectable()
 export class HostelCheckoutService {
   constructor(
@@ -31,6 +32,8 @@ export class HostelCheckoutService {
     private readonly settings: HostelSettingsService,
     private readonly audit: HostelAuditService,
     private readonly notify: HostelNotifyService,
+    private readonly fees: HostelFeesService,
+    private readonly lockers: HostelLockersService,
   ) {}
 
   async list(schoolId: number, query: CheckoutQueryDto): Promise<Paginated<CheckoutDto>> {
@@ -165,9 +168,42 @@ export class HostelCheckoutService {
   }
 
   async complete(schoolId: number, id: number, actor: AuthUser): Promise<CheckoutDto> {
+    await this.dataSource.transaction(async (manager) => {
+      const checkout = await this.lockOpen(manager, schoolId, id);
+      await this.fees.clearCheckoutFees(manager, id, checkout.admission_id, actor.id);
+      if (!(await this.lockers.liveLocker(manager, checkout.admission_id))) {
+        await manager.update(
+          HostelCheckoutItem,
+          { checkout_id: id, code: 'locker_return', status: 'pending' },
+          { status: 'cleared', note: 'No locker held', cleared_by: actor.id, cleared_at: new Date() },
+        );
+      }
+    });
     const done = await this.dataSource.transaction(async (manager) => {
       const checkout = await this.lockOpen(manager, schoolId, id);
-      const pending = await manager.countBy(HostelCheckoutItem, { checkout_id: id, status: 'pending' });
+      const items = await manager.findBy(HostelCheckoutItem, { checkout_id: id });
+      const status = (code: string) => items.find((item) => item.code === code)?.status;
+      const dues = await this.fees.dues(manager, checkout.admission_id);
+      if (dues > 0 && status('fee_dues') !== 'waived') {
+        throw AppException.conflict(
+          `Hostel fee of ${dues} is still due. Collect it or waive the fee dues item.`,
+          'HOSTEL_FEE_DUES',
+        );
+      }
+      const deposit = await this.fees.heldDeposit(manager, checkout.admission_id);
+      if (deposit && !deposit.settled && status('deposit_refund') !== 'waived') {
+        throw AppException.conflict(
+          'Settle the caution deposit (refund or keep it) before checkout.',
+          'HOSTEL_DEPOSIT_NOT_SETTLED',
+        );
+      }
+      if ((await this.lockers.liveLocker(manager, checkout.admission_id)) && status('locker_return') !== 'waived') {
+        throw AppException.conflict(
+          'The student still holds a locker. Take it back in Lockers or waive the locker item.',
+          'HOSTEL_LOCKER_NOT_RETURNED',
+        );
+      }
+      const pending = items.filter((item) => item.status === 'pending').length;
       if (pending) {
         throw AppException.conflict(
           `${pending} clearance item(s) are still pending. Clear or waive them first.`,
@@ -246,6 +282,12 @@ export class HostelCheckoutService {
   private checkoutColumns(): string {
     return `k.id, k.admission_id, a.admission_no, h.name AS hostel_name, k.status, k.reason,
          k.checkout_date::text AS checkout_date, k.forwarding_address, k.remarks, k.completed_at, k.created_at,
+         (SELECT COALESCE(SUM(i.balance), 0)::float FROM hostel_charges c
+            JOIN fee_invoices i ON i.id = c.invoice_id AND i.status <> 'cancelled'
+            WHERE c.admission_id = a.id AND c.kind = 'rent') AS hostel_dues,
+         (SELECT COALESCE(SUM(i.paid), 0)::float FROM hostel_charges c
+            JOIN fee_invoices i ON i.id = c.invoice_id AND i.status <> 'cancelled'
+            WHERE c.admission_id = a.id AND c.kind = 'deposit' AND c.settled_at IS NULL) AS deposit_held,
          ${STUDENT_COLUMNS},
          (SELECT CONCAT(r.room_no, ' / ', bd.bed_no) FROM hostel_allocations al
             JOIN hostel_rooms r ON r.id = al.room_id JOIN hostel_beds bd ON bd.id = al.bed_id
@@ -274,6 +316,8 @@ export class HostelCheckoutService {
       forwarding_address: (row.forwarding_address as string | null) ?? null,
       remarks: (row.remarks as string | null) ?? null,
       pending_items: items.filter((item) => item.status === 'pending').length,
+      hostel_dues: Number(row.hostel_dues ?? 0),
+      deposit_held: Number(row.deposit_held ?? 0),
       items,
       completed_at: (row.completed_at as Date | null) ?? null,
       created_at: row.created_at as Date,

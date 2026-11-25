@@ -40,6 +40,8 @@ export class HostelSettingsService {
       parent_consent_for_leave: row?.parent_consent_for_leave ?? true,
       holiday_mode: row?.holiday_mode ?? false,
       rules: row?.rules ?? null,
+      caution_deposit: row ? Number(row.caution_deposit) : 0,
+      bill_on_admission: row?.bill_on_admission ?? true,
     };
   }
 

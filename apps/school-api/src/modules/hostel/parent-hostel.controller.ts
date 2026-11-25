@@ -22,6 +22,13 @@ import {
   RollHistoryQueryDto,
   VisitDto,
 } from './dto/hostel-movement.dto';
+import {
+  CaseDto,
+  ComplaintDetailDto,
+  ComplaintDto,
+  ParentComplaintInputDto,
+  RatingDto,
+} from './dto/hostel-conduct.dto';
 import { HostelParentService } from './hostel-parent.service';
 
 @ApiTags(PARENT_MODULE_TAGS.MODULE_11)
@@ -104,6 +111,59 @@ export class ParentHostelController {
     @Param('leaveId', ParseIntPipe) leaveId: number,
   ) {
     return this.parent.cancel(user, id, leaveId);
+  }
+
+  @Get('complaints')
+  @ApiOperation({ summary: 'Hostel complaints I raised for my child, newest first' })
+  @ApiEnvelope(ComplaintDto, { paginated: true })
+  complaints(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: ListQueryDto) {
+    return this.parent.complaints(user, id, query);
+  }
+
+  @Get('complaints/:complaintId')
+  @ApiOperation({ summary: 'One complaint with its progress timeline' })
+  @ApiEnvelope(ComplaintDetailDto)
+  complaint(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('complaintId', ParseIntPipe) complaintId: number,
+  ) {
+    return this.parent.complaint(user, id, complaintId);
+  }
+
+  @Post('complaints')
+  @ResponseMessage('Complaint sent to the warden')
+  @ApiOperation({ summary: 'Raise a hostel complaint (room, food, water, cleanliness, ...) for my child' })
+  @ApiEnvelope(ComplaintDetailDto, { status: HttpStatus.CREATED })
+  @ApiErrors(HttpStatus.BAD_REQUEST)
+  raiseComplaint(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ParentComplaintInputDto,
+  ) {
+    return this.parent.raiseComplaint(user, id, dto);
+  }
+
+  @Post('complaints/:complaintId/rate')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Thank you')
+  @ApiOperation({ summary: 'Rate a resolved complaint (closes it), or send reopen=true if it is not fixed' })
+  @ApiEnvelope(ComplaintDetailDto)
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.CONFLICT)
+  rate(
+    @CurrentUser() user: AuthUser,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('complaintId', ParseIntPipe) complaintId: number,
+    @Body() dto: RatingDto,
+  ) {
+    return this.parent.rateComplaint(user, id, complaintId, dto);
+  }
+
+  @Get('conduct')
+  @ApiOperation({ summary: 'Hostel conduct notes the school shares with me' })
+  @ApiEnvelope(CaseDto, { paginated: true })
+  conduct(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Query() query: ListQueryDto) {
+    return this.parent.conduct(user, id, query);
   }
 
   @Get('visits')
