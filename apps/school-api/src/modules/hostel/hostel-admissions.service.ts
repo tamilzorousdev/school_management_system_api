@@ -4,6 +4,7 @@ import { AppException, AuthUser, Paginated, paginate } from '@app/common';
 import { appConfig, AppConfig } from '../../config/configuration';
 import { todayIn } from '../../shared/dates';
 import { yearClause } from '../../shared/year-context';
+import { STUDENT_COLUMNS, studentFromRow, studentJoins, escapeLike } from './hostel-sql';
 import { SequencesService } from '../schools/sequences.service';
 import {
   AdmissionDetailDto,
@@ -33,6 +34,7 @@ import {
 import { Hostel, HostelBed, HostelRoom, HostelRoomType } from './entities/hostel.entity';
 import { HOSTEL_TEMPLATES } from '../notifications/hostel-templates.catalog';
 import { HostelAuditService } from './hostel-audit.service';
+import { HostelFeesService } from './hostel-fees.service';
 import { HostelNotifyService } from './hostel-notify.service';
 import { ApplicationAction, applicationMove, genderAllowed, serialNumber } from './hostel.logic';
 
@@ -68,31 +70,6 @@ interface PlacedBed {
   room: HostelRoom;
 }
 
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, (match) => `\\${match}`);
-
-export function studentJoins(studentAlias: string): string {
-  return `LEFT JOIN academic_years ay ON ay.school_id = ${studentAlias}.school_id AND ay.deleted_at IS NULL AND ${yearClause('ay')}
-       LEFT JOIN student_enrollments e ON e.student_id = ${studentAlias}.id AND e.academic_year_id = ay.id
-       LEFT JOIN classes c ON c.id = e.class_id
-       LEFT JOIN sections sec ON sec.id = e.section_id`;
-}
-
-export const STUDENT_COLUMNS = `s.id AS student_id, TRIM(CONCAT(s.first_name, ' ', s.last_name)) AS student_name,
-         s.admission_no AS student_admission_no, s.gender AS student_gender, s.photo_file_id AS student_photo_file_id,
-         c.name AS class_name, sec.name AS section_name`;
-
-export function studentFromRow(row: Record<string, unknown>) {
-  return {
-    id: row.student_id as number,
-    name: row.student_name as string,
-    admission_no: row.student_admission_no as string,
-    gender: row.student_gender as string,
-    class_name: (row.class_name as string | null) ?? null,
-    section_name: (row.section_name as string | null) ?? null,
-    photo_file_id: (row.student_photo_file_id as number | null) ?? null,
-  };
-}
-
 @Injectable()
 export class HostelAdmissionsService {
   constructor(
@@ -100,6 +77,7 @@ export class HostelAdmissionsService {
     private readonly sequences: SequencesService,
     private readonly audit: HostelAuditService,
     private readonly notify: HostelNotifyService,
+    private readonly fees: HostelFeesService,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
@@ -111,6 +89,7 @@ export class HostelAdmissionsService {
     const params: unknown[] = [schoolId];
     const where = ['p.school_id = $1', 'p.deleted_at IS NULL'];
     if (query.status) where.push(`p.status = $${params.push(query.status)}`);
+    if (query.student_id) where.push(`p.student_id = $${params.push(query.student_id)}`);
     if (query.hostel_id) where.push(`p.hostel_id = $${params.push(query.hostel_id)}`);
     this.addSearch(where, params, query.search, ['p.application_no', 's.first_name', 's.last_name', 's.admission_no']);
     const sortKey = query.sort ?? 'created_at';
@@ -461,6 +440,7 @@ export class HostelAdmissionsService {
       admission_no: detail.admission_no,
       bed: detail.bed ? `${detail.bed.room_no} / ${detail.bed.bed_no}` : 'to be allotted',
     });
+    if (detail.bed) await this.fees.billAdmission(schoolId, id, actor);
     return detail;
   }
 
@@ -520,6 +500,7 @@ export class HostelAdmissionsService {
       });
     });
     await this.notify.tellParents(id, HOSTEL_TEMPLATES.HOSTEL_BED_CHANGED);
+    await this.fees.billAdmission(schoolId, id, actor);
     return this.getAdmission(schoolId, id);
   }
 
@@ -723,7 +704,7 @@ export class HostelAdmissionsService {
   async findStudent(schoolId: number, studentId: number, mustBeActive = true): Promise<StudentRow> {
     const [row] = await this.dataSource.query(
       `SELECT s.id, TRIM(CONCAT(s.first_name, ' ', s.last_name)) AS name, s.admission_no, s.gender, s.status,
-         s.photo_file_id, c.name AS class_name, sec.name AS section_name
+         s.photo_file_id, cls.name AS class_name, sec.name AS section_name
        FROM students s ${studentJoins('s')}
        WHERE s.school_id = $1 AND s.id = $2 AND s.deleted_at IS NULL`,
       [schoolId, studentId],

@@ -20,7 +20,7 @@ import {
 } from './dto/hostel-movement.dto';
 import { HostelAdmission } from './entities/hostel-admission.entity';
 import { HostelLeave, LeaveSource } from './entities/hostel-movement.entity';
-import { STUDENT_COLUMNS, studentFromRow, studentJoins } from './hostel-admissions.service';
+import { STUDENT_COLUMNS, studentFromRow, studentJoins, escapeLike } from './hostel-sql';
 import { HostelAuditService } from './hostel-audit.service';
 import { HostelNotifyService } from './hostel-notify.service';
 import { HostelSettingsService } from './hostel-settings.service';
@@ -52,8 +52,6 @@ const VERDICT_TEXT: Record<PassVerdict, string> = {
   expired: 'This pass has ended. Ask the warden.',
   closed: 'This pass was already used, cancelled or rejected.',
 };
-
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, (match) => `\\${match}`);
 
 @Injectable()
 export class HostelLeavesService {

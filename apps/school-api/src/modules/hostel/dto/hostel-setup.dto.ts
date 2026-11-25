@@ -67,6 +67,10 @@ export class HostelSettingsDto {
   parent_consent_for_leave: boolean;
   @ApiProperty({ example: false, description: 'Vacation: roll call and mess are paused' }) holiday_mode: boolean;
   @ApiProperty({ nullable: true, type: String }) rules: string | null;
+  @ApiProperty({ example: 5000, description: 'Caution deposit billed once at admission; 0 = none' })
+  caution_deposit: number;
+  @ApiProperty({ example: true, description: 'Bill hostel fee and deposit as soon as a student is admitted' })
+  bill_on_admission: boolean;
 }
 
 export class HostelSettingsInputDto {
@@ -112,6 +116,13 @@ export class HostelSettingsInputDto {
   @IsString()
   @MaxLength(5000)
   rules?: string | null;
+  @ApiPropertyOptional({ example: 5000 })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(9999999)
+  caution_deposit?: number;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() bill_on_admission?: boolean;
 }
 
 export class HostelModulesDto {

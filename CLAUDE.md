@@ -22,7 +22,7 @@ npm run seed:demo:fees       # local only, after seed:demo: every fee flow throu
 npm run seed:super-admin -- --mobile 9xxxxxxxxx --name "Full Name"
 ```
 
-Dev sign-in (after `seed:demo`): super admin `9999999999`, school admin `9876543210`, demo users `9000000001`–`9000000010` (one per role; `9000000009` is the librarian, `9000000010` the accountant, `9000000012` the store keeper), OTP `123456` (`OTP_MODE=test`).
+Dev sign-in (after `seed:demo`): super admin `9999999999`, school admin `9876543210`, demo users `9000000001`–`9000000010` (one per role; `9000000009` is the librarian, `9000000010` the accountant, `9000000012` the store keeper, `9000000019` the warden, `9000000020` the assistant warden), OTP `123456` (`OTP_MODE=test`).
 
 Schools and school users are data, created through the API by a super admin. Never put school names, codes or admin numbers in `.env`.
 

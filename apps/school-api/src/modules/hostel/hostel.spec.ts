@@ -3,7 +3,14 @@ import {
   addDays,
   applicationMove,
   bedLabels,
+  billableItems,
   checkoutItems,
+  complaintMove,
+  depositRefund,
+  scheduleErrors,
+  shareOf,
+  slaDueAt,
+  ticketCanMove,
   daysBetween,
   DEFAULT_ENABLED_MODULES,
   genderAllowed,
@@ -205,6 +212,71 @@ describe('hostel logic', () => {
       expect(tokens.readHostelPass(token.replace('TZH1.9.', 'TZH1.10.'))).toBeNull();
       expect(new QrTokens('another-secret-that-is-long-enough-9999').readHostelPass(token)).toBeNull();
       expect(tokens.readHostelPass(tokens.student(9, 2))).toBeNull();
+    });
+  });
+
+  describe('hostel fee schedule', () => {
+    const items = [
+      { id: 1, label: 'Term 1', due_date: '2026-06-10', share_percent: 40 },
+      { id: 2, label: 'Term 2', due_date: '2026-10-01', share_percent: 30 },
+      { id: 3, label: 'Term 3', due_date: '2027-01-05', share_percent: 30 },
+    ];
+
+    it('bills every instalment for a student admitted at the start', () => {
+      expect(billableItems(items, '2026-06-01', '2027-03-31').map((item) => item.id)).toEqual([1, 2, 3]);
+    });
+
+    it('bills the running term and later ones for a mid-year admission', () => {
+      expect(billableItems(items, '2026-11-15', '2027-03-31').map((item) => item.id)).toEqual([2, 3]);
+    });
+
+    it('accepts shares that add up to 100 inside the year', () => {
+      expect(scheduleErrors(items, { start_date: '2026-06-01', end_date: '2027-03-31' })).toEqual([]);
+    });
+
+    it('rejects wrong totals, dates outside the year and repeated dates', () => {
+      const errors = scheduleErrors(
+        [
+          { due_date: '2026-05-01', share_percent: 50 },
+          { due_date: '2026-05-01', share_percent: 40 },
+        ],
+        { start_date: '2026-06-01', end_date: '2027-03-31' },
+      );
+      expect(errors).toHaveLength(3);
+    });
+
+    it('works out the share of the annual fee', () => {
+      expect(shareOf(60000, 40)).toBe(24000);
+      expect(shareOf(50000, 33.33)).toBe(16665);
+    });
+
+    it('refunds the deposit less the deduction, never below zero', () => {
+      expect(depositRefund(5000, 750)).toBe(4250);
+      expect(depositRefund(5000, 6000)).toBe(0);
+    });
+  });
+
+  describe('complaints and maintenance', () => {
+    it('sets the fix-by time from the priority', () => {
+      const at = new Date('2026-07-01T10:00:00Z');
+      expect(slaDueAt(at, 'urgent').toISOString()).toBe('2026-07-01T14:00:00.000Z');
+      expect(slaDueAt(at, 'normal').toISOString()).toBe('2026-07-04T10:00:00.000Z');
+    });
+
+    it('moves a complaint through its life', () => {
+      expect(complaintMove('open', 'start')).toBe('in_progress');
+      expect(complaintMove('in_progress', 'resolve')).toBe('resolved');
+      expect(complaintMove('resolved', 'close')).toBe('closed');
+      expect(complaintMove('resolved', 'reopen')).toBe('in_progress');
+      expect(complaintMove('closed', 'reopen')).toBeNull();
+      expect(complaintMove('open', 'close')).toBeNull();
+    });
+
+    it('never moves a finished ticket', () => {
+      expect(ticketCanMove('open', 'assigned')).toBe(true);
+      expect(ticketCanMove('on_hold', 'in_progress')).toBe(true);
+      expect(ticketCanMove('done', 'in_progress')).toBe(false);
+      expect(ticketCanMove('cancelled', 'open')).toBe(false);
     });
   });
 

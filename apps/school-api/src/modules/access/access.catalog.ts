@@ -103,6 +103,8 @@ export const PERMISSIONS = {
   HOSTEL_STUDY: 'hostel.study',
   HOSTEL_STUDY_HALL: 'hostel.study_hall',
   HOSTEL_LOCKER: 'hostel.locker',
+  HOSTEL_MEDICAL: 'hostel.medical',
+  HOSTEL_LAUNDRY: 'hostel.laundry',
 } as const;
 
 export interface PermissionDefinition {
@@ -358,6 +360,8 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { code: PERMISSIONS.HOSTEL_STUDY, name: 'Hostel study hours and study attendance', group: 'Hostel' },
   { code: PERMISSIONS.HOSTEL_STUDY_HALL, name: 'Hostel study halls and seat allocation', group: 'Hostel' },
   { code: PERMISSIONS.HOSTEL_LOCKER, name: 'Hostel student lockers', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_MEDICAL, name: 'Hostel health log, sick bay and medication', group: 'Hostel' },
+  { code: PERMISSIONS.HOSTEL_LAUNDRY, name: 'Hostel laundry batches', group: 'Hostel' },
 ];
 
 export const ROLES = {
@@ -537,6 +541,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.HOSTEL_VIEW,
       PERMISSIONS.HOSTEL_LEAVE_APPROVE,
       PERMISSIONS.HOSTEL_REPORTS,
+      PERMISSIONS.HOSTEL_FEES,
     ],
   },
   {
@@ -676,6 +681,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.HOSTEL_STUDY,
       PERMISSIONS.HOSTEL_STUDY_HALL,
       PERMISSIONS.HOSTEL_LOCKER,
+      PERMISSIONS.HOSTEL_MEDICAL,
+      PERMISSIONS.HOSTEL_LAUNDRY,
     ],
   },
   {
@@ -692,6 +699,9 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.HOSTEL_COMPLAINT,
       PERMISSIONS.HOSTEL_DISCIPLINE,
       PERMISSIONS.HOSTEL_STUDY,
+      PERMISSIONS.HOSTEL_MESS,
+      PERMISSIONS.HOSTEL_MEDICAL,
+      PERMISSIONS.HOSTEL_LAUNDRY,
     ],
   },
 ];

@@ -17,15 +17,13 @@ import {
 } from './dto/hostel-movement.dto';
 import { HostelAdmission } from './entities/hostel-admission.entity';
 import { HostelApprovedVisitor, HostelBlocklist, HostelVisit } from './entities/hostel-movement.entity';
-import { STUDENT_COLUMNS, studentFromRow, studentJoins } from './hostel-admissions.service';
+import { STUDENT_COLUMNS, studentFromRow, studentJoins, escapeLike } from './hostel-sql';
 import { HostelAuditService } from './hostel-audit.service';
 import { HostelNotifyService } from './hostel-notify.service';
 import { serialNumber } from './hostel.logic';
 
 const VISIT_SORTS: Record<string, string> = { created_at: 'v.created_at', in_at: 'v.in_at', out_at: 'v.out_at' };
 const MAX_APPROVED_VISITORS = 10;
-
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, (match) => `\\${match}`);
 
 @Injectable()
 export class HostelVisitorsService {

@@ -56,6 +56,12 @@ export class HostelSettings {
   @Column({ type: 'text', nullable: true })
   rules: string | null;
 
+  @Column(money())
+  caution_deposit: number;
+
+  @Column({ type: 'boolean', default: true })
+  bill_on_admission: boolean;
+
   @Column({ type: 'int', nullable: true })
   updated_by: number | null;
 

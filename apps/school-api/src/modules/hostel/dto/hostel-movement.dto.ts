@@ -468,6 +468,13 @@ export class WardenContactDto {
   @ApiProperty({ nullable: true, type: String, example: '9000000013' }) phone: string | null;
 }
 
+export class ParentHostelFeesDto {
+  @ApiProperty({ example: 60000 }) billed: number;
+  @ApiProperty({ example: 36000 }) paid: number;
+  @ApiProperty({ example: 24000 }) balance: number;
+  @ApiProperty({ example: 5000, description: 'Caution deposit paid, refunded at checkout' }) deposit_paid: number;
+}
+
 export class ParentHostelDto {
   @ApiProperty({ example: true }) in_hostel: boolean;
   @ApiProperty({ nullable: true, type: Number }) admission_id: number | null;
@@ -482,4 +489,6 @@ export class ParentHostelDto {
   @ApiProperty({ nullable: true, type: LeaveDto, description: 'Leave waiting for me, approved or in progress' })
   current_leave: LeaveDto | null;
   @ApiProperty({ example: 0, description: 'Leave requests waiting for my consent' }) consent_waiting: number;
+  @ApiProperty({ type: ParentHostelFeesDto, nullable: true, description: 'Pay through the Fees section' })
+  fees: ParentHostelFeesDto | null;
 }

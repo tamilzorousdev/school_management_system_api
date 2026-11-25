@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { AppException, AuthUser, Paginated, paginate } from '@app/common';
+import { escapeLike } from './hostel-sql';
 import { AuditLogDto, AuditQueryDto } from './dto/hostel-admission.dto';
 import { HostelAuditLog } from './entities/hostel-admission.entity';
 
@@ -12,8 +13,6 @@ export interface AuditEntry {
   changes?: Record<string, unknown> | null;
   note?: string | null;
 }
-
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, (match) => `\\${match}`);
 
 @Injectable()
 export class HostelAuditService {

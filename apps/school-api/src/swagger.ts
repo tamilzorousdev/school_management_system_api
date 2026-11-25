@@ -178,6 +178,30 @@ const TAGS: [string, string][] = [
     'Hostel dashboard, settings and optional modules, hostels, blocks, floors, room types, rooms and beds, vacant beds for allocation',
   ],
   [
+    'Admin · Hostel fees & conduct',
+    'Hostel fee schedule and billing into normal fee invoices, dues, caution deposit settlement, discipline cases with fines, complaints with SLA and parent rating, maintenance tickets with room blocking and damage charges',
+  ],
+  [
+    'Admin · Hostel mess, health & laundry',
+    'Weekly menu and date changes, meal headcount by diet, meal attendance with ID card scan, meal skips, mess feedback, health log and sick bay, medication schedule and doses, laundry batches',
+  ],
+  [
+    'Admin · Hostel duty & study',
+    'Duty shifts and roster, staff check-in and check-out, swaps, night rounds and duty report; study hour schedules, study attendance and report; study halls with seat allocation',
+  ],
+  [
+    'Admin · Hostel lockers, inspections & assets',
+    'Student lockers with keys, room furniture and fittings, room inspections that can raise repair tickets or conduct cases, and student belongings',
+  ],
+  [
+    'Admin · Hostel safety & rules',
+    'Emergency alerts and drills with live headcount (safe, missing, injured, away), hostel rules and which parents agreed to them',
+  ],
+  [
+    'Admin · Hostel reports',
+    'Occupancy, roll call attendance, leave and late returns, visitors, hostel fees, discipline, complaints and maintenance, mess and health reports with Excel export',
+  ],
+  [
     'Admin · Hostel movement',
     'Roll call (manual, ID card QR, finish), hostel leave and outings with parent consent, hostel pass check and out/in, visitors, approved visitors and the blocked list',
   ],
