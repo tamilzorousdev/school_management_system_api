@@ -7,6 +7,8 @@ import { yearClause } from '../../shared/year-context';
 import { inWings, wingClause } from '../../shared/wing-context';
 import { PERMISSIONS, ROLES } from '../access/access.catalog';
 import { WingScopeService } from '../office/wing-scope.service';
+import { vehicleOnDay } from '../transport/bus-swaps';
+import { TransportRoute } from '../transport/entities/transport-route.entity';
 import {
   AuthorisedPickupDto,
   AuthorisedPickupInputDto,
@@ -408,6 +410,11 @@ export class GatePassesService {
         pass_id: id,
       },
     );
+    if (pass.pickup_kind) {
+      await this.tellBusCrew(schoolId, pass, view.student.name, view.student.class_section ?? '', time).catch(
+        (error: Error) => this.logger.warn(`Gate pass ${id} bus crew notice failed: ${error.message}`),
+      );
+    }
     if (dto.method === 'manual' && settings.notify_office_on_manual) {
       await this.core.notify(
         'GATE_MANUAL_RELEASE',
@@ -967,6 +974,46 @@ export class GatePassesService {
       pass.pass_no,
     );
     return this.get(schoolId, pass.id, true);
+  }
+
+  private async tellBusCrew(
+    schoolId: number,
+    pass: GatePass,
+    student: string,
+    classSection: string,
+    time: string,
+  ): Promise<void> {
+    const today = this.core.today();
+    const [ride]: { route_id: number; mode: string }[] = await this.dataSource.query(
+      `SELECT route_id, mode FROM student_transport WHERE school_id = $1 AND student_id = $2 AND deleted_at IS NULL LIMIT 1`,
+      [schoolId, pass.student_id],
+    );
+    if (!ride || (ride.mode !== 'both' && ride.mode !== 'drop')) return;
+    const route = await this.dataSource.getRepository(TransportRoute).findOneBy({ id: Number(ride.route_id) });
+    if (!route) return;
+    const vehicleId = await vehicleOnDay(this.dataSource, route, today);
+    if (!vehicleId) return;
+    const [bus]: { driver_user_id: number | null; attendant_user_id: number | null }[] = await this.dataSource.query(
+      `SELECT driver_user_id, attendant_user_id FROM vehicles WHERE id = $1`,
+      [vehicleId],
+    );
+    const crew = [bus?.driver_user_id, bus?.attendant_user_id].filter((userId): userId is number => Boolean(userId));
+    if (!crew.length) return;
+    await this.core.notify(
+      'GATE_EARLY_LEAVE_BUS',
+      { user_ids: crew.map(Number) },
+      {
+        student,
+        class_section: classSection,
+        person: pass.pickup_name ?? '',
+        relation: pass.pickup_relation ?? '',
+        time,
+        date: today,
+        route: route.name,
+        student_id: String(pass.student_id),
+        pass_id: pass.id,
+      },
+    );
   }
 
   private async markHalfDay(schoolId: number, pass: GatePass, actor: AuthUser): Promise<number | null> {

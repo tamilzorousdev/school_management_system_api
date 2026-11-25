@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginationDto } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
 import { RefDto } from '../../students/dto/student-response.dto';
@@ -24,6 +24,12 @@ export class BoardingMarkDto {
 
   @ApiProperty({ type: RefDto, nullable: true, description: 'Driver or attendant who marked it' })
   recorded_by: RefDto | null;
+
+  @ApiProperty({ example: false, description: 'Got on with the bus pass on hold' })
+  pass_on_hold: boolean;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Lakshmi Narayanan (Mother)', description: 'Drop only' })
+  handed_to: string | null;
 }
 
 export class ChecklistSummaryDto {
@@ -47,6 +53,12 @@ export class ChecklistSummaryDto {
 
   @ApiProperty({ example: 0, description: 'Trip ended and the student was never marked off the bus' })
   not_alighted: number;
+
+  @ApiProperty({ example: 1, description: 'The bus came and the child was not at the stop (marked missed)' })
+  not_at_stop: number;
+
+  @ApiPropertyOptional({ example: 0, description: 'Got on with the bus pass on hold (trip checklist only)' })
+  boarded_on_hold?: number;
 }
 
 export class ChecklistStudentDto {
@@ -62,7 +74,11 @@ export class ChecklistStudentDto {
   @ApiProperty({ type: RefDto, nullable: true, description: 'The student’s stop for this trip' })
   stop: RefDto | null;
 
-  @ApiProperty({ enum: RIDER_STATUSES, example: 'on_bus', description: 'away, waiting, on_bus or off_bus' })
+  @ApiProperty({
+    enum: RIDER_STATUSES,
+    example: 'on_bus',
+    description: 'away, waiting, not_at_stop (driver marked missed), on_bus or off_bus',
+  })
   status: RiderStatus;
 
   @ApiProperty({
@@ -78,6 +94,9 @@ export class ChecklistStudentDto {
 
   @ApiProperty({ type: BoardingMarkDto, nullable: true })
   alighted: BoardingMarkDto | null;
+
+  @ApiProperty({ type: BoardingMarkDto, nullable: true, description: 'Marked "not at stop"' })
+  missed: BoardingMarkDto | null;
 
   @ApiProperty({
     nullable: true,
@@ -163,6 +182,9 @@ export class StudentTripDto {
 
   @ApiProperty({ type: BoardingMarkDto, nullable: true })
   alighted: BoardingMarkDto | null;
+
+  @ApiProperty({ type: BoardingMarkDto, nullable: true, description: 'Marked "not at stop"' })
+  missed: BoardingMarkDto | null;
 
   @ApiProperty({
     nullable: true,

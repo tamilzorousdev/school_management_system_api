@@ -4,7 +4,7 @@ import { StopStatus, TripKind, TripStop } from './entities/transport-trip.entity
 import { BoardingAction } from './entities/trip-boarding.entity';
 import { orderStops, ridesOn } from './tracking.logic';
 
-export const BOARDING_STATUSES = ['not_yet', 'boarded', 'alighted'] as const;
+export const BOARDING_STATUSES = ['not_yet', 'boarded', 'alighted', 'not_at_stop'] as const;
 export type BoardingStatus = (typeof BOARDING_STATUSES)[number];
 
 export const TIMELINE_SOURCES = ['live', 'scheduled'] as const;
@@ -113,6 +113,7 @@ export function plannedTimeline(
 }
 
 export function boardingStatus(latest: BoardingAction | null | undefined): BoardingStatus {
+  if (latest === 'missed') return 'not_at_stop';
   return latest ?? 'not_yet';
 }
 

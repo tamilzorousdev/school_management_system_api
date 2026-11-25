@@ -75,3 +75,17 @@ export function minutesFrom(seconds: number | null): number {
 export function tripLabel(kind: TripKind): { en: string; ta: string } {
   return kind === 'pickup' ? { en: 'morning pickup', ta: 'காலை' } : { en: 'evening drop', ta: 'மாலை' };
 }
+
+const DEFAULT_STOP_GAP_SECONDS = 300;
+
+export function plannedGapSeconds(from: string | null, to: string | null): number {
+  const seconds = (time: string | null) => {
+    const match = /^(\d{1,2}):(\d{2})/.exec(time ?? '');
+    return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 : null;
+  };
+  const start = seconds(from);
+  const end = seconds(to);
+  if (start === null || end === null) return DEFAULT_STOP_GAP_SECONDS;
+  const gap = Math.abs(end - start);
+  return gap > 0 && gap <= 3600 ? gap : DEFAULT_STOP_GAP_SECONDS;
+}

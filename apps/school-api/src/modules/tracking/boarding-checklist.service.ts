@@ -38,6 +38,7 @@ const TRIP_LABELS: Record<TransportTrip['kind'], { en: string; ta: string }> = {
 interface Marks {
   boarded: BoardingMarkDto | null;
   alighted: BoardingMarkDto | null;
+  missed: BoardingMarkDto | null;
 }
 
 @Injectable()
@@ -64,9 +65,10 @@ export class BoardingChecklistService {
     const ended = trip.status === 'ended';
     const stopNames = new Map(trip.stops.map((stop) => [stop.stop_id, stop.name]));
     const contacts = await this.routes.riderContacts(riders.map((rider) => rider.student_id));
+    const boardedOnHold = [...marks.values()].filter((mark) => mark.boarded?.pass_on_hold).length;
     return {
       trip: summary!,
-      summary: checklistSummary(riders, ended),
+      summary: { ...checklistSummary(riders, ended), boarded_on_hold: boardedOnHold },
       students: riders.map((rider) => {
         const recorded = marks.get(markKey(trip.id, rider.student_id));
         return {
@@ -78,6 +80,7 @@ export class BoardingChecklistService {
           flag: tripFlag(rider, ended),
           boarded: recorded?.boarded ?? null,
           alighted: recorded?.alighted ?? null,
+          missed: recorded?.missed ?? null,
           away_note: rider.away_note,
           photo_url: contacts.get(rider.student_id)?.photo_url ?? null,
           parents: contacts.get(rider.student_id)?.parents ?? [],
@@ -338,6 +341,7 @@ export class BoardingChecklistService {
         const rider: RiderMarks = {
           boarded: Boolean(recorded?.boarded),
           alighted: Boolean(recorded?.alighted),
+          missed: Boolean(recorded?.missed),
           away_today: Boolean(absence),
         };
         return {
@@ -352,6 +356,7 @@ export class BoardingChecklistService {
             flag: tripFlag(rider, trip.status === 'ended'),
             boarded: recorded?.boarded ?? null,
             alighted: recorded?.alighted ?? null,
+            missed: recorded?.missed ?? null,
             away_note: absence?.note ?? null,
           },
         };
@@ -378,7 +383,7 @@ export class BoardingChecklistService {
     );
     for (const row of rows) {
       const key = markKey(row.trip_id, row.student_id);
-      const entry = result.get(key) ?? { boarded: null, alighted: null };
+      const entry = result.get(key) ?? { boarded: null, alighted: null, missed: null };
       const person = people.find((item) => Number(item.id) === row.recorded_by);
       entry[row.action] = {
         id: row.id,
@@ -386,6 +391,8 @@ export class BoardingChecklistService {
         method: row.method,
         stop: row.stop_id ? { id: row.stop_id, name: stopNames.get(`${row.trip_id}:${row.stop_id}`) ?? '' } : null,
         recorded_by: person ? { id: Number(person.id), name: person.name } : null,
+        handed_to: row.handed_to,
+        pass_on_hold: row.pass_on_hold,
       };
       result.set(key, entry);
     }
