@@ -83,6 +83,10 @@ const TAGS: [string, string][] = [
     'School and class photo and video albums the children can see, with full-screen viewing, slideshow and downloads when the school allows them',
   ],
   [
+    'Mobile · Parent · Module 11: Hostel',
+    'Hostel card with room, bed and warden, hostel roll call history, ask for home leave or an outing, agree to leave the warden asked for, hostel pass QR, visitor history and the approved visitor list',
+  ],
+  [
     'Mobile · Teacher · Module 1: Profile, Qualifications, Bank & Documents',
     'Staff profile, qualifications, bank details, performance appraisals, verification documents and home alerts',
   ],
@@ -134,6 +138,10 @@ const TAGS: [string, string][] = [
     'Mobile · Teacher · Module 13: Gallery',
     'Class and section photo and video albums: create, upload several files with per-file results, captions, video stills, publish and share with parents; school albums open to staff',
   ],
+  [
+    'Mobile · Teacher · Module 14: Hostel',
+    'Warden and assistant warden: hostel home, rooms and beds with who sleeps where, residents, applications, admit, allocate, transfer, swap and vacate beds, checkout with clearance checklist, roll call with ID card scan, leave and outing approvals, hostel pass scan out and in, visitors',
+  ],
   ['Admin · Dashboard', 'Home screen in one call: counts per section, gated by the caller’s permissions'],
   ['Admin · Students', 'Students, class placement, guardians, roll numbers, Excel import'],
   ['Admin · Student records', 'Documents with verification, health and vaccinations, behaviour notes'],
@@ -164,6 +172,18 @@ const TAGS: [string, string][] = [
   [
     'Admin · Library',
     'Catalogue with ISBN and barcode scanning, Excel import, copies and labels, members, issue and return, overdue follow-ups and alerts, fines, library attendance, stock checks and reports',
+  ],
+  [
+    'Admin · Hostel',
+    'Hostel dashboard, settings and optional modules, hostels, blocks, floors, room types, rooms and beds, vacant beds for allocation',
+  ],
+  [
+    'Admin · Hostel movement',
+    'Roll call (manual, ID card QR, finish), hostel leave and outings with parent consent, hostel pass check and out/in, visitors, approved visitors and the blocked list',
+  ],
+  [
+    'Admin · Hostel admissions',
+    'Applications and waitlist, admission, bed allocation, transfer, swap and vacate, checkout with clearance checklist, student hostel tab and the hostel audit log',
   ],
   [
     'Admin · Inventory',
@@ -389,7 +409,7 @@ const AUDIENCES: AudienceConfig[] = [
     jsonSlug: 'mobile-teacher',
     title: 'Tamilzorous School Management API · Mobile · Teacher App',
     intro:
-      'Routes for the Teacher & Staff mobile app: Modules 1 to 13 (profile, qualifications, bank, attendance, timetable, homework, exams, chat, video, payroll, fees, holidays, library, gate and visitors, gallery), plus sign-in, `/me` and files.',
+      'Routes for the Teacher & Staff mobile app: Modules 1 to 14 (profile, qualifications, bank, attendance, timetable, homework, exams, chat, video, payroll, fees, holidays, library, gate and visitors, gallery, hostel), plus sign-in, `/me` and files.',
     owns: /^\/api\/v\d+\/mobile\/teacher\//,
     stripPrefix: 'Mobile · Teacher · ',
   },
@@ -399,7 +419,7 @@ const AUDIENCES: AudienceConfig[] = [
     jsonSlug: 'mobile-parent',
     title: 'Tamilzorous School Management API · Mobile · Parent App',
     intro:
-      'Routes for the Parent mobile app: Modules 1 to 10 (children, attendance, academics, diary, chat, video, student fees, holidays, library, gallery), plus sign-in, `/me` and files.',
+      'Routes for the Parent mobile app: Modules 1 to 11 (children, attendance, academics, diary, chat, video, student fees, holidays, library, gallery, hostel), plus sign-in, `/me` and files.',
     owns: /^\/api\/v\d+\/mobile\/parent\//,
     stripPrefix: 'Mobile · Parent · ',
   },
@@ -573,8 +593,8 @@ const SWAGGER_CUSTOM_JS = `
         inGroupClass: 'in-group-teacher',
         icon: '📱',
         title: 'Mobile · Teacher App',
-        badge: '13 Modules',
-        desc: 'Profile, Qualifications, Attendance, Timetable, Class Diary, Exams, Parent Chat, Video Meetings, Payroll, Fees Overview, Holidays, Library, Gate & Visitors and Gallery',
+        badge: '14 Modules',
+        desc: 'Profile, Qualifications, Attendance, Timetable, Class Diary, Exams, Parent Chat, Video Meetings, Payroll, Fees Overview, Holidays, Library, Gate & Visitors, Gallery and Hostel',
         match: function(tag) { return tag.indexOf('Teacher') !== -1; }
       },
       {
@@ -583,8 +603,8 @@ const SWAGGER_CUSTOM_JS = `
         inGroupClass: 'in-group-parent',
         icon: '👨‍👩‍👧',
         title: 'Mobile · Parent App',
-        badge: '10 Modules',
-        desc: 'Home & Children, Attendance & Leave, Academics & Report Card, Class Diary & Behaviour, Teacher Chat, Video Meetings, Student Fees, Holidays, Library and Gallery',
+        badge: '11 Modules',
+        desc: 'Home & Children, Attendance & Leave, Academics & Report Card, Class Diary & Behaviour, Teacher Chat, Video Meetings, Student Fees, Holidays, Library, Gallery and Hostel',
         match: function(tag) { return tag.indexOf('Parent') !== -1; }
       },
       {
@@ -764,8 +784,8 @@ export function setupSwagger(app: INestApplication): void {
   const URL_ITEMS = [
     { name: 'Admin web', url: '/api/docs/admin-json' },
     { name: 'Mobile app (All)', url: '/api/docs/mobile-json' },
-    { name: 'Mobile · Teacher App (Modules 1 - 13)', url: '/api/docs/mobile-teacher-json' },
-    { name: 'Mobile · Parent App (Modules 1 - 10)', url: '/api/docs/mobile-parent-json' },
+    { name: 'Mobile · Teacher App (Modules 1 - 14)', url: '/api/docs/mobile-teacher-json' },
+    { name: 'Mobile · Parent App (Modules 1 - 11)', url: '/api/docs/mobile-parent-json' },
     { name: 'Mobile · Driver App (Modules 1 - 5)', url: '/api/docs/mobile-driver-json' },
     { name: 'Mobile · Office App (Modules 1 - 4)', url: '/api/docs/mobile-office-json' },
   ];

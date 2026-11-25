@@ -63,6 +63,7 @@ import { OfficeModule } from './modules/office/office.module';
 import { OfficeScopeModule } from './modules/office/office-scope.module';
 import { WingScopeInterceptor } from './modules/office/wing-scope.interceptor';
 import { AlumniModule } from './modules/alumni/alumni.module';
+import { HostelModule } from './modules/hostel/hostel.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { AlumniModule } from './modules/alumni/alumni.module';
     PayrollModule,
     FeesModule,
     LibraryModule,
+    HostelModule,
     AccountsModule,
     InventoryModule,
     ExamsModule,

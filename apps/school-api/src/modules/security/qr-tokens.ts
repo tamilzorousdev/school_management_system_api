@@ -3,9 +3,15 @@ import { safeEqual } from '../../shared/crypto';
 import { GateQr, GateQrKind, readGateQr, signGateQr } from '../gate/gate.logic';
 
 const PREFIX = 'TZS1';
+const HOSTEL_PREFIX = 'TZH1';
 
 export interface StudentQr {
   student_id: number;
+  version: number;
+}
+
+export interface HostelPassQr {
+  leave_id: number;
   version: number;
 }
 
@@ -31,6 +37,23 @@ export class QrTokens {
 
   readGate(token: string): GateQr | null {
     return readGateQr(this.secret, token);
+  }
+
+  hostelPass(leaveId: number, version: number): string {
+    return `${HOSTEL_PREFIX}.${leaveId}.${version}.${this.hostelSignature(leaveId, version)}`;
+  }
+
+  readHostelPass(token: string): HostelPassQr | null {
+    const parts = token.trim().split('.');
+    if (parts.length !== 4 || parts[0] !== HOSTEL_PREFIX) return null;
+    const leaveId = Number(parts[1]);
+    const version = Number(parts[2]);
+    if (!Number.isInteger(leaveId) || leaveId <= 0 || !Number.isInteger(version) || version <= 0) return null;
+    return safeEqual(this.hostelSignature(leaveId, version), parts[3]) ? { leave_id: leaveId, version } : null;
+  }
+
+  private hostelSignature(leaveId: number, version: number): string {
+    return createHmac('sha256', this.secret).update(`hostel:${leaveId}:${version}`).digest('base64url').slice(0, 22);
   }
 
   private signature(studentId: number, version: number): string {

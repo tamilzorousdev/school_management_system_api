@@ -38,12 +38,12 @@ Sign-in uses the central **Tamilzorous Auth Service** for the OTP (`AUTH_PROVIDE
 
 Send the app on both calls: `"app": "mobile"` in `/auth/otp/request` and `"client": { "app": "mobile", ... }` in `/auth/otp/verify` (the admin web sends `"admin"`). `client.app` is required.
 
-| `app`              | Who can sign in                                                     |
-| ------------------ | ------------------------------------------------------------------- |
-| `mobile` (Flutter) | Users with a Parent, Teacher, HOD, Driver, Attendant or AO role     |
-| `admin` (web)      | Users with Super admin, Admin, Principal, AO or Transport in-charge |
+| `app`              | Who can sign in                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------- |
+| `mobile` (Flutter) | Users with a Parent, Teacher, HOD, Driver, Attendant, AO, Warden or Assistant warden role |
+| `admin` (web)      | Users with Super admin, Admin, Principal, AO or Transport in-charge                       |
 
-An AO gets `mobile_apps: ["office"]` and opens the **Office** home in the app (see *AO office: wings* below).
+An AO gets `mobile_apps: ["office"]` and opens the **Office** home in the app (see _AO office: wings_ below).
 
 Anyone else gets `403 APP_NOT_ALLOWED` at the OTP request, so no SMS is sent.
 
@@ -74,25 +74,25 @@ One person, one sign-in. A number that is both a parent and a teacher signs in o
 
 In development the OTP is always `123456` and no SMS is sent. Demo users (all school 1):
 
-| Mobile                   | Roles                                                                 |
-| ------------------------ | --------------------------------------------------------------------- |
-| 9999999999               | Super admin (platform, every school)                                  |
-| 9876543210               | School admin                                                          |
-| 9000000001               | Principal                                                             |
-| 9000000002               | Administrative officer                                                |
-| 9000000003               | Transport in-charge                                                   |
-| 9000000004               | Teacher, HOD                                                          |
-| 9000000005               | Parent (Tamil)                                                        |
-| 9000000006               | Teacher and Parent (role picker)                                      |
-| 9000000007               | Driver (Tamil)                                                        |
-| 9000000008               | Bus attendant (Tamil)                                                 |
-| 9000000009               | Librarian                                                             |
-| 9000000010               | Accountant                                                            |
-| 9000000011               | Gate in-charge (Tamil)                                                |
-| 9000000013               | AO for Pre-primary and Primary (wing AO)                              |
-| 9000000014               | AO for Secondary and Higher Secondary (wing AO)                       |
+| Mobile                   | Roles                                                                               |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| 9999999999               | Super admin (platform, every school)                                                |
+| 9876543210               | School admin                                                                        |
+| 9000000001               | Principal                                                                           |
+| 9000000002               | Administrative officer                                                              |
+| 9000000003               | Transport in-charge                                                                 |
+| 9000000004               | Teacher, HOD                                                                        |
+| 9000000005               | Parent (Tamil)                                                                      |
+| 9000000006               | Teacher and Parent (role picker)                                                    |
+| 9000000007               | Driver (Tamil)                                                                      |
+| 9000000008               | Bus attendant (Tamil)                                                               |
+| 9000000009               | Librarian                                                                           |
+| 9000000010               | Accountant                                                                          |
+| 9000000011               | Gate in-charge (Tamil)                                                              |
+| 9000000013               | AO for Pre-primary and Primary (wing AO)                                            |
+| 9000000014               | AO for Secondary and Higher Secondary (wing AO)                                     |
 | 9000000021 to 9000000024 | AOs: Primary + Secondary + Higher; Primary + Secondary; Higher only; Secondary only |
-| 9000000401 to 9000000406 | Teachers: Tamil, English, Social Science, PE, Computer Science, Hindi |
+| 9000000401 to 9000000406 | Teachers: Tamil, English, Social Science, PE, Computer Science, Hindi               |
 
 ## Response format
 
@@ -806,7 +806,7 @@ Crew lists (duty, students, roster, trip checklist) also have `pass_label` (null
 | `POST /mobile/teacher/gate/emergency` · `GET .../passes/{id}` · `POST .../passes/{id}/consent-code` | Emergency without a pass; poll the pass until approved; enter the parent's code `{ code }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `POST /mobile/teacher/gate/visitors` · `GET .../visitors` · `POST .../visitors/{id}/in` · `/out`    | Walk-in `{ name, mobile, purpose, host_user_id?, student_id?, company?, people_count?, vehicle_no?, photo_file_id, id_proof_kind?, id_proof_last4? }`; today's visitors; in/out `{ method }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `GET /mobile/teacher/gate/approvals` · `POST .../passes/{id}/decision` · `POST .../passes`          | Class teacher: passes and emergencies of my class to decide; create one for a parent who phoned                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `GET/POST /mobile/parent/children/{id}/gate-passes` · `POST .../{passId}/cancel`                    | **Parent** (Module 2): my child's passes (approved ones carry `qr_token`, `code`, `pass_no`: show the QR big, the code and number under it); ask `{ pass_date, from_time, until_time?, reason, pass_type?: visit\|pickup (default pickup), pickup }` (`pickup` is required for `pickup` and optional for `visit`; a visit pass without a collector has `pickup: null` in every response and releasing it adds no leave)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `GET/POST /mobile/parent/children/{id}/gate-passes` · `POST .../{passId}/cancel`                    | **Parent** (Module 2): my child's passes (approved ones carry `qr_token`, `code`, `pass_no`: show the QR big, the code and number under it); ask `{ pass_date, from_time, until_time?, reason, pass_type?: visit\|pickup (default pickup), pickup }` (`pickup` is required for `pickup` and optional for `visit`; a visit pass without a collector has `pickup: null` in every response and releasing it adds no leave)                                                                                                                                                                                                                                                                                                                                                                                               |
 | `GET/POST /mobile/parent/children/{id}/pickups` · `PATCH/DELETE .../{pickupId}`                     | People I allow to pick up my child (photo, relation, mobile, `valid_until`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `GET /mobile/parent/gate-consents` · `POST .../{passId}/decision`                                   | Someone not registered is at the gate today: `{ approve }`; after agreeing show `code` to read out                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `GET /mobile/driver/vehicle/maintenance`                                                            | My bus upkeep (Module 5): `current_km`, `services` (most urgent first, same shape as the admin rules), `last_service`, `open_problems`, `today_check`, `check_required`, `off_road`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -918,7 +918,7 @@ New role **Gate in-charge** (`GATE_INCHARGE`, Staff app; demo 9000000009). Permi
 | `GET /admin/gate/report?from&to`                                                                                       | `by_day`, `by_class`, `by_method`, `by_purpose`, `by_hour` (default last 30 days)                                                                                                                                                                                                |
 | `GET/PATCH /admin/gate/settings`                                                                                       | `grace_minutes` (30), `emergency_wait_minutes` (10), `visitor_photo_required` (true), `visitor_id_required` (false), `visitor_checkout_time` ("18:00"), `notify_office_on_manual` (true)                                                                                         |
 | `GET /admin/gate/passes` · `/xlsx` · `/{id}`                                                                           | List (`from`, `to`, `status`, `source`, `method`, `emergency`, `class_id`, `section_id`, search) and Excel                                                                                                                                                                       |
-| `POST /admin/gate/passes`                                                                                              | For a parent who phoned: `{ student_id, pass_date, from_time, until_time?, reason, pass_type?, pickup (optional for visit): { kind, guardian_id? \| authorised_id? \| name, relation, mobile, photo_file_id? }, approve_now? }`                                                                                   |
+| `POST /admin/gate/passes`                                                                                              | For a parent who phoned: `{ student_id, pass_date, from_time, until_time?, reason, pass_type?, pickup (optional for visit): { kind, guardian_id? \| authorised_id? \| name, relation, mobile, photo_file_id? }, approve_now? }`                                                  |
 | `POST /admin/gate/passes/{id}/decision` · `/cancel`                                                                    | `{ approve, note? }`; cancel a waiting or approved pass                                                                                                                                                                                                                          |
 | `GET /admin/gate/students?search=`                                                                                     | Student cards: photo, class, `people` (registered parents and pickup persons with photos), `today_passes`, `absent_today`                                                                                                                                                        |
 | `GET/POST /admin/gate/students/{id}/pickups` · `PATCH/DELETE /admin/gate/pickups/{id}`                                 | Authorised pickup persons (up to 6; `valid_until`)                                                                                                                                                                                                                               |
@@ -938,21 +938,21 @@ A school is split into **wings** (for example Pre-primary LKG–UKG, Primary 1�
 - Cover during leave: an AO's wing can have `valid_from` / `valid_to`; it counts only between those dates.
 - Admin and principal are never limited. Permissions: `office.view` (drill-down, student history), `office.wings` (wing setup: admin, principal), `office.monitor` (AO monitor: head AO, principal, admin).
 
-| Call (admin web, `/admin/office`) | Use |
-| --- | --- |
-| `GET me` | `is_limited`, `is_head_ao`, `can_monitor`, `wings` I see, `today` |
-| `GET dashboard` | AO home: `attendance` today, `students`, `staff_on_leave` (school), `fees` (`collected_today`, `collected_month`, `due`, `defaulters`, `top_defaulters`), `pending` and the oldest 5 `pending_items`, `exams` (latest published exam per class with `average` and top 3), `alerts` (`low_attendance`, `passes_on_hold`, `health_alerts`), and `aos` (AO cards, only for the head AO, principal, admin; otherwise null). All limited to my wings |
-| `GET wings` | Wing cards: `range_label`, `aos`, `class_count`, `section_count`, `student_count`, `boys`, `girls`, `attendance` (`sections_marked`, `sections_total`, `present`, `absent`, `percent`), `fee_due`, `pending_gate_passes`; `unassigned_classes` for the head AO |
-| `GET wings/{id}/classes` | Class cards with `class_teachers` and `last_exam_average` (404 `WING_NOT_FOUND`) |
-| `GET classes/{id}/sections` | Section cards: `class_teacher`, attendance today, `fee_defaulters`, `fee_due`, `last_exam`, `last_exam_average`, top 3 `toppers` (404 `CLASS_NOT_FOUND`) |
-| `GET sections/{id}/students` | Students with `today`, `attendance_percent`, `fee_due`, `fee_status`, `last_exam_percent`, `rank`, `transport`, `flags` (`fee_due`, `low_attendance` below 75%, `health_alert`, `pass_on_hold`). `filter` = `all`, `absent_today`, `fee_due`, `low_attendance`; `sort` = `roll_no`, `name`, `attendance`, `fee_due`, `last_exam`; `search` |
-| `GET students/{id}` | Full student history: `student`, `current` (class-section, roll, class teacher, wing), `guardians`, `transport`, `flags`, `attendance`, `fees`, `exams` (with `section_rank`, `class_rank`), `years`, `counts`, `health`, `report_card_pdf_path`. Every open is logged for the head AO |
-| `GET students/{id}/documents` | Documents, view only: `type`, `title`, `status`, `remarks`, `created_at`, `verified_at`, `mime_type`, signed `url` and `thumbnail_url`. Each open is logged |
-| `GET students/{id}/timeline` | Newest first, paged: `admission`, `enrolment`, `attendance`, `leave`, `fee_invoice`, `fee_payment`, `exam`, `gate`, `behaviour`, `achievement`, `transport`, `document`, `library`; `type` filters one kind |
-| `GET wing-setup` · `POST wing-setup/wings` · `PATCH/DELETE wing-setup/wings/{id}` | Wings with classes and AOs; add `{ name, from_grade, to_grade, class_ids?, board?, sort_order? }` |
-| `PUT wing-setup/aos/{userId}` | `{ wings: [{ wing_id, valid_from?, valid_to?, note? }] }`; an empty list makes the AO the head AO (404 `AO_NOT_FOUND`) |
-| `GET monitor` | `summary` (pending, fees today and this month, attendance marked, open grievances, `unassigned_wings`) and one card per AO: `last_active_at`, `inactive` (2 days), `pending` (`gate_passes`, `fee_requests`, `leave_requests`, `grievances`, `total`, `overdue`: 24 hours, or a gate pass past its escalation time), `fees_collected_today`/`_month`, `fee_due`, `attendance`, `flags`. A wing AO gets 403 `HEAD_AO_ONLY` |
-| `GET monitor/aos/{userId}` · `POST …/remind` | One AO: `pending` (oldest first, `age_hours`) and the latest 60 actions; Remind pushes `OFFICE_REMINDER` (409 `NOTHING_PENDING`) |
+| Call (admin web, `/admin/office`)                                                 | Use                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET me`                                                                          | `is_limited`, `is_head_ao`, `can_monitor`, `wings` I see, `today`                                                                                                                                                                                                                                                                                                                                                                               |
+| `GET dashboard`                                                                   | AO home: `attendance` today, `students`, `staff_on_leave` (school), `fees` (`collected_today`, `collected_month`, `due`, `defaulters`, `top_defaulters`), `pending` and the oldest 5 `pending_items`, `exams` (latest published exam per class with `average` and top 3), `alerts` (`low_attendance`, `passes_on_hold`, `health_alerts`), and `aos` (AO cards, only for the head AO, principal, admin; otherwise null). All limited to my wings |
+| `GET wings`                                                                       | Wing cards: `range_label`, `aos`, `class_count`, `section_count`, `student_count`, `boys`, `girls`, `attendance` (`sections_marked`, `sections_total`, `present`, `absent`, `percent`), `fee_due`, `pending_gate_passes`; `unassigned_classes` for the head AO                                                                                                                                                                                  |
+| `GET wings/{id}/classes`                                                          | Class cards with `class_teachers` and `last_exam_average` (404 `WING_NOT_FOUND`)                                                                                                                                                                                                                                                                                                                                                                |
+| `GET classes/{id}/sections`                                                       | Section cards: `class_teacher`, attendance today, `fee_defaulters`, `fee_due`, `last_exam`, `last_exam_average`, top 3 `toppers` (404 `CLASS_NOT_FOUND`)                                                                                                                                                                                                                                                                                        |
+| `GET sections/{id}/students`                                                      | Students with `today`, `attendance_percent`, `fee_due`, `fee_status`, `last_exam_percent`, `rank`, `transport`, `flags` (`fee_due`, `low_attendance` below 75%, `health_alert`, `pass_on_hold`). `filter` = `all`, `absent_today`, `fee_due`, `low_attendance`; `sort` = `roll_no`, `name`, `attendance`, `fee_due`, `last_exam`; `search`                                                                                                      |
+| `GET students/{id}`                                                               | Full student history: `student`, `current` (class-section, roll, class teacher, wing), `guardians`, `transport`, `flags`, `attendance`, `fees`, `exams` (with `section_rank`, `class_rank`), `years`, `counts`, `health`, `report_card_pdf_path`. Every open is logged for the head AO                                                                                                                                                          |
+| `GET students/{id}/documents`                                                     | Documents, view only: `type`, `title`, `status`, `remarks`, `created_at`, `verified_at`, `mime_type`, signed `url` and `thumbnail_url`. Each open is logged                                                                                                                                                                                                                                                                                     |
+| `GET students/{id}/timeline`                                                      | Newest first, paged: `admission`, `enrolment`, `attendance`, `leave`, `fee_invoice`, `fee_payment`, `exam`, `gate`, `behaviour`, `achievement`, `transport`, `document`, `library`; `type` filters one kind                                                                                                                                                                                                                                     |
+| `GET wing-setup` · `POST wing-setup/wings` · `PATCH/DELETE wing-setup/wings/{id}` | Wings with classes and AOs; add `{ name, from_grade, to_grade, class_ids?, board?, sort_order? }`                                                                                                                                                                                                                                                                                                                                               |
+| `PUT wing-setup/aos/{userId}`                                                     | `{ wings: [{ wing_id, valid_from?, valid_to?, note? }] }`; an empty list makes the AO the head AO (404 `AO_NOT_FOUND`)                                                                                                                                                                                                                                                                                                                          |
+| `GET monitor`                                                                     | `summary` (pending, fees today and this month, attendance marked, open grievances, `unassigned_wings`) and one card per AO: `last_active_at`, `inactive` (2 days), `pending` (`gate_passes`, `fee_requests`, `leave_requests`, `grievances`, `total`, `overdue`: 24 hours, or a gate pass past its escalation time), `fees_collected_today`/`_month`, `fee_due`, `attendance`, `flags`. A wing AO gets 403 `HEAD_AO_ONLY`                       |
+| `GET monitor/aos/{userId}` · `POST …/remind`                                      | One AO: `pending` (oldest first, `age_hours`) and the latest 60 actions; Remind pushes `OFFICE_REMINDER` (409 `NOTHING_PENDING`)                                                                                                                                                                                                                                                                                                                |
 
 **Office app (Flutter, role AO)**: `GET /mobile/office/home` (`me`, `wings`, `pending_gate_passes`), `GET /mobile/office/dashboard` (same as above), `GET /mobile/office/students/{id}/documents`, `GET /mobile/office/students/{id}/report-card/pdf` (`term_id`/`exam_id` optional; the student response gives it as `report_card_pdf_path`), `GET /mobile/office/wings/{id}/classes`, `/classes/{id}/sections`, `/sections/{id}/students`, `/students/{id}`, `/students/{id}/timeline` (same shapes as above), `GET /mobile/office/gate-passes` (waiting in my wings), `GET /mobile/office/gate-passes/{id}`, `POST /mobile/office/gate-passes/{id}/decision` `{ approve, note? }` (first answer wins with the class teacher: 409 `PASS_ALREADY_DECIDED`). Pushes for the AO carry `role: "office"`. Swagger: `/api/docs/mobile/office`.
 
@@ -960,14 +960,14 @@ A school is split into **wings** (for example Pre-primary LKG–UKG, Primary 1�
 
 Shared `/me/staff/*` routes (Swagger tag `Me · Staff profile`, in both docs). 404 `STAFF_NOT_FOUND` when the user has no staff record.
 
-| Call | Use |
-| --- | --- |
-| `GET profile` · `PATCH profile` | Profile with `photo_url` and `editable`. The person can change only `photo_file_id` (upload with `POST /files`, image only), `email`, `language`, `address`, `emergency_contact_name`, `emergency_contact_mobile`; anything else is 400 |
-| `GET/POST qualifications` · `PATCH/DELETE qualifications/{id}` | Own education: `degree`, `specialization`, `institution`, `year_completed`; each call returns the full list |
-| `GET/POST documents` · `DELETE documents/{id}` | Own documents `{ type, title?, file_id }`; new ones are `pending` until the office checks them; a checked one cannot be removed (409 `DOCUMENT_ALREADY_CHECKED`) |
-| `GET bank` · `POST bank/reveal` | Accounts with `account_masked` / `pan_masked` and `account_no`/`pan` null; reveal (the View button) returns them in full and is logged. Only the office changes bank details |
-| `GET/POST check-in`, `POST check-out`, `GET attendance?month=` | Same as the teacher app |
-| `GET leave-balances`, `GET/POST leaves`, `POST leaves/{id}/cancel` | Same as the teacher app |
+| Call                                                               | Use                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET profile` · `PATCH profile`                                    | Profile with `photo_url` and `editable`. The person can change only `photo_file_id` (upload with `POST /files`, image only), `email`, `language`, `address`, `emergency_contact_name`, `emergency_contact_mobile`; anything else is 400 |
+| `GET/POST qualifications` · `PATCH/DELETE qualifications/{id}`     | Own education: `degree`, `specialization`, `institution`, `year_completed`; each call returns the full list                                                                                                                             |
+| `GET/POST documents` · `DELETE documents/{id}`                     | Own documents `{ type, title?, file_id }`; new ones are `pending` until the office checks them; a checked one cannot be removed (409 `DOCUMENT_ALREADY_CHECKED`)                                                                        |
+| `GET bank` · `POST bank/reveal`                                    | Accounts with `account_masked` / `pan_masked` and `account_no`/`pan` null; reveal (the View button) returns them in full and is logged. Only the office changes bank details                                                            |
+| `GET/POST check-in`, `POST check-out`, `GET attendance?month=`     | Same as the teacher app                                                                                                                                                                                                                 |
+| `GET leave-balances`, `GET/POST leaves`, `POST leaves/{id}/cancel` | Same as the teacher app                                                                                                                                                                                                                 |
 
 Payslips: `GET /me/payslips`.
 
@@ -1099,24 +1099,24 @@ Errors: `404 STUDENT_NOT_FOUND`, `ENROLLMENT_NOT_FOUND`, `TERM_NOT_FOUND`, `EXAM
 
 LMS computer-based MCQ quizzes created by subject teachers, approved by principal/admin, scheduled with live countdown timers, auto-submitted on timeout, and instantly graded.
 
-| Call | Role | Use |
-| --- | --- | --- |
-| `GET /admin/quizzes` | Admin (`exams.view`) | List all quizzes (`pass_marks` and `pass_percentage` are null when the teacher set no pass mark; `attempts_count`). Each item has `class`, `section`, `subject`, `teacher` and `approved_by` as `{ id, name }`, `pass_percentage`, `questions_count` and `rejection_reason` |
-| `GET /admin/quizzes/{id}` | Admin (`exams.view`) | Same shape plus `questions[]`: `sequence`, `question_type` (`single_choice`, `multiple_choice`, `true_false`), `options`, `correct_option` (keys joined by comma for multiple choice), `explanation`, `marks` |
-| `PUT /admin/quizzes/{id}` | Admin (`exams.manage`) | Edit quiz settings, duration, schedule, and question bank |
-| `POST /admin/quizzes/{id}/approve` | Admin (`exams.manage`) | Approve quiz draft and dispatch `QUIZ_SCHEDULED` push & SMS alerts to parents |
-| `POST /admin/quizzes/{id}/reject` | Admin (`exams.manage`) | Reject quiz with feedback comments returned to the creator |
-| `GET /admin/quizzes/{id}/analytics` | Admin (`exams.view`) | Summary metrics (average score, pass rate, completion rate) and per-question accuracy |
-| `GET /mobile/teacher/quizzes` | Teacher | List quizzes authored by the authenticated teacher |
-| `GET /mobile/teacher/quizzes/{id}` | Teacher | Get quiz details and questions for the author |
-| `POST /mobile/teacher/quizzes` | Teacher | Create MCQ quiz draft (`academic_year_id` optional, defaults to the current year; question fields `question_text`, `options[{key,text}]`, `correct_option`, `explanation`, `marks`, `sequence`; no `pass_percentage`, use `pass_marks`). Parents only see quizzes after submit-for-approval and admin approval |
-| `PUT /mobile/teacher/quizzes/{id}` | Teacher | Update draft or rejected quiz |
-| `POST /mobile/teacher/quizzes/{id}/submit-for-approval` | Teacher | Submit draft quiz to principal/admin for review (`pending_approval`) |
-| `DELETE /mobile/teacher/quizzes/{id}` | Teacher | Delete draft or rejected quiz |
-| `GET /mobile/parent/children/{id}/quizzes` | Parent | List available, live, and completed quizzes for student's class and section |
-| `POST /mobile/parent/children/{id}/quizzes/{quizId}/start` | Parent | Start quiz session; calculates remaining seconds and delivers questions without answer keys |
-| `POST /mobile/parent/children/{id}/quizzes/{quizId}/submit` | Parent | Submit answers; automatically scores test, sets pass/fail, and notifies parents |
-| `GET /mobile/parent/children/{id}/quizzes/{quizId}/result` | Parent | Instant score report, pass/fail badge, and question-by-question review with solutions and teacher explanations |
+| Call                                                        | Role                   | Use                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/quizzes`                                        | Admin (`exams.view`)   | List all quizzes (`pass_marks` and `pass_percentage` are null when the teacher set no pass mark; `attempts_count`). Each item has `class`, `section`, `subject`, `teacher` and `approved_by` as `{ id, name }`, `pass_percentage`, `questions_count` and `rejection_reason`                                    |
+| `GET /admin/quizzes/{id}`                                   | Admin (`exams.view`)   | Same shape plus `questions[]`: `sequence`, `question_type` (`single_choice`, `multiple_choice`, `true_false`), `options`, `correct_option` (keys joined by comma for multiple choice), `explanation`, `marks`                                                                                                  |
+| `PUT /admin/quizzes/{id}`                                   | Admin (`exams.manage`) | Edit quiz settings, duration, schedule, and question bank                                                                                                                                                                                                                                                      |
+| `POST /admin/quizzes/{id}/approve`                          | Admin (`exams.manage`) | Approve quiz draft and dispatch `QUIZ_SCHEDULED` push & SMS alerts to parents                                                                                                                                                                                                                                  |
+| `POST /admin/quizzes/{id}/reject`                           | Admin (`exams.manage`) | Reject quiz with feedback comments returned to the creator                                                                                                                                                                                                                                                     |
+| `GET /admin/quizzes/{id}/analytics`                         | Admin (`exams.view`)   | Summary metrics (average score, pass rate, completion rate) and per-question accuracy                                                                                                                                                                                                                          |
+| `GET /mobile/teacher/quizzes`                               | Teacher                | List quizzes authored by the authenticated teacher                                                                                                                                                                                                                                                             |
+| `GET /mobile/teacher/quizzes/{id}`                          | Teacher                | Get quiz details and questions for the author                                                                                                                                                                                                                                                                  |
+| `POST /mobile/teacher/quizzes`                              | Teacher                | Create MCQ quiz draft (`academic_year_id` optional, defaults to the current year; question fields `question_text`, `options[{key,text}]`, `correct_option`, `explanation`, `marks`, `sequence`; no `pass_percentage`, use `pass_marks`). Parents only see quizzes after submit-for-approval and admin approval |
+| `PUT /mobile/teacher/quizzes/{id}`                          | Teacher                | Update draft or rejected quiz                                                                                                                                                                                                                                                                                  |
+| `POST /mobile/teacher/quizzes/{id}/submit-for-approval`     | Teacher                | Submit draft quiz to principal/admin for review (`pending_approval`)                                                                                                                                                                                                                                           |
+| `DELETE /mobile/teacher/quizzes/{id}`                       | Teacher                | Delete draft or rejected quiz                                                                                                                                                                                                                                                                                  |
+| `GET /mobile/parent/children/{id}/quizzes`                  | Parent                 | List available, live, and completed quizzes for student's class and section                                                                                                                                                                                                                                    |
+| `POST /mobile/parent/children/{id}/quizzes/{quizId}/start`  | Parent                 | Start quiz session; calculates remaining seconds and delivers questions without answer keys                                                                                                                                                                                                                    |
+| `POST /mobile/parent/children/{id}/quizzes/{quizId}/submit` | Parent                 | Submit answers; automatically scores test, sets pass/fail, and notifies parents                                                                                                                                                                                                                                |
+| `GET /mobile/parent/children/{id}/quizzes/{quizId}/result`  | Parent                 | Instant score report, pass/fail badge, and question-by-question review with solutions and teacher explanations                                                                                                                                                                                                 |
 
 ## App banners (image banners on the home screen)
 
@@ -1190,12 +1190,12 @@ Every fee summary also has `total`, `paid`, `balance`, `overdue_amount`, `next_d
 
 ### Parent app
 
-| Call | Screen |
-|---|---|
-| `GET /mobile/parent/children/{id}/fees` | Fee card and history: status, totals, `invoices` (each with `lines` such as tuition, books and transport, and its `payments`), every `payment` newest first, and `upcoming[]` (`{ installment, due_date, amount, lines[{ head_name, amount }] }`: installments in this year's fee plan that are not billed yet (a cancelled invoice counts as billed) and not past their due date, soonest first; the amount is an estimate from the plan and the bus fee, before concessions) |
-| `GET /mobile/parent/children/{id}/fees/receipts/{paymentId}` | Receipt PDF (`Content-Disposition: attachment`) |
-| `GET /mobile/parent/children/{id}/fees/refunds/{refundId}/receipt` | Refund receipt PDF (`id` from `refunds[]` on the invoice); 404 `REFUND_NOT_FOUND` for another child's refund |
-| `GET /mobile/parent/children/{id}/fees/invoices/{invoiceId}/pdf` | Invoice PDF of a fee or fine (`Content-Disposition: attachment`); 404 `INVOICE_NOT_FOUND` for another child's invoice |
+| Call                                                               | Screen                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /mobile/parent/children/{id}/fees`                            | Fee card and history: status, totals, `invoices` (each with `lines` such as tuition, books and transport, and its `payments`), every `payment` newest first, and `upcoming[]` (`{ installment, due_date, amount, lines[{ head_name, amount }] }`: installments in this year's fee plan that are not billed yet (a cancelled invoice counts as billed) and not past their due date, soonest first; the amount is an estimate from the plan and the bus fee, before concessions) |
+| `GET /mobile/parent/children/{id}/fees/receipts/{paymentId}`       | Receipt PDF (`Content-Disposition: attachment`)                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `GET /mobile/parent/children/{id}/fees/refunds/{refundId}/receipt` | Refund receipt PDF (`id` from `refunds[]` on the invoice); 404 `REFUND_NOT_FOUND` for another child's refund                                                                                                                                                                                                                                                                                                                                                                   |
+| `GET /mobile/parent/children/{id}/fees/invoices/{invoiceId}/pdf`   | Invoice PDF of a fee or fine (`Content-Disposition: attachment`); 404 `INVOICE_NOT_FOUND` for another child's invoice                                                                                                                                                                                                                                                                                                                                                          |
 
 Invoice lines have `kind`: `plan`, `transport` (the bus fee) or `transport_adjustment` (a credit or extra charge after a bus change on an already paid invoice). Parents get `TRANSPORT_FEE_UPDATED` when an unpaid invoice changes because the child's bus stop changed. Parents get `FEE_DUE` (category `fees`) when the school raises an invoice, `FEE_DUE_SOON` at 08:00 once per invoice when it falls due within `reminder_days` (fee settings, default 3, 0 = off; again after an approved due-date change; `when` = today / tomorrow / in N days), `FEE_OVERDUE` at 08:00 for each overdue invoice, at most once every 7 days, and `FEE_PAYMENT_RECEIVED` when a payment is recorded at the counter or paid online (`amount`, `date`, `mode`, `receipt_no`, `balance` = everything the child still owes; push only). SMS is sent only if the push does not reach the phone.
 
@@ -1246,15 +1246,15 @@ The invoice changes only when someone with `fees.approve` approves:
 
 Notifications are sent in-app and by push only, never SMS:
 
-| Template | When | To |
-|---|---|---|
-| `FEE_APPROVAL_NEEDED` | A request is made | Everyone in the school with `fees.approve`, except the person who asked |
-| `FEE_REQUEST_APPROVED`, `FEE_REQUEST_REJECTED` | A request is decided | The person who asked |
-| `FEE_PAYMENT_RECEIVED` | A payment is recorded or paid online | The student's guardians who receive alerts |
-| `FEE_REFUND_PAID` | A refund is approved | Same |
-| `FEE_PAYMENT_REVERSED` | A reversal is approved | Same |
-| `FEE_DUE_DATE_CHANGED` | A new due date is approved | Same |
-| `FEE_LATE_FEE` | A late fee is added | Same |
+| Template                                       | When                                 | To                                                                      |
+| ---------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------- |
+| `FEE_APPROVAL_NEEDED`                          | A request is made                    | Everyone in the school with `fees.approve`, except the person who asked |
+| `FEE_REQUEST_APPROVED`, `FEE_REQUEST_REJECTED` | A request is decided                 | The person who asked                                                    |
+| `FEE_PAYMENT_RECEIVED`                         | A payment is recorded or paid online | The student's guardians who receive alerts                              |
+| `FEE_REFUND_PAID`                              | A refund is approved                 | Same                                                                    |
+| `FEE_PAYMENT_REVERSED`                         | A reversal is approved               | Same                                                                    |
+| `FEE_DUE_DATE_CHANGED`                         | A new due date is approved           | Same                                                                    |
+| `FEE_LATE_FEE`                                 | A late fee is added                  | Same                                                                    |
 
 `GET /admin/fees/insights` adds `concessions`, `discounts`, `late_fees`, `refunded` (this year) and `pending_requests` (waiting now).
 
@@ -1307,6 +1307,7 @@ Notifications are sent in-app and by push only, never SMS:
 - Advance receipt PDF: `GET /admin/fees/collections/{collection_id}/advance-receipt` (`fees.view`) and `GET /mobile/parent/children/{id}/fees/advance-receipts/{collection_id}`. It shows the amount paid, the part paid towards each invoice (those have their own receipts) and the part kept as advance. 404 `RECEIPT_NOT_FOUND` when the payment had no advance.
 
 **Leaving the school: NOC before the TC.** A TC is issued only after a no-objection clearance (NOC) from every department.
+
 - `POST /admin/students/{id}/noc` `{ exit_type: transferred|withdrawn, leaving_date, reason }` (`students.manage`) starts a leaving request with five lines: `fees`, `library`, `transport`, `inventory`, `class_teacher`. The student stays `active`. `409 NOC_EXISTS` when one is already open, `409 STUDENT_NOT_ACTIVE` when the student has left.
 - `GET /admin/students/{id}/noc` returns `{ id, student_id, status: open|cleared, exit_type, leaving_date, reason, requested_by_name, requested_at, cleared_at, cleared_count, items[] }`. Each item has `department`, `status: pending|cleared`, `blocker` (what is outstanding right now, e.g. "2 library books not returned", "Rs. 4,500.00 of fees unpaid", "On route R1, stop Anna Nagar"), `blocking` (true when it cannot be cleared yet), `amount` (unpaid fees, fees line only), `can_clear` for the signed-in user, `cleared_by_name`, `cleared_at`, `remarks`, `blocker_snapshot`. `404 NOC_NOT_FOUND` when no request is open.
 - `POST /admin/students/{id}/noc/items/{department}/clear` `{ remarks?, acknowledge_dues? }`. `students.manage` clears any line; otherwise fees needs `fees.manage` or `fees.approve`, library `library.manage`, transport `fleet.manage`, inventory `inventory.manage` (`403 NOC_FORBIDDEN`). Fees answers `409 FEE_DUES_PENDING` while fees are unpaid unless `acknowledge_dues: true`. Library answers `409 LIBRARY_CLEARANCE_PENDING` while books are out or fines unpaid. Clearing transport takes the student off their bus. When the last line clears, the NOC becomes `cleared`.
@@ -1367,15 +1368,15 @@ Every payment in every response (admin and parent) now carries `status` (`succes
 
 Every report takes `academic_year_id`, `class_id`, `section_id` and `installment`, and leaves out cancelled invoices. `collections` and `collectors` also take `received_by` (a staff user id): fees and library fines by who received them, advances and refunds by who recorded them.
 
-| `type` | Rows |
-|---|---|
-| `classes` | Per class: students, invoices, billed, concessions and scholarships, discounts, net due, collected, outstanding, overdue, collected % |
-| `heads` | The same per fee head (`fee_head_id` filters). An invoice's discount and payments are shared across its heads by amount |
-| `installments` | The same per installment, with the due date and how many invoices are fully paid |
-| `benefits` | Each concession and scholarship: students who have it, students billed with it, invoices, amount taken off (`kind` filters) |
-| `defaulters` | Students with a balance: net due, paid, balance, overdue, oldest due date, days overdue, most overdue first (`overdue_only=true`) |
-| `collections` | Money received per day between `from` and `to` (default: this month): receipts, one column per mode (`cash`, `upi`, `card`, `bank_transfer`, `cheque`, `online`), `fees`, `advance`, `library_fines`, `refunds` (paid out), `net` and `cash_in_hand` (cash received less cash refunded). Reversed payments are left out. Library fines are left out when `class_id`, `section_id` or `installment` is sent |
-| `collectors` | The same totals per staff member who received the money (`collector`); online payments are one row, `Online (parent app)` |
+| `type`         | Rows                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `classes`      | Per class: students, invoices, billed, concessions and scholarships, discounts, net due, collected, outstanding, overdue, collected %                                                                                                                                                                                                                                                                      |
+| `heads`        | The same per fee head (`fee_head_id` filters). An invoice's discount and payments are shared across its heads by amount                                                                                                                                                                                                                                                                                    |
+| `installments` | The same per installment, with the due date and how many invoices are fully paid                                                                                                                                                                                                                                                                                                                           |
+| `benefits`     | Each concession and scholarship: students who have it, students billed with it, invoices, amount taken off (`kind` filters)                                                                                                                                                                                                                                                                                |
+| `defaulters`   | Students with a balance: net due, paid, balance, overdue, oldest due date, days overdue, most overdue first (`overdue_only=true`)                                                                                                                                                                                                                                                                          |
+| `collections`  | Money received per day between `from` and `to` (default: this month): receipts, one column per mode (`cash`, `upi`, `card`, `bank_transfer`, `cheque`, `online`), `fees`, `advance`, `library_fines`, `refunds` (paid out), `net` and `cash_in_hand` (cash received less cash refunded). Reversed payments are left out. Library fines are left out when `class_id`, `section_id` or `installment` is sent |
+| `collectors`   | The same totals per staff member who received the money (`collector`); online payments are one row, `Online (parent app)`                                                                                                                                                                                                                                                                                  |
 
 **Daily collection.**
 
@@ -1459,11 +1460,11 @@ Permissions:
 
 **Reports.** `GET /admin/accounts/reports/{type}` (`accounts.view`) returns the same shape as the fee reports; `/xlsx` downloads it. `from` and `to` default to the academic year start and today.
 
-| `type` | Rows |
-|---|---|
-| `monthly` | Per month: `fees` (received with advances, less refunds), `library_fines`, `other_income`, `total_income`, `school_expenses`, `bus_costs` (approved fuel and bus expenses), `salaries` (net pay of finalised payroll runs, by payroll month), `total_expense`, `net` |
-| `categories` | `section` (Income or Expense), `category`, `amount`, `share` (% of income or of expense). `totals` is the surplus |
-| `register` | Every approved entry: date, entry no., type, category, party, mode, reference, added by, income, expense (`kind` filters) |
+| `type`       | Rows                                                                                                                                                                                                                                                                 |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `monthly`    | Per month: `fees` (received with advances, less refunds), `library_fines`, `other_income`, `total_income`, `school_expenses`, `bus_costs` (approved fuel and bus expenses), `salaries` (net pay of finalised payroll runs, by payroll month), `total_expense`, `net` |
+| `categories` | `section` (Income or Expense), `category`, `amount`, `share` (% of income or of expense). `totals` is the surplus                                                                                                                                                    |
+| `register`   | Every approved entry: date, entry no., type, category, party, mode, reference, added by, income, expense (`kind` filters)                                                                                                                                            |
 
 Only approved entries are counted. The `salaries` column and row appear only for callers with `payroll.view`.
 
@@ -1505,6 +1506,130 @@ The librarian (role `LIBRARIAN`, admin web) runs the catalogue, the issue desk, 
 | `GET /mobile/teacher/students/{id}/library` | One student of my class: books held, dues, history, visits (same shape as the parent call)                                                                                                                                                                                                                                                                                                                         |
 | `GET /mobile/teacher/library/class-overdue` | Overdue books of the students in my sections (class teacher); the section roster above shows more                                                                                                                                                                                                                                                                                                                  |
 | `GET /mobile/teacher/library/books`         | Catalogue search                                                                                                                                                                                                                                                                                                                                                                                                   |
+
+## Hostel (admin web and Staff app)
+
+Roles `WARDEN` and `ASSISTANT_WARDEN` sign in to the **Staff mobile app only** (Module 14: Hostel); the admin web hostel pages are for Admin, Principal and the office. Permissions are `hostel.*` (`hostel.view`, `hostel.manage`, `hostel.allocate`, `hostel.checkout`, `hostel.settings`, ...). Run `npm run seed` after deploy so they exist.
+
+### Setup
+
+Structure is hostel → block → floor → room → bed. A room belongs to a room type (sharing, AC, annual fee). Creating a room creates its beds `A`, `B`, `C`... from `capacity` (default: the room type's `default_beds`).
+
+| Call                                                         | Purpose                                                                                                                                                  |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/hostel/dashboard?hostel_id=`                     | Bed counts (`occupied_beds`, `vacant_beds`, `reserved_beds`, `unavailable_beds`), `occupancy_percent`, rooms under maintenance                           |
+| `GET /admin/hostel/settings`, `PUT /admin/hostel/settings`   | Timings (`in_time`, `lights_out_time`, outing and study windows, `HH:mm`), `rules`, `holiday_mode`, `enabled_modules`                                    |
+| `GET /admin/hostel/modules`                                  | `enabled_modules` and `holiday_mode` only, to show or hide menu items                                                                                    |
+| `/admin/hostel/hostels`, `/blocks`, `/floors`, `/room-types` | List, create (`POST`), edit (`PATCH /:id`), remove (`DELETE /:id`)                                                                                       |
+| `GET /admin/hostel/rooms`                                    | Paginated; filters `hostel_id`, `block_id`, `floor_id`, `room_type_id`, `status`, `has_vacancy`; sort `room_no`, `created_at`, `capacity`, `vacant_beds` |
+| `GET /admin/hostel/rooms/:id`                                | Room with its `beds`                                                                                                                                     |
+| `POST /admin/hostel/rooms`, `POST /admin/hostel/rooms/bulk`  | One room, or a numbered run on one floor (`prefix`, `start_no`, `count`, `pad`)                                                                          |
+| `PATCH /admin/hostel/rooms/:id`                              | Raising `capacity` adds beds; lowering it removes vacant beds only                                                                                       |
+| `PATCH /admin/hostel/beds/:id`                               | `status`: `vacant`, `blocked`, `maintenance` (`occupied` and `reserved` come from allocation)                                                            |
+| `GET /admin/hostel/beds/available`                           | Vacant beds in active rooms of active hostels, for allocation                                                                                            |
+
+**Optional modules.** `enabled_modules` holds `staff_duty`, `lockers`, `study_hall`, `laundry`, `medical`, `mess` (defaults: staff duty, lockers and laundry off). When a module is off its routes answer `403 HOSTEL_MODULE_DISABLED`; data is kept if it is turned off later.
+
+Error codes: `HOSTEL_NOT_FOUND`, `HOSTEL_BLOCK_NOT_FOUND`, `HOSTEL_FLOOR_NOT_FOUND`, `HOSTEL_ROOM_TYPE_NOT_FOUND`, `HOSTEL_ROOM_NOT_FOUND`, `HOSTEL_BED_NOT_FOUND`, `HOSTEL_CODE_TAKEN`, `HOSTEL_BLOCK_CODE_TAKEN`, `HOSTEL_FLOOR_LEVEL_TAKEN`, `HOSTEL_ROOM_TYPE_CODE_TAKEN`, `HOSTEL_ROOM_NO_TAKEN`, `HOSTEL_HAS_BLOCKS`, `HOSTEL_BLOCK_HAS_FLOORS`, `HOSTEL_FLOOR_HAS_ROOMS`, `HOSTEL_ROOM_TYPE_IN_USE`, `HOSTEL_ROOM_OCCUPIED`, `HOSTEL_ROOM_CAPACITY_BELOW_OCCUPIED`, `HOSTEL_BED_OCCUPIED`, `HOSTEL_BLOCK_MOVE`, `HOSTEL_FLOOR_MOVE`, `HOSTEL_MODULE_DISABLED`, `HOSTEL_HAS_STUDENTS`.
+
+`GET /admin/hostel/rooms/:id` returns each bed with `occupant` (`admission_id`, `student_id`, `student_name`, `class_section`, `from_date`) or `null`.
+
+### Applications, admission, beds and checkout
+
+Flow: application (`pending` → `approved` / `waitlisted` / `rejected` / `cancelled`) → admission (`admission_no` `HST-2026-0001`, optional straight into a bed) → allocation, transfer, swap or vacate → checkout (clearance checklist) → `checked_out`. An application is optional; an approved one is filled by sending `application_id` when admitting.
+
+| Call                                                                                                     | Purpose                                                                                                                                             |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET/POST /admin/hostel/applications`, `GET .../applications/:id`                                        | List (filters `status`, `hostel_id`; sort `created_at`, `priority`, `wanted_from`) and record an application                                        |
+| `POST /admin/hostel/applications/:id/{approve\|waitlist\|reject\|cancel}`                                | Decide, with an optional `note`                                                                                                                     |
+| `GET /admin/hostel/admissions/insights`                                                                  | `active`, `on_leave`, `checking_out`, `without_bed`, `checked_out` (year being viewed), `pending_applications`, `waitlisted_applications`           |
+| `GET /admin/hostel/admissions`                                                                           | Residents with `bed` and `primary_guardian`; default hides checked-out. Filters `hostel_id`, `block_id`, `room_id`, `class_id`, `status`, `has_bed` |
+| `GET /admin/hostel/admissions/:id`                                                                       | Plus `allocations` (bed history), `transfers`, `open_checkout_id`                                                                                   |
+| `POST /admin/hostel/admissions`                                                                          | Admit: `student_id`, `hostel_id`, optional `bed_id`, `application_id`, `admitted_on`, `diet`, local guardian, `medical_notes`                       |
+| `PATCH /admin/hostel/admissions/:id`                                                                     | Diet, local guardian, medical notes, notes                                                                                                          |
+| `POST /admin/hostel/admissions/:id/allocate` `{ bed_id, from_date? }`                                    | First bed                                                                                                                                           |
+| `POST /admin/hostel/admissions/:id/transfer` `{ bed_id, transfer_date?, reason? }`                       | Move to another vacant bed, in this or another hostel                                                                                               |
+| `POST /admin/hostel/admissions/:id/swap` `{ other_admission_id, ... }`                                   | Two residents swap beds                                                                                                                             |
+| `POST /admin/hostel/admissions/:id/vacate` `{ date?, reason? }`                                          | Free the bed, student stays admitted                                                                                                                |
+| `POST /admin/hostel/admissions/:id/checkout` `{ reason, checkout_date?, forwarding_address?, remarks? }` | Start checkout; status becomes `checking_out` and beds can no longer change                                                                         |
+| `GET /admin/hostel/checkouts`, `GET .../checkouts/:id`                                                   | With `items` and `pending_items`                                                                                                                    |
+| `PATCH /admin/hostel/checkouts/:id/items/:code` `{ status, amount?, note? }`                             | `cleared`, `waived` or back to `pending`                                                                                                            |
+| `POST /admin/hostel/checkouts/:id/complete` / `cancel`                                                   | Complete only when nothing is pending: frees the bed, admission becomes `checked_out`                                                               |
+| `GET /admin/hostel/students/:studentId`                                                                  | Hostel tab of the student profile: `current` and `history`                                                                                          |
+| `GET /admin/hostel/audit-log`                                                                            | Who did what (filters `entity`, `student_id`, `from`, `to`)                                                                                         |
+
+Clearance items: `room_handover`, `key_return`, `locker_return` (only when lockers are on), `damage_check`, `fee_dues`, `deposit_refund`. Fee items are ticked by hand until hostel fees arrive.
+
+Rules: only `active` students can be admitted; one open admission per student; boys hostels take `male`, girls hostels `female`, mixed takes anyone; a bed must be `vacant` in an `active` room of an `active` hostel. Dates default to today.
+
+Error codes: `HOSTEL_APPLICATION_NOT_FOUND`, `HOSTEL_APPLICATION_EXISTS`, `HOSTEL_APPLICATION_STATE`, `HOSTEL_APPLICATION_NOT_APPROVED`, `HOSTEL_ADMISSION_NOT_FOUND`, `HOSTEL_ALREADY_ADMITTED`, `HOSTEL_STUDENT_NOT_ACTIVE`, `HOSTEL_INACTIVE`, `HOSTEL_GENDER_MISMATCH`, `HOSTEL_ADMISSION_CLOSED`, `HOSTEL_ALREADY_HAS_BED`, `HOSTEL_NO_BED`, `HOSTEL_SAME_BED`, `HOSTEL_SWAP_SELF`, `HOSTEL_BED_NOT_VACANT`, `HOSTEL_ROOM_NOT_ACTIVE`, `HOSTEL_CHECKOUT_NOT_FOUND`, `HOSTEL_CHECKOUT_OPEN`, `HOSTEL_CHECKOUT_CLOSED`, `HOSTEL_CLEARANCE_ITEM_NOT_FOUND`, `HOSTEL_CLEARANCE_PENDING`, `NO_CURRENT_YEAR`.
+
+### Staff app (Module 14: Hostel)
+
+For `WARDEN` and `ASSISTANT_WARDEN`. Same services and shapes as the admin calls above; actions need the matching permission (the assistant warden can view but not admit, move or check out).
+
+| Call                                                                                                                                            | Screen                                                            |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `GET /mobile/teacher/hostel/config`                                                                                                             | Which optional screens to show (`enabled_modules`)                |
+| `GET /mobile/teacher/hostel/home?hostel_id=`                                                                                                    | `beds` (occupancy) and `residents` (counts)                       |
+| `GET /mobile/teacher/hostel/hostels`                                                                                                            | Hostel picker                                                     |
+| `GET /mobile/teacher/hostel/rooms`, `.../rooms/:id`                                                                                             | Rooms; one room with who is in each bed                           |
+| `GET /mobile/teacher/hostel/beds/available`                                                                                                     | Vacant beds                                                       |
+| `GET /mobile/teacher/hostel/students?search=`                                                                                                   | Find a student to admit (`hostel_admission_id`, `application_id`) |
+| `GET /mobile/teacher/hostel/applications`, `POST .../applications/:id/{action}`                                                                 | Application inbox                                                 |
+| `GET/POST /mobile/teacher/hostel/residents`, `GET/PATCH .../residents/:id`                                                                      | Residents; admit; details                                         |
+| `POST /mobile/teacher/hostel/residents/:id/{allocate\|transfer\|swap\|vacate\|checkout}`                                                        | Bed actions and start checkout                                    |
+| `GET /mobile/teacher/hostel/checkouts`, `.../checkouts/:id`, `PATCH .../items/:code`, `POST .../complete\|cancel`                               | Clearance checklist                                               |
+| `GET /mobile/teacher/hostel/roll-call`, `POST .../roll-call/{mark\|scan\|finish}`, `GET .../residents/:id/roll-calls`                           | Roll call                                                         |
+| `GET/POST /mobile/teacher/hostel/leaves`, `GET .../leaves/:id`, `POST .../leaves/:id/{approve\|reject\|cancel}`                                 | Leave and outing                                                  |
+| `POST /mobile/teacher/hostel/passes/check`, `POST .../passes/:id/{out\|in}`                                                                     | Hostel gate                                                       |
+| `GET/POST /mobile/teacher/hostel/visits`, `POST .../visits/:id/out`, `GET .../visitors/lookup`, `GET .../students/:studentId/approved-visitors` | Visitors                                                          |
+
+### Roll call, leave, hostel passes and visitors
+
+**Roll call.** Slots `morning`, `evening`, `night`; one roll call per hostel, date and slot; any warden can mark any resident (block wardens mark their own). Statuses `present`, `absent`, `late`, `on_leave`, `outing`, `sick`. Marks can be sent again to correct them, for today or the last 2 days. A student out on a hostel pass gets `suggested_status` `on_leave` or `outing`. `finish` marks everyone left as `unmarked_as` (`present` or `absent`), keeping students out on a pass as away. The first time a resident is marked `absent` in a roll call the parents get `HOSTEL_ABSENT` (push, SMS if push did not reach). Paused while `holiday_mode` is on (`409 HOSTEL_HOLIDAY_MODE`). `scan` reads the student ID card QR (`TZS1`); a replaced card gives `409 HOSTEL_QR_OLD_CARD`.
+
+| Call                                                                                                          | Purpose                             |
+| ------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| `GET /admin/hostel/roll-calls/sheet?hostel_id=&slot=&date=&block_id=&floor_id=&room_id=&unmarked=`            | Residents with marks and `counts`   |
+| `POST /admin/hostel/roll-calls/mark` `{ hostel_id, slot, date?, entries: [{ admission_id, status, note? }] }` | Save marks (up to 500)              |
+| `POST /admin/hostel/roll-calls/finish` `{ hostel_id, slot, date?, unmarked_as, block_id? }`                   | Close the roll call                 |
+| `GET /admin/hostel/roll-calls`                                                                                | Past roll calls with counts         |
+| `GET /admin/hostel/admissions/:id/roll-calls?from=&to=`                                                       | One resident (default last 30 days) |
+
+**Leave and outings (the hostel gate pass).** Kinds `home`, `outing` (same day, inside the outing window from settings), `medical`, `festival`, `other`. Numbers `HLV-2026-0001`.
+
+- Asked by the **parent** (Parent app): consent is given by asking; status `pending`; wardens get `HOSTEL_LEAVE_REQUESTED`.
+- Recorded by a **warden or the office**: when `parent_consent_for_leave` is on (and the leave is not medical) status is `awaiting_parent` and parents get `HOSTEL_LEAVE_CONSENT_NEEDED`; otherwise `pending`, or `approved` at once with `approve_now`.
+- `pending` → `approved` / `rejected` (`hostel.leave_approve`); parents get `HOSTEL_LEAVE_DECIDED`. Approving a non-outing leave also adds an approved **school leave** for those dates, so class attendance shows leave; cancelling cancels it; coming back early shortens it.
+- An approved leave carries `qr_token` (`TZH1...`). At the hostel gate: `POST passes/check` (QR or `leave_no`, nothing changes) → `POST passes/:id/out` → `POST passes/:id/in`. Parents get `HOSTEL_STUDENT_LEFT` and `HOSTEL_STUDENT_RETURNED`; `late_minutes` is worked out against `expected_return_at` (to_date at `return_time`, default the hostel in-time).
+- Every 10 minutes, students still out 15 minutes after `expected_return_at` raise `HOSTEL_LATE_RETURN` to parents and `HOSTEL_OVERDUE_RETURN` to the wardens, once per leave. `GET leaves?overdue=true` lists them.
+- Statuses: `awaiting_parent`, `pending`, `approved`, `rejected`, `cancelled`, `out`, `returned`. Pass verdicts: `can_go_out`, `can_come_in`, `not_approved`, `not_started`, `expired`, `closed`.
+
+| Call                                                                  | Purpose                                                                                                           |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/hostel/leaves`, `GET .../leaves/:id`                      | Filters `hostel_id`, `admission_id`, `status`, `kind`, `overdue`, `on_date`                                       |
+| `POST /admin/hostel/leaves`                                           | `admission_id`, `kind`, `from_date`, `to_date?`, `depart_time?`, `return_time?`, `reason`, escort, `approve_now?` |
+| `POST /admin/hostel/leaves/:id/{approve\|reject\|cancel}` `{ note? }` | Decide                                                                                                            |
+| `POST /admin/hostel/passes/check`, `POST .../passes/:id/{out\|in}`    | Gate                                                                                                              |
+
+**Visitors.** Look up the mobile first (`GET visitors/lookup?mobile=&admission_id=`: blocked? a registered parent or approved visitor?). `POST visits` lets the visitor in (`is_known` is worked out; only the last 4 characters of an ID proof are kept) and parents get `HOSTEL_VISITOR_ARRIVED`; `deny: true` records them as turned away. A blocked number gives `403 HOSTEL_VISITOR_BLOCKED`. `POST visits/:id/out` when they leave; `GET visits?status=inside` is who is in now. Approved visitors (up to 10 per student) are kept by parents in the app or by staff under `students/:studentId/approved-visitors`. The blocked list is `GET/POST /admin/hostel/blocklist`, `DELETE .../blocklist/:id` (`hostel.manage`).
+
+### Parent app (Module 11: Hostel)
+
+| Call                                                                    | Screen                                                                                                                |
+| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `GET /mobile/parent/children/:id/hostel`                                | Hostel card: `in_hostel`, room and bed, warden name and phone, `today` roll calls, `current_leave`, `consent_waiting` |
+| `GET /mobile/parent/children/:id/hostel/attendance?from=&to=`           | Roll call history                                                                                                     |
+| `GET/POST /mobile/parent/children/:id/hostel/leaves`                    | My child’s leave (with `qr_token` when approved); ask for leave or an outing                                          |
+| `POST .../hostel/leaves/:leaveId/consent` `{ agree, note? }`            | Answer `HOSTEL_LEAVE_CONSENT_NEEDED`                                                                                  |
+| `POST .../hostel/leaves/:leaveId/cancel`                                | Cancel before the child leaves                                                                                        |
+| `GET .../hostel/visits`                                                 | Who visited                                                                                                           |
+| `GET/POST .../hostel/visitors`, `DELETE .../hostel/visitors/:visitorId` | My approved visitors                                                                                                  |
+
+Notifications (category `hostel`): to parents `HOSTEL_ADMITTED`, `HOSTEL_BED_CHANGED`, `HOSTEL_CHECKED_OUT`, `HOSTEL_ABSENT`, `HOSTEL_LEAVE_CONSENT_NEEDED`, `HOSTEL_LEAVE_DECIDED`, `HOSTEL_STUDENT_LEFT`, `HOSTEL_STUDENT_RETURNED`, `HOSTEL_LATE_RETURN`, `HOSTEL_VISITOR_ARRIVED`; to wardens `HOSTEL_LEAVE_REQUESTED`, `HOSTEL_OVERDUE_RETURN` (the hostel warden and the block in-charge, or every `WARDEN` when none is set). Push data carries `student_id` and, where it applies, `leave_id` or `visit_id`. Run `npm run seed` so the templates exist.
+
+Error codes: `HOSTEL_HOLIDAY_MODE`, `HOSTEL_NOT_RESIDENT`, `HOSTEL_ROLL_DUPLICATE`, `HOSTEL_QR_INVALID`, `HOSTEL_QR_OLD_CARD`, `HOSTEL_LEAVE_NOT_FOUND`, `HOSTEL_LEAVE_STATE`, `HOSTEL_LEAVE_OVERLAP`, `HOSTEL_OUTING_OUTSIDE_WINDOW`, `HOSTEL_PASS_NOT_VALID`, `HOSTEL_VISIT_NOT_FOUND`, `HOSTEL_VISIT_NOT_INSIDE`, `HOSTEL_VISITOR_BLOCKED`, `HOSTEL_VISITOR_EXISTS`, `HOSTEL_VISITOR_LIMIT`, `HOSTEL_VISITOR_NOT_FOUND`, `HOSTEL_ALREADY_BLOCKED`, `HOSTEL_BLOCK_NOT_FOUND`, `CHILD_NOT_FOUND`.
 
 ## Academic year
 
@@ -1799,6 +1924,7 @@ Messages in a group use the normal thread routes (`…/chat/threads/{id}/message
 | New admin | "You are now the group admin"                                                                                               |                       | "Lakshmi is now the group admin" |
 
 **After leaving or being removed** the group stays in your list with `is_member: false`, `can_send: false`, `left_reason` (`left`/`removed`) and `left_at`; the list preview is your own notice. You see the messages up to that moment and nothing after; sending gives `403 NOT_GROUP_MEMBER` with the same "You are no longer a member" text. Hide the message box when `can_send` is false. If someone adds you back you see "… added you" and only messages from then on. Members lists show current members only. Socket events: `chat.message` (each person gets the notice in their own wording) and `chat.members_changed { thread_id, by_user_id, added_user_ids, gone_user_id }`.
+
 ## Surveys and feedback forms
 
 The school office builds a form with its own questions, sends it to chosen parents and staff, they answer once in the app, and the office sees the results. Teacher ratings and driver ratings stay as they are. `surveys.view` lists forms, results and the Excel; `surveys.manage` builds, sends, reminds, extends and closes, and manages ready-made forms. School admin and Principal have both.
@@ -1811,34 +1937,58 @@ The school office builds a form with its own questions, sends it to chosen paren
 
 **Admin web (`/admin/surveys`).**
 
-| Call | What it does |
-|---|---|
-| `GET` | Forms of the academic year being viewed, paged: `search` (title, description), `status`, `sort=created_at|title|closes_at|sent_at` |
-| `GET /insights` | `open`, `drafts`, `answers_this_month`, `average_response_rate` (sent forms this year) |
-| `POST` `{ title, description?, audience?, class_ids?, section_ids?, staff_groups?, is_anonymous?, per_child?, questions? }` | Saves a draft (201). `audience` defaults to `parents` |
-| `PATCH /{id}` | A draft: any field. After sending: only `title`, `description` and `questions` (at least one), until the first answer (409 `SURVEY_LOCKED`); 409 `SURVEY_CLOSED` once closed |
-| `DELETE /{id}` | Drafts only (409 `SURVEY_NOT_DRAFT`: close it instead) |
-| `POST /preview` `{ audience, class_ids?, section_ids?, staff_groups?, per_child? }` | `recipients` (answer slots), `people` (with the app), `parents`, `staff`, `without_app` |
-| `POST /{id}/send` `{ send_at?, closes_at }` | Sends now, or later at `send_at` (1 minute to 60 days ahead). `closes_at` 15 minutes to 180 days after it opens. 400 `NO_RECIPIENTS`, `VALIDATION_FAILED` (`questions`, `send_at`, `closes_at`); 409 `SURVEY_NOT_DRAFT` |
-| `POST /{id}/close` | Closes now. 409 `SURVEY_CLOSED`, `SURVEY_NOT_OPEN` (a draft) |
-| `POST /{id}/extend` `{ closes_at }` | A later close date; works after answers came in. 409 `SURVEY_CLOSED` once the close date has passed |
-| `POST /{id}/remind` | Reminds everyone who has not answered: `{ reminded }` people. 409 `SURVEY_NOT_OPEN`, `SURVEY_CLOSED` |
-| `GET /{id}` | One form (shape below) |
-| `GET /{id}/results?class_id=&section_id=&role=parent|staff&search=` | `{ survey, counts, questions }` for the filters; `search` narrows written answers |
-| `GET /{id}/not-answered?page=&limit=&search=&class_id=&section_id=&role=` | Paged `{ id, name, role, student, class_section, reminded_at }`. 403 `SURVEY_ANONYMOUS` for an anonymous form |
-| `GET /{id}/export?class_id=&section_id=&role=` | Excel: an Answers sheet (one row per answer, with Name, Role, Child and Class / section unless anonymous) and a Summary sheet |
-| `GET /templates?all=`, `POST /templates`, `PATCH /templates/{id}`, `DELETE /templates/{id}` | Ready-made forms `{ id, key, title, description, questions, is_active, sort_order }`. A school starts with PTM, Event, Transport, Canteen, Annual parent satisfaction and Staff satisfaction; `is_active: false` hides one. 404 `TEMPLATE_NOT_FOUND` |
+| Call                                                                                                                        | What it does                                                                                                                                                                                                                                         |
+| --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`                                                                                                                       | Forms of the academic year being viewed, paged: `search` (title, description), `status`, `sort=created_at                                                                                                                                            | title                                                                             | closes_at | sent_at` |
+| `GET /insights`                                                                                                             | `open`, `drafts`, `answers_this_month`, `average_response_rate` (sent forms this year)                                                                                                                                                               |
+| `POST` `{ title, description?, audience?, class_ids?, section_ids?, staff_groups?, is_anonymous?, per_child?, questions? }` | Saves a draft (201). `audience` defaults to `parents`                                                                                                                                                                                                |
+| `PATCH /{id}`                                                                                                               | A draft: any field. After sending: only `title`, `description` and `questions` (at least one), until the first answer (409 `SURVEY_LOCKED`); 409 `SURVEY_CLOSED` once closed                                                                         |
+| `DELETE /{id}`                                                                                                              | Drafts only (409 `SURVEY_NOT_DRAFT`: close it instead)                                                                                                                                                                                               |
+| `POST /preview` `{ audience, class_ids?, section_ids?, staff_groups?, per_child? }`                                         | `recipients` (answer slots), `people` (with the app), `parents`, `staff`, `without_app`                                                                                                                                                              |
+| `POST /{id}/send` `{ send_at?, closes_at }`                                                                                 | Sends now, or later at `send_at` (1 minute to 60 days ahead). `closes_at` 15 minutes to 180 days after it opens. 400 `NO_RECIPIENTS`, `VALIDATION_FAILED` (`questions`, `send_at`, `closes_at`); 409 `SURVEY_NOT_DRAFT`                              |
+| `POST /{id}/close`                                                                                                          | Closes now. 409 `SURVEY_CLOSED`, `SURVEY_NOT_OPEN` (a draft)                                                                                                                                                                                         |
+| `POST /{id}/extend` `{ closes_at }`                                                                                         | A later close date; works after answers came in. 409 `SURVEY_CLOSED` once the close date has passed                                                                                                                                                  |
+| `POST /{id}/remind`                                                                                                         | Reminds everyone who has not answered: `{ reminded }` people. 409 `SURVEY_NOT_OPEN`, `SURVEY_CLOSED`                                                                                                                                                 |
+| `GET /{id}`                                                                                                                 | One form (shape below)                                                                                                                                                                                                                               |
+| `GET /{id}/results?class_id=&section_id=&role=parent                                                                        | staff&search=`                                                                                                                                                                                                                                       | `{ survey, counts, questions }` for the filters; `search` narrows written answers |
+| `GET /{id}/not-answered?page=&limit=&search=&class_id=&section_id=&role=`                                                   | Paged `{ id, name, role, student, class_section, reminded_at }`. 403 `SURVEY_ANONYMOUS` for an anonymous form                                                                                                                                        |
+| `GET /{id}/export?class_id=&section_id=&role=`                                                                              | Excel: an Answers sheet (one row per answer, with Name, Role, Child and Class / section unless anonymous) and a Summary sheet                                                                                                                        |
+| `GET /templates?all=`, `POST /templates`, `PATCH /templates/{id}`, `DELETE /templates/{id}`                                 | Ready-made forms `{ id, key, title, description, questions, is_active, sort_order }`. A school starts with PTM, Event, Transport, Canteen, Annual parent satisfaction and Staff satisfaction; `is_active: false` hides one. 404 `TEMPLATE_NOT_FOUND` |
 
 A form:
 
 ```json
-{ "id": 14, "title": "Annual Day feedback", "description": "Tell us what you thought.", "status": "open",
-  "audience": "classes", "class_ids": [49], "section_ids": [], "staff_groups": [], "audience_label": "Parents of Class 5",
-  "is_anonymous": false, "per_child": false, "send_at": null, "closes_at": "2026-11-25T18:00:00.000+05:30",
-  "sent_at": "2026-11-18T10:00:00.000+05:30", "closed_at": null,
-  "questions": [{ "id": 812, "type": "single_choice", "text": "How well was it organised?", "options": ["Very well", "Well", "Poorly"], "is_required": true, "sort_order": 1 }],
-  "counts": { "recipients": 13, "answered": 9, "response_rate": 69.2 }, "locked": true,
-  "created_by": { "id": 775, "name": "School Admin" }, "created_at": "2026-11-18T09:40:00.000+05:30" }
+{
+  "id": 14,
+  "title": "Annual Day feedback",
+  "description": "Tell us what you thought.",
+  "status": "open",
+  "audience": "classes",
+  "class_ids": [49],
+  "section_ids": [],
+  "staff_groups": [],
+  "audience_label": "Parents of Class 5",
+  "is_anonymous": false,
+  "per_child": false,
+  "send_at": null,
+  "closes_at": "2026-11-25T18:00:00.000+05:30",
+  "sent_at": "2026-11-18T10:00:00.000+05:30",
+  "closed_at": null,
+  "questions": [
+    {
+      "id": 812,
+      "type": "single_choice",
+      "text": "How well was it organised?",
+      "options": ["Very well", "Well", "Poorly"],
+      "is_required": true,
+      "sort_order": 1
+    }
+  ],
+  "counts": { "recipients": 13, "answered": 9, "response_rate": 69.2 },
+  "locked": true,
+  "created_by": { "id": 775, "name": "School Admin" },
+  "created_at": "2026-11-18T09:40:00.000+05:30"
+}
 ```
 
 Results, one entry per question: `choices: [{ option, count, percent }]` for choice questions (percent of the people who answered it; a multi choice can add up to more than 100), `rating: { average, counts: { "1": n, … "5": n } }`, `number: { average, min, max }`, and `answers: [{ value, name?, class_section? }]` for text and date questions (`name` and `class_section` never come for an anonymous form). Each has `answered`, the number of answers to that question.
@@ -1850,8 +2000,17 @@ Every signed-in app user can call these; a form shows only for the people it was
 `GET /me/surveys?state=waiting|done&role=parent|staff` returns a plain list (not paged):
 
 ```json
-[{ "id": 14, "title": "Annual Day feedback", "closes_at": "2026-11-25T18:00:00.000+05:30", "question_count": 4,
-   "student": { "id": 41, "name": "Arun" }, "role": "parent", "answered_at": null }]
+[
+  {
+    "id": 14,
+    "title": "Annual Day feedback",
+    "closes_at": "2026-11-25T18:00:00.000+05:30",
+    "question_count": 4,
+    "student": { "id": 41, "name": "Arun" },
+    "role": "parent",
+    "answered_at": null
+  }
+]
 ```
 
 `waiting` (default) = open and not answered, closing soonest first; `done` = answered, newest first. `student` is set only for a form answered once per child, which appears once for each child: show "for Arun" and pass `student_id` to the next two calls. `role` says which app the row belongs to: `parent`, `staff`, or `null` when one family row is for a person who is both (a teacher who is also a parent, sent to everyone). Each shell passes its own `role`; the list then holds that app's rows plus the `null` ones.
@@ -1861,28 +2020,31 @@ Every signed-in app user can call these; a form shows only for the people it was
 `POST /me/surveys/{id}/answers` (201, same shape as the GET, now with `my_answers`):
 
 ```json
-{ "student_id": 41,
+{
+  "student_id": 41,
   "answers": [
     { "question_id": 812, "value": "Very well" },
     { "question_id": 813, "value": ["Food", "Games"] },
     { "question_id": 814, "value": 4 },
     { "question_id": 815, "value": "More shade for parents please" },
     { "question_id": 816, "value": "2026-11-15" },
-    { "question_id": 817, "value": 3 } ] }
+    { "question_id": 817, "value": 3 }
+  ]
+}
 ```
 
 `value` is text for `single_choice` (one of the options), `short_text` and `long_text`; `YYYY-MM-DD` for `date`; a list of options for `multi_choice`; 1 to 5 for `rating`; a number for `number`. Leave out an optional question, or send `null`. It can be sent once; there is no edit.
 
-| Error | HTTP | What the app does |
-|---|---|---|
-| `SURVEY_ANSWER_REQUIRED` | 400 | A required question is empty: highlight `errors[].field` (`answers.<question_id>`) |
-| `SURVEY_ANSWER_INVALID` | 400 | A value does not fit its question (not an option, rating outside 1 to 5, bad date): highlight `errors[].field` |
-| `VALIDATION_FAILED` on `student_id` | 400 | The form is answered once per child: ask which child |
-| `SURVEY_NOT_FOR_YOU` | 403 | Not sent to me, or not for this child |
-| `SURVEY_NOT_FOUND` | 404 | Gone: refresh the list |
-| `SURVEY_NOT_OPEN` | 409 | Scheduled, not open yet |
-| `SURVEY_CLOSED` | 409 | Closed: show it read only |
-| `SURVEY_ALREADY_ANSWERED` | 409 | Already answered (for example on another phone): reload and show my answers |
+| Error                               | HTTP | What the app does                                                                                              |
+| ----------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------- |
+| `SURVEY_ANSWER_REQUIRED`            | 400  | A required question is empty: highlight `errors[].field` (`answers.<question_id>`)                             |
+| `SURVEY_ANSWER_INVALID`             | 400  | A value does not fit its question (not an option, rating outside 1 to 5, bad date): highlight `errors[].field` |
+| `VALIDATION_FAILED` on `student_id` | 400  | The form is answered once per child: ask which child                                                           |
+| `SURVEY_NOT_FOR_YOU`                | 403  | Not sent to me, or not for this child                                                                          |
+| `SURVEY_NOT_FOUND`                  | 404  | Gone: refresh the list                                                                                         |
+| `SURVEY_NOT_OPEN`                   | 409  | Scheduled, not open yet                                                                                        |
+| `SURVEY_CLOSED`                     | 409  | Closed: show it read only                                                                                      |
+| `SURVEY_ALREADY_ANSWERED`           | 409  | Already answered (for example on another phone): reload and show my answers                                    |
 
 The push is `category: "announcement"` with `template` `SURVEY_NEW` or `SURVEY_REMINDER`, `survey_id`, and `role` (`parent` or `staff`) when all of the person's rows are for one app; open `GET /me/surveys/{survey_id}`, or the list when the form is per child.
 
@@ -1894,25 +2056,47 @@ Photo and video albums in three galleries: the **App Media Gallery** (`scope: sc
 
 **Who sees an album.** `status`: `draft` (the uploader and managers only), `published`, `archived` (hidden from parents, read-only, kept by the archived-albums policy). `visibility`:
 
-| scope | visibility | seen by |
-|---|---|---|
-| school | `everyone` | all staff and all parents |
-| school | `staff` | staff only |
-| school | `parents` | parents only (and gallery admins) |
-| school | `classes` + `class_ids` / `section_ids` | parents of children in those classes or sections in the album's year, and staff |
-| class / section | `everyone` | parents of children in that class or section that year, and its teachers |
-| class / section | `staff` | its teachers only |
+| scope           | visibility                              | seen by                                                                         |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------------------- |
+| school          | `everyone`                              | all staff and all parents                                                       |
+| school          | `staff`                                 | staff only                                                                      |
+| school          | `parents`                               | parents only (and gallery admins)                                               |
+| school          | `classes` + `class_ids` / `section_ids` | parents of children in those classes or sections in the album's year, and staff |
+| class / section | `everyone`                              | parents of children in that class or section that year, and its teachers        |
+| class / section | `staff`                                 | its teachers only                                                               |
 
 A parent sees an album only if a linked active child was in that class or section in the album's academic year, including earlier years. Albums they cannot see return 404 `ALBUM_NOT_FOUND`. When the school switches off the gallery (`is_enabled`) or one gallery (`app_gallery_enabled`, `class_gallery_enabled`, `section_gallery_enabled`), staff and parents get 403 `GALLERY_DISABLED` / `GALLERY_SCOPE_DISABLED`, while admins can still see and tidy it.
 
 **Uploading.** `POST .../albums/{id}/media` as `multipart/form-data` with one or more `files` (at most `max_files_per_upload`, default 20) and optional `checksums` (SHA-256 of each file in order; a mismatch fails that file with `CHECKSUM_MISMATCH`). The API checks the real file content, not the name: JPEG, PNG and WebP photos; MP4, MOV, WebM and 3GP videos, as allowed by `image_formats`, `video_formats` and `videos_enabled`. Photos are auto-rotated, resized to `image_max_side` (2048), compressed at `image_quality` (82) and stripped of all EXIF, GPS, XMP and IPTC metadata. Originals are not kept. Each photo gets a `thumbnail_side` (400) WebP thumbnail. For MP4, MOV and 3GP videos, the length is read from the file (`VIDEO_TOO_LONG` above `max_video_seconds`) and the location and metadata boxes are blanked. The server makes no video frames: the app takes a still and sends it with `PUT .../media/{id}/poster` (field `file`). The same file twice in one album is skipped as a duplicate. When storage is full, uploads fail with `STORAGE_FULL`. The reply always comes back 200 with per-file results, so retry only the failed ones:
 
 ```json
-{ "session_id": 31, "total": 3, "accepted": 1, "duplicates": 1, "failed": 1,
-  "items": [{ "index": 0, "name": "IMG_1.jpg", "status": "accepted", "media_id": 88, "error": null, "message": null },
-            { "index": 1, "name": "IMG_1 copy.jpg", "status": "duplicate", "media_id": null, "error": "DUPLICATE_MEDIA", "message": "Already in this album" },
-            { "index": 2, "name": "x.jpg", "status": "failed", "media_id": null, "error": "FILE_TYPE_NOT_ALLOWED", "message": "..." }],
-  "media": [ /* MediaDto of the accepted files */ ] }
+{
+  "session_id": 31,
+  "total": 3,
+  "accepted": 1,
+  "duplicates": 1,
+  "failed": 1,
+  "items": [
+    { "index": 0, "name": "IMG_1.jpg", "status": "accepted", "media_id": 88, "error": null, "message": null },
+    {
+      "index": 1,
+      "name": "IMG_1 copy.jpg",
+      "status": "duplicate",
+      "media_id": null,
+      "error": "DUPLICATE_MEDIA",
+      "message": "Already in this album"
+    },
+    {
+      "index": 2,
+      "name": "x.jpg",
+      "status": "failed",
+      "media_id": null,
+      "error": "FILE_TYPE_NOT_ALLOWED",
+      "message": "..."
+    }
+  ],
+  "media": [/* MediaDto of the accepted files */]
+}
 ```
 
 Other per-file codes: `FILE_TOO_LARGE`, `VIDEOS_DISABLED`, `IMAGE_INVALID`, `UPLOAD_FAILED`. For a progress bar per file, send one file per request. The server refuses any single file larger than `GALLERY_MAX_UPLOAD_MB` (default 200) with 413.
@@ -1921,41 +2105,41 @@ Other per-file codes: `FILE_TOO_LARGE`, `VIDEOS_DISABLED`, `IMAGE_INVALID`, `UPL
 
 **Admin web (`/admin/gallery`).**
 
-| Call | What it does |
-|---|---|
-| `GET /dashboard?academic_year_id=&from=&to=&class_id=&section_id=&album_id=&media_type=&uploader_id=&category_id=` | `albums`, `photos`, `videos`, `storage` (`used_bytes`, `trash_bytes`, `quota_bytes`, `remaining_bytes`, `used_percent`, `level` ok/warning/full), `uploaded_this_month`, `expiring_soon`, `scheduled_for_deletion`, `pending_deletion` (in Trash), `on_hold`, `by_class`, `by_section`, `recent` |
-| `GET /albums` | Albums of the year being viewed, paged: `search`, `scope`, `class_id`, `section_id`, `category_id`, `status`, `visibility`, `media_type`, `uploader_id`, `featured`, `tag`, `from`/`to` (event date), `sort=created_at|event_date|title|published_at` |
-| `POST /albums` `{ scope, class_id?, section_id?, academic_year_id?, category_id?, title, description?, event_date?, tags?, visibility?, class_ids?, section_ids?, allow_download?, is_featured?, publish? }` | 201. A draft unless `publish`. Section albums take the section's year |
-| `GET /albums/{id}`, `PATCH /albums/{id}` | Details; edit title, description, event date, category, tags, visibility, downloads, `cover_media_id` |
-| `POST /albums/{id}/publish` `{ notify? }`, `/unpublish`, `/archive` | Status changes. `notify` (default true) sends `GALLERY_ALBUM_SHARED` to the audience when sharing is on |
-| `PATCH /albums/{id}/feature` `{ is_featured }` | Featured albums (`featured=true` lists them) |
-| `POST /albums/{id}/share` | Tells everyone who can see the album: `{ recipients }`. 403 `SHARING_DISABLED`, 409 `ALBUM_NOT_PUBLISHED` |
-| `DELETE /albums/{id}?note=` | Album and its media go to Trash |
-| `GET /albums/{id}/media` | Paged media, default `sort_order` then upload order; `media_type`, `uploader_id`, `status`, `from`/`to` |
-| `POST /albums/{id}/media` | Upload (above) |
-| `GET /media` | Search media across albums; `expiring=true` lists those whose retention ends within the notice period |
-| `GET /media/{id}`, `PATCH /media/{id}` `{ title?, description?, sort_order? }`, `PUT /media/{id}/poster`, `DELETE /media/{id}?note=`, `POST /media/delete` `{ media_ids, note? }` | One item, caption, video still, move to Trash |
-| `GET /trash?kind=media|album&reason=&media_type=&scope=&class_id=&section_id=&album_id=` | Trash with deletion date, reason (`manual`, `retention`, `album_deleted`, `empty_album`), who deleted it, original album, class and section, and `purge_after` |
-| `POST /trash/restore` `{ media_ids?, album_ids?, target_album_id? }` | `{ media_restored, albums_restored, needs_album, duplicates }`. Media whose album is gone come back in `needs_album`: send them again with `target_album_id` |
-| `POST /trash/purge` `{ media_ids?, album_ids?, confirm: true }`, `POST /trash/empty` `{ confirm: true }` | Delete for good, files and thumbnails included (`gallery.configure`). Empty deletes up to 5000 per call |
-| `GET /reports/{report}?academic_year_id=&from=&to=` | `{ report, title, columns, rows }`. `report` = `class_usage`, `section_usage`, `album_counts`, `category_usage`, `upload_activity`, `user_uploads`, `storage`, `expiring`, `deleted`, `restored`, `purged`, `cleanup_activity`, `cleanup_failures` |
-| `GET /reports/{report}/export?format=xlsx|csv` | The same as a file |
-| `GET /audit-logs`, `GET /audit-logs/export` | `action`, `user_id`, `album_id`, `media_id`, `result`, `from`/`to`. Each row has user, role, action, album, media, class, section, result, details and IP. Rows can never be changed or deleted: the database refuses it |
+| Call                                                                                                                                                                                                         | What it does                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /dashboard?academic_year_id=&from=&to=&class_id=&section_id=&album_id=&media_type=&uploader_id=&category_id=`                                                                                           | `albums`, `photos`, `videos`, `storage` (`used_bytes`, `trash_bytes`, `quota_bytes`, `remaining_bytes`, `used_percent`, `level` ok/warning/full), `uploaded_this_month`, `expiring_soon`, `scheduled_for_deletion`, `pending_deletion` (in Trash), `on_hold`, `by_class`, `by_section`, `recent` |
+| `GET /albums`                                                                                                                                                                                                | Albums of the year being viewed, paged: `search`, `scope`, `class_id`, `section_id`, `category_id`, `status`, `visibility`, `media_type`, `uploader_id`, `featured`, `tag`, `from`/`to` (event date), `sort=created_at                                                                           | event_date                                                                                                                                                     | title | published_at` |
+| `POST /albums` `{ scope, class_id?, section_id?, academic_year_id?, category_id?, title, description?, event_date?, tags?, visibility?, class_ids?, section_ids?, allow_download?, is_featured?, publish? }` | 201. A draft unless `publish`. Section albums take the section's year                                                                                                                                                                                                                            |
+| `GET /albums/{id}`, `PATCH /albums/{id}`                                                                                                                                                                     | Details; edit title, description, event date, category, tags, visibility, downloads, `cover_media_id`                                                                                                                                                                                            |
+| `POST /albums/{id}/publish` `{ notify? }`, `/unpublish`, `/archive`                                                                                                                                          | Status changes. `notify` (default true) sends `GALLERY_ALBUM_SHARED` to the audience when sharing is on                                                                                                                                                                                          |
+| `PATCH /albums/{id}/feature` `{ is_featured }`                                                                                                                                                               | Featured albums (`featured=true` lists them)                                                                                                                                                                                                                                                     |
+| `POST /albums/{id}/share`                                                                                                                                                                                    | Tells everyone who can see the album: `{ recipients }`. 403 `SHARING_DISABLED`, 409 `ALBUM_NOT_PUBLISHED`                                                                                                                                                                                        |
+| `DELETE /albums/{id}?note=`                                                                                                                                                                                  | Album and its media go to Trash                                                                                                                                                                                                                                                                  |
+| `GET /albums/{id}/media`                                                                                                                                                                                     | Paged media, default `sort_order` then upload order; `media_type`, `uploader_id`, `status`, `from`/`to`                                                                                                                                                                                          |
+| `POST /albums/{id}/media`                                                                                                                                                                                    | Upload (above)                                                                                                                                                                                                                                                                                   |
+| `GET /media`                                                                                                                                                                                                 | Search media across albums; `expiring=true` lists those whose retention ends within the notice period                                                                                                                                                                                            |
+| `GET /media/{id}`, `PATCH /media/{id}` `{ title?, description?, sort_order? }`, `PUT /media/{id}/poster`, `DELETE /media/{id}?note=`, `POST /media/delete` `{ media_ids, note? }`                            | One item, caption, video still, move to Trash                                                                                                                                                                                                                                                    |
+| `GET /trash?kind=media                                                                                                                                                                                       | album&reason=&media_type=&scope=&class_id=&section_id=&album_id=`                                                                                                                                                                                                                                | Trash with deletion date, reason (`manual`, `retention`, `album_deleted`, `empty_album`), who deleted it, original album, class and section, and `purge_after` |
+| `POST /trash/restore` `{ media_ids?, album_ids?, target_album_id? }`                                                                                                                                         | `{ media_restored, albums_restored, needs_album, duplicates }`. Media whose album is gone come back in `needs_album`: send them again with `target_album_id`                                                                                                                                     |
+| `POST /trash/purge` `{ media_ids?, album_ids?, confirm: true }`, `POST /trash/empty` `{ confirm: true }`                                                                                                     | Delete for good, files and thumbnails included (`gallery.configure`). Empty deletes up to 5000 per call                                                                                                                                                                                          |
+| `GET /reports/{report}?academic_year_id=&from=&to=`                                                                                                                                                          | `{ report, title, columns, rows }`. `report` = `class_usage`, `section_usage`, `album_counts`, `category_usage`, `upload_activity`, `user_uploads`, `storage`, `expiring`, `deleted`, `restored`, `purged`, `cleanup_activity`, `cleanup_failures`                                               |
+| `GET /reports/{report}/export?format=xlsx                                                                                                                                                                    | csv`                                                                                                                                                                                                                                                                                             | The same as a file                                                                                                                                             |
+| `GET /audit-logs`, `GET /audit-logs/export`                                                                                                                                                                  | `action`, `user_id`, `album_id`, `media_id`, `result`, `from`/`to`. Each row has user, role, action, album, media, class, section, result, details and IP. Rows can never be changed or deleted: the database refuses it                                                                         |
 
 **Settings, retention and cleanup (`/admin/gallery`, tag `Admin · Gallery settings & retention`).**
 
-| Call | What it does |
-|---|---|
-| `GET /settings`, `PATCH /settings`, `POST /settings/reset` `{ confirm: true }` | Every switch and limit. Send only what changes. Changes that can delete media sooner (shorter retention, notice or recovery; automatic or permanent deletion or the cleanup switched on) return 409 `CONFIRMATION_REQUIRED` until sent again with `confirm: true` |
-| `GET /categories?all=`, `POST`, `PATCH /categories/{id}`, `DELETE` | School events, Sports, Cultural activities, Annual day, Independence Day, Republic Day, Educational, Classroom, Excursions, Achievements, Other, plus the school's own. 409 `CATEGORY_IN_USE` |
-| `GET /retention` | Default retention, each policy with `applies_to` and `media_count`, `default_media_count`, `kept_forever` |
-| `POST /retention/policies` `{ name, target, album_id?, category_id?, academic_year_id?, scope?, media_type?, retention_value?, retention_unit?, keep_forever?, is_active?, confirm? }`, `PATCH`, `DELETE ?confirm=true` | `target` = `album`, `archived`, `category`, `academic_year`, `scope` (App/Class/Section gallery) or `media_type`. The most specific wins in that order, then the default. 409 `POLICY_EXISTS`; 409 `CONFIRMATION_REQUIRED` when shorter than the default |
-| `GET /retention/holds?active=`, `POST /retention/holds` `{ album_id | media_id, reason, keep_until? }`, `POST /retention/holds/{id}/release` `{ reason, confirm? }` | A hold protects an album or item from automatic deletion. No `keep_until` keeps it until released (permanent retention). A date extends retention to that day (`kind: extension`). Applying a hold takes items off the deletion schedule. Releasing a hold over items already past retention needs `confirm`. Who applied and released it, and why, is kept |
-| `GET /cleanup/status` | `cleanup_enabled`, `paused`, `running`, `next_cleanup_at`, `last_job`, `retryable` |
-| `GET /cleanup/preview` | What a run would do now, without changes: `to_mark`, `to_trash`, `to_purge`, `albums_to_trash`, `albums_to_purge`, `held`, `bytes_to_reclaim`, first 100 `items` |
-| `POST /cleanup/run` `{ confirm: true }` | Runs now (show the preview first). 409 `CLEANUP_RUNNING` |
-| `POST /cleanup/pause`, `POST /cleanup/resume` | Scheduled runs only |
-| `GET /cleanup/jobs`, `GET /cleanup/jobs/{id}`, `GET /cleanup/jobs/{id}/items?action=`, `POST /cleanup/jobs/{id}/retry`, `GET /cleanup/jobs/{id}/export?format=` | History with scanned, marked, unmarked, trashed, purged, failed, held, albums, orphans removed, storage freed, duration, error; retry of failed deletions; the run's report |
+| Call                                                                                                                                                                                                                    | What it does                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /settings`, `PATCH /settings`, `POST /settings/reset` `{ confirm: true }`                                                                                                                                          | Every switch and limit. Send only what changes. Changes that can delete media sooner (shorter retention, notice or recovery; automatic or permanent deletion or the cleanup switched on) return 409 `CONFIRMATION_REQUIRED` until sent again with `confirm: true` |
+| `GET /categories?all=`, `POST`, `PATCH /categories/{id}`, `DELETE`                                                                                                                                                      | School events, Sports, Cultural activities, Annual day, Independence Day, Republic Day, Educational, Classroom, Excursions, Achievements, Other, plus the school's own. 409 `CATEGORY_IN_USE`                                                                     |
+| `GET /retention`                                                                                                                                                                                                        | Default retention, each policy with `applies_to` and `media_count`, `default_media_count`, `kept_forever`                                                                                                                                                         |
+| `POST /retention/policies` `{ name, target, album_id?, category_id?, academic_year_id?, scope?, media_type?, retention_value?, retention_unit?, keep_forever?, is_active?, confirm? }`, `PATCH`, `DELETE ?confirm=true` | `target` = `album`, `archived`, `category`, `academic_year`, `scope` (App/Class/Section gallery) or `media_type`. The most specific wins in that order, then the default. 409 `POLICY_EXISTS`; 409 `CONFIRMATION_REQUIRED` when shorter than the default          |
+| `GET /retention/holds?active=`, `POST /retention/holds` `{ album_id                                                                                                                                                     | media_id, reason, keep_until? }`, `POST /retention/holds/{id}/release` `{ reason, confirm? }`                                                                                                                                                                     | A hold protects an album or item from automatic deletion. No `keep_until` keeps it until released (permanent retention). A date extends retention to that day (`kind: extension`). Applying a hold takes items off the deletion schedule. Releasing a hold over items already past retention needs `confirm`. Who applied and released it, and why, is kept |
+| `GET /cleanup/status`                                                                                                                                                                                                   | `cleanup_enabled`, `paused`, `running`, `next_cleanup_at`, `last_job`, `retryable`                                                                                                                                                                                |
+| `GET /cleanup/preview`                                                                                                                                                                                                  | What a run would do now, without changes: `to_mark`, `to_trash`, `to_purge`, `albums_to_trash`, `albums_to_purge`, `held`, `bytes_to_reclaim`, first 100 `items`                                                                                                  |
+| `POST /cleanup/run` `{ confirm: true }`                                                                                                                                                                                 | Runs now (show the preview first). 409 `CLEANUP_RUNNING`                                                                                                                                                                                                          |
+| `POST /cleanup/pause`, `POST /cleanup/resume`                                                                                                                                                                           | Scheduled runs only                                                                                                                                                                                                                                               |
+| `GET /cleanup/jobs`, `GET /cleanup/jobs/{id}`, `GET /cleanup/jobs/{id}/items?action=`, `POST /cleanup/jobs/{id}/retry`, `GET /cleanup/jobs/{id}/export?format=`                                                         | History with scanned, marked, unmarked, trashed, purged, failed, held, albums, orphans removed, storage freed, duration, error; retry of failed deletions; the run's report                                                                                       |
 
 **How the automatic cleanup works.** Defaults: on; retention **1 year from the upload date**; daily at 02:00 in `time_zone` (Asia/Kolkata); 30 days of notice; 30 days of recovery; permanent deletion on. `cleanup_frequency` can be `daily`, `weekly` (`cleanup_weekday` 1 = Monday) or `monthly` (`cleanup_month_day` 1 to 28). Each run, per school:
 
@@ -1991,24 +2175,24 @@ Register the phone with `POST /me/devices` `{ "push_token": "<OneSignal subscrip
 
 Every push (OneSignal `additionalData`) has `category`, `template` and `notification_id`, plus the ids below. Ids are strings.
 
-| category | templates | ids sent | open |
-|---|---|---|---|
-| `chat` | CHAT_MESSAGE | `thread_id` | the chat thread |
-| `meeting` | MEETING_SCHEDULED, MEETING_REMINDER, MEETING_ENDING, MEETING_CANCELLED, MEETING_NOTES_SHARED | `meeting_id`, `student_id` | the meeting |
-| `approval` | LEAVE_APPROVAL_NEEDED (staff leave waiting for me), STUDENT_LEAVE_REQUEST (parent leave for my class), SUBSTITUTE_ASSIGNED, CLASS_COMBINED | `leave_id` and `student_id` for leaves; `on_date` (YYYY-MM-DD), `section_id` for proxies | the teacher Inbox |
-| `attendance` | STUDENT_ABSENT (`session`), LEAVE_STATUS (`leave_id`), STAFF_LEAVE_STATUS (`leave_id`) | `student_id` for parent pushes | attendance |
-| `diary` | DIARY_POSTED, DIARY_REJECTED | `entry_id` where present | diary |
-| `fees` | FEE_DUE, FEE_DUE_SOON, FEE_OVERDUE, FEE_PAYMENT_RECEIVED, FEE_LATE_FEE, FEE_FINE_CHARGED, FEE_REFUND_PAID, FEE_PAYMENT_REVERSED, FEE_DUE_DATE_CHANGED | `student_id` | fees |
-| `library` | LIBRARY_BOOK_ISSUED, LIBRARY_DUE_SOON, LIBRARY_DUE_TODAY, LIBRARY_OVERDUE, LIBRARY_OVERDUE_ESCALATED, LIBRARY_BOOK_RETURNED, LIBRARY_FINE_RAISED, LIBRARY_FINE_PAID | `role` (`parent` for a student's parents, `staff` for a teacher's own books and the class teacher), `student_id` (student loans), `issue_id`, `fine_id` / `payment_id` on fines | parent: the child's Library; teacher: My class (with `student_id`) or My books |
-| `inventory` | INVENTORY_ASSET_ASSIGNED, INVENTORY_RETURN_DUE (to the staff member); approvals, maintenance, warranty, low stock (to the office) | `role` (`staff`, or `driver` for drivers and attendants) | My assets in the Staff or Driver app; office notices open the notifications list |
-| `system` | RESULT_PUBLISHED (`exam_id`), ACHIEVEMENT_ADDED (`achievement_id`) | `student_id` | results / achievements |
-| `alert` | EMERGENCY_BROADCAST (`broadcast_id`, `severity`) to parents and staff | — | full-screen emergency alert, then `GET /me/emergency-broadcasts/{broadcast_id}` |
-| `announcement` | SURVEY_NEW, SURVEY_REMINDER (`survey_id`, `role` when the form is for one app) to the people it was sent to | — | the form: `GET /me/surveys/{survey_id}` (a form answered once per child: list `GET /me/surveys` and pick the child) |
-| `system` | STUDENT_FEEDBACK (`feedback_id`) to the parents | `student_id` | the child's feedback |
-| `system` | TEACHER_RATED (`rating_id`, `teacher_user_id`) to the school admin | `student_id` | admin web, Teacher feedback |
-| `announcement` | GALLERY_ALBUM_SHARED (`album_id`) to the album audience | — | the album: Parent `GET /mobile/parent/gallery/albums/{album_id}`, Staff `GET /mobile/teacher/gallery/albums/{album_id}` |
-| `system` | GALLERY_DELETION_SCHEDULED, GALLERY_CLEANUP_DONE, GALLERY_CLEANUP_FAILED, GALLERY_STORAGE_WARNING, GALLERY_STORAGE_FULL to the gallery `notify_roles` | — | admin web, Gallery cleanup monitoring |
-| `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips | `trip_id`, `alert_id`, `announcement_id` where present | the matching screen |
+| category                                        | templates                                                                                                                                                           | ids sent                                                                                                                                                                        | open                                                                                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `chat`                                          | CHAT_MESSAGE                                                                                                                                                        | `thread_id`                                                                                                                                                                     | the chat thread                                                                                                         |
+| `meeting`                                       | MEETING_SCHEDULED, MEETING_REMINDER, MEETING_ENDING, MEETING_CANCELLED, MEETING_NOTES_SHARED                                                                        | `meeting_id`, `student_id`                                                                                                                                                      | the meeting                                                                                                             |
+| `approval`                                      | LEAVE_APPROVAL_NEEDED (staff leave waiting for me), STUDENT_LEAVE_REQUEST (parent leave for my class), SUBSTITUTE_ASSIGNED, CLASS_COMBINED                          | `leave_id` and `student_id` for leaves; `on_date` (YYYY-MM-DD), `section_id` for proxies                                                                                        | the teacher Inbox                                                                                                       |
+| `attendance`                                    | STUDENT_ABSENT (`session`), LEAVE_STATUS (`leave_id`), STAFF_LEAVE_STATUS (`leave_id`)                                                                              | `student_id` for parent pushes                                                                                                                                                  | attendance                                                                                                              |
+| `diary`                                         | DIARY_POSTED, DIARY_REJECTED                                                                                                                                        | `entry_id` where present                                                                                                                                                        | diary                                                                                                                   |
+| `fees`                                          | FEE_DUE, FEE_DUE_SOON, FEE_OVERDUE, FEE_PAYMENT_RECEIVED, FEE_LATE_FEE, FEE_FINE_CHARGED, FEE_REFUND_PAID, FEE_PAYMENT_REVERSED, FEE_DUE_DATE_CHANGED               | `student_id`                                                                                                                                                                    | fees                                                                                                                    |
+| `library`                                       | LIBRARY_BOOK_ISSUED, LIBRARY_DUE_SOON, LIBRARY_DUE_TODAY, LIBRARY_OVERDUE, LIBRARY_OVERDUE_ESCALATED, LIBRARY_BOOK_RETURNED, LIBRARY_FINE_RAISED, LIBRARY_FINE_PAID | `role` (`parent` for a student's parents, `staff` for a teacher's own books and the class teacher), `student_id` (student loans), `issue_id`, `fine_id` / `payment_id` on fines | parent: the child's Library; teacher: My class (with `student_id`) or My books                                          |
+| `inventory`                                     | INVENTORY_ASSET_ASSIGNED, INVENTORY_RETURN_DUE (to the staff member); approvals, maintenance, warranty, low stock (to the office)                                   | `role` (`staff`, or `driver` for drivers and attendants)                                                                                                                        | My assets in the Staff or Driver app; office notices open the notifications list                                        |
+| `system`                                        | RESULT_PUBLISHED (`exam_id`), ACHIEVEMENT_ADDED (`achievement_id`)                                                                                                  | `student_id`                                                                                                                                                                    | results / achievements                                                                                                  |
+| `alert`                                         | EMERGENCY_BROADCAST (`broadcast_id`, `severity`) to parents and staff                                                                                               | —                                                                                                                                                                               | full-screen emergency alert, then `GET /me/emergency-broadcasts/{broadcast_id}`                                         |
+| `announcement`                                  | SURVEY_NEW, SURVEY_REMINDER (`survey_id`, `role` when the form is for one app) to the people it was sent to                                                         | —                                                                                                                                                                               | the form: `GET /me/surveys/{survey_id}` (a form answered once per child: list `GET /me/surveys` and pick the child)     |
+| `system`                                        | STUDENT_FEEDBACK (`feedback_id`) to the parents                                                                                                                     | `student_id`                                                                                                                                                                    | the child's feedback                                                                                                    |
+| `system`                                        | TEACHER_RATED (`rating_id`, `teacher_user_id`) to the school admin                                                                                                  | `student_id`                                                                                                                                                                    | admin web, Teacher feedback                                                                                             |
+| `announcement`                                  | GALLERY_ALBUM_SHARED (`album_id`) to the album audience                                                                                                             | —                                                                                                                                                                               | the album: Parent `GET /mobile/parent/gallery/albums/{album_id}`, Staff `GET /mobile/teacher/gallery/albums/{album_id}` |
+| `system`                                        | GALLERY_DELETION_SCHEDULED, GALLERY_CLEANUP_DONE, GALLERY_CLEANUP_FAILED, GALLERY_STORAGE_WARNING, GALLERY_STORAGE_FULL to the gallery `notify_roles`               | —                                                                                                                                                                               | admin web, Gallery cleanup monitoring                                                                                   |
+| `transport`, `alert`, `announcement`, `account` | bus, SOS, notices, invites, payslips                                                                                                                                | `trip_id`, `alert_id`, `announcement_id` where present                                                                                                                          | the matching screen                                                                                                     |
 
 ## Inventory and assets (admin web)
 
@@ -2051,33 +2235,35 @@ Permissions: `appraisals.view` (see everything), `appraisals.configure` (groups,
 **Steps (`stage`).** `self_pending` → `hod_pending` (skipped when the department has no HOD, or the person is an HOD or the Principal) → `principal_pending` → `published` → `completed` (acknowledged) or `appealed` → `completed` (appeal decided). At `self_due_at` the reviews still at `self_pending` move on with `self_missed = true`. Reminders: staff 24 h before `self_due_at`, HODs 24 h before `hod_due_at` (or on demand with `/remind`). Push templates: `APPRAISAL_SELF_OPEN`, `APPRAISAL_SELF_REMINDER`, `APPRAISAL_HOD_REVIEW`, `APPRAISAL_HOD_REMINDER`, `APPRAISAL_PUBLISHED`, `APPRAISAL_APPEAL_RAISED` (Principal), `APPRAISAL_APPEAL_DECIDED`; `data.appraisal_id` opens the appraisal (`category: approval`).
 
 ### Admin web
-| Call | What it does |
-|---|---|
-| `GET /admin/appraisal-groups` | Groups of the year being viewed with their KRAs, `member_count`, `weight_total` |
-| `POST /admin/appraisal-groups` `{ name, description?, rules?, is_default?, sort_order?, starter_kras?: teaching\|staff\|none }` | New group in the current year (409 `GROUP_NAME_TAKEN`) |
-| `PATCH /admin/appraisal-groups/{id}`, `DELETE …/{id}` | Edit; delete is refused while a cycle that is not closed uses it (409 `GROUP_IN_USE`) |
-| `GET /admin/appraisal-groups/{id}/members`, `PUT …/members` `{ include_staff_ids, exclude_staff_ids }` | Who is in the group; people always in / never in |
-| `PUT /admin/appraisal-groups/{id}/kras` `{ kras: [...] }` | Replace the KRA set; 400 when weights do not add up to 100, a code repeats or an auto KRA has no metric. Open appraisals keep the KRAs they started with |
-| `POST /admin/appraisal-groups/copy-year` `{ from_academic_year_id, to_academic_year_id }` | Copy groups, people and KRAs to another year (same names skipped; 409 `YEAR_NOT_WRITABLE`) |
-| `GET /admin/appraisal-cycles`, `POST`, `GET/PATCH/DELETE …/{id}` | Cycles `{ title, description?, group_ids, self_opens_at?, self_due_at, hod_due_at, final_due_at, appeal_days?, increment_bands? }`; edits only while draft/scheduled (409 `CYCLE_LOCKED`) |
-| `POST …/{id}/open` | Opens now (or schedules for `self_opens_at`): one appraisal per person with the KRAs of their group and the HOD of their department. 409 `GROUP_KRAS_INCOMPLETE`, `CYCLE_NOT_DRAFT`; 400 `NO_RECIPIENTS` |
-| `POST …/{id}/close`, `…/extend` `{ self_due_at?, hod_due_at?, final_due_at? }`, `…/remind` | Close (staff and HODs can no longer change scores), move deadlines later, remind |
-| `GET …/{id}/insights`, `GET …/{id}/export` | Counts per step, average final %, ratings; Excel (summary + KRA scores) |
-| `GET /admin/appraisals?cycle_id=&group_id=&stage=&rating=&search=&sort=name\|final_percent\|stage\|created_at` | Appraisals of the year being viewed |
-| `GET /admin/appraisals/{id}` | Self, HOD, auto and final score per KRA, evidence (signed links), appeals |
-| `GET /admin/appraisals/staff/{staffId}/dossier?academic_year_id=` | Facts for the review: attendance, classes with pass %, homework, parent and driver ratings |
-| `PUT /admin/appraisals/{id}/final` `{ scores?: [{ kra_id, score, override_reason? }], recommendation?, increment_percent?, strengths?, improvements?, goals?, principal_remarks? }` | Principal step; changing a proposed score (HOD, else auto, else self) needs `override_reason` |
-| `POST /admin/appraisals/{id}/publish`, `POST /admin/appraisals/publish` `{ ids }` | Publish one or many (missing final scores take the proposed score) |
-| `GET /admin/appraisals/appeals?status=`, `POST /admin/appraisals/appeals/{id}/decide` `{ decision: accept\|reject, note, scores?, increment_percent? }` | Appeals (409 `APPEAL_DECIDED`) |
+
+| Call                                                                                                                                                                                | What it does                                                                                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/appraisal-groups`                                                                                                                                                       | Groups of the year being viewed with their KRAs, `member_count`, `weight_total`                                                                                                                          |
+| `POST /admin/appraisal-groups` `{ name, description?, rules?, is_default?, sort_order?, starter_kras?: teaching\|staff\|none }`                                                     | New group in the current year (409 `GROUP_NAME_TAKEN`)                                                                                                                                                   |
+| `PATCH /admin/appraisal-groups/{id}`, `DELETE …/{id}`                                                                                                                               | Edit; delete is refused while a cycle that is not closed uses it (409 `GROUP_IN_USE`)                                                                                                                    |
+| `GET /admin/appraisal-groups/{id}/members`, `PUT …/members` `{ include_staff_ids, exclude_staff_ids }`                                                                              | Who is in the group; people always in / never in                                                                                                                                                         |
+| `PUT /admin/appraisal-groups/{id}/kras` `{ kras: [...] }`                                                                                                                           | Replace the KRA set; 400 when weights do not add up to 100, a code repeats or an auto KRA has no metric. Open appraisals keep the KRAs they started with                                                 |
+| `POST /admin/appraisal-groups/copy-year` `{ from_academic_year_id, to_academic_year_id }`                                                                                           | Copy groups, people and KRAs to another year (same names skipped; 409 `YEAR_NOT_WRITABLE`)                                                                                                               |
+| `GET /admin/appraisal-cycles`, `POST`, `GET/PATCH/DELETE …/{id}`                                                                                                                    | Cycles `{ title, description?, group_ids, self_opens_at?, self_due_at, hod_due_at, final_due_at, appeal_days?, increment_bands? }`; edits only while draft/scheduled (409 `CYCLE_LOCKED`)                |
+| `POST …/{id}/open`                                                                                                                                                                  | Opens now (or schedules for `self_opens_at`): one appraisal per person with the KRAs of their group and the HOD of their department. 409 `GROUP_KRAS_INCOMPLETE`, `CYCLE_NOT_DRAFT`; 400 `NO_RECIPIENTS` |
+| `POST …/{id}/close`, `…/extend` `{ self_due_at?, hod_due_at?, final_due_at? }`, `…/remind`                                                                                          | Close (staff and HODs can no longer change scores), move deadlines later, remind                                                                                                                         |
+| `GET …/{id}/insights`, `GET …/{id}/export`                                                                                                                                          | Counts per step, average final %, ratings; Excel (summary + KRA scores)                                                                                                                                  |
+| `GET /admin/appraisals?cycle_id=&group_id=&stage=&rating=&search=&sort=name\|final_percent\|stage\|created_at`                                                                      | Appraisals of the year being viewed                                                                                                                                                                      |
+| `GET /admin/appraisals/{id}`                                                                                                                                                        | Self, HOD, auto and final score per KRA, evidence (signed links), appeals                                                                                                                                |
+| `GET /admin/appraisals/staff/{staffId}/dossier?academic_year_id=`                                                                                                                   | Facts for the review: attendance, classes with pass %, homework, parent and driver ratings                                                                                                               |
+| `PUT /admin/appraisals/{id}/final` `{ scores?: [{ kra_id, score, override_reason? }], recommendation?, increment_percent?, strengths?, improvements?, goals?, principal_remarks? }` | Principal step; changing a proposed score (HOD, else auto, else self) needs `override_reason`                                                                                                            |
+| `POST /admin/appraisals/{id}/publish`, `POST /admin/appraisals/publish` `{ ids }`                                                                                                   | Publish one or many (missing final scores take the proposed score)                                                                                                                                       |
+| `GET /admin/appraisals/appeals?status=`, `POST /admin/appraisals/appeals/{id}/decide` `{ decision: accept\|reject, note, scores?, increment_percent? }`                             | Appeals (409 `APPEAL_DECIDED`)                                                                                                                                                                           |
 
 ### Staff app (`/me`)
-| Call | What it does |
-|---|---|
-| `GET /me/appraisals` | My appraisals, newest first. `hod_percent`, `final_percent`, `rating` stay empty until published |
-| `GET /me/appraisals/{id}` | My KRAs (weights, max score, auto value), my self scores and comments, evidence; the result once published; `appeal_until` |
+
+| Call                                                                                                                                                           | What it does                                                                                                                                |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /me/appraisals`                                                                                                                                           | My appraisals, newest first. `hod_percent`, `final_percent`, `rating` stay empty until published                                            |
+| `GET /me/appraisals/{id}`                                                                                                                                      | My KRAs (weights, max score, auto value), my self scores and comments, evidence; the result once published; `appeal_until`                  |
 | `PUT /me/appraisals/{id}/self`, `POST …/self/submit` `{ scores: [{ kra_id, score?, comment? }], expected_increment_percent?, hike_justification?, file_ids? }` | Save / send my self-appraisal (every manual KRA needs a score; errors on `scores.<kra_id>`). 409 `APPRAISAL_NOT_IN_STAGE`, `CYCLE_NOT_OPEN` |
-| `POST /me/appraisals/{id}/acknowledge` `{ remarks? }`, `POST …/appeal` `{ reason, requested_increment? }` | Accept or appeal the published result (409 `APPEAL_WINDOW_CLOSED`) |
-| `GET /me/appraisal-reviews?state=pending\|done`, `GET/PUT …/{id}`, `POST …/{id}/submit` `{ scores, remarks? }` | HOD: reviews of my department (403 `NOT_YOUR_REVIEW`) |
+| `POST /me/appraisals/{id}/acknowledge` `{ remarks? }`, `POST …/appeal` `{ reason, requested_increment? }`                                                      | Accept or appeal the published result (409 `APPEAL_WINDOW_CLOSED`)                                                                          |
+| `GET /me/appraisal-reviews?state=pending\|done`, `GET/PUT …/{id}`, `POST …/{id}/submit` `{ scores, remarks? }`                                                 | HOD: reviews of my department (403 `NOT_YOUR_REVIEW`)                                                                                       |
 
 Reviews made with the earlier appraisal screens were moved into a closed "Earlier reviews" cycle (`is_legacy: true`); the earlier KRAs became an "All staff" group. The routes `admin/staff-appraisals/*`, `admin/staff-kra-configs/*` and `mobile/teacher/appraisals/*` are gone.
 
@@ -2091,7 +2277,6 @@ Driver and Attendant roles. `GET /mobile/driver/duty` returns my bus and its rou
 - The response has `url` and, for images, `thumbnail_url`. Both are signed links that work without a token until `url_expires_at` (1 hour). After that, call `GET /files/{id}` for fresh links.
 - Other records store the file `id`, never the URL.
 - Gallery photos and videos are not uploaded through `/files`: use the gallery upload endpoints. Their signed links are under `/files/gallery/{id}/content` and accept `Range`.
-
 
 ### Quiz pass marks
 
@@ -2116,6 +2301,7 @@ Everything is under `/admin/grievances/*` (Swagger tag `Admin · Grievances`). P
 Admin endpoints are under `/admin/alumni/*` (Swagger tag `Admin · Alumni`). Permissions: `alumni.view` (list, profile, reports) and `alumni.manage` (edit, update links, approve submissions). Staff never create alumni by hand: students become alumni when they leave. School admin and Principal have both; the AO has `alumni.view`.
 
 **How people become alumni.**
+
 - **Automatically at year close.** When an academic year stops being current (another year is created as current, or made current), every student in the final class (the class with the highest `grade_level`) whose enrolment is still `studying` passes out:
   - the student's `status` becomes `alumni` and `left_on` is the year's end date;
   - the enrolment becomes `completed`;
@@ -2127,6 +2313,7 @@ Admin endpoints are under `/admin/alumni/*` (Swagger tag `Admin · Alumni`). Per
 - `PATCH /admin/students/:id` with `status: alumni` is refused with `400 ALUMNI_STATUS_MANAGED`. `GET /admin/students/:id` now returns `left_on` and `alumni_id`.
 
 **Endpoints.**
+
 - `GET /admin/alumni`: paginated list. Filters `batch_year`, `source` (`pass_out`, `converted`, `registered`, `self`), `exit_type` (`graduated`, `transferred`, `withdrawn`), `occupation_status` (`higher_studies`, `employed`, `self_employed`, `seeking`, `other`, `unknown`), `status` (`active`, `inactive`), `reachable` (consent plus a mobile or email), `city`. Search covers name, alumni no, admission no, EMIS number, mobile, email, institution, organisation and city. Sort: `name`, `batch_year` (default), `left_on`, `final_percent`, `alumni_no`, `created_at`.
 - `GET /admin/alumni/insights`: `total`, `active`, `reachable`, `latest_batch`, `pending_submissions`, `by_occupation`, `by_batch` (last six).
 - `GET /admin/alumni/batches`: `[{ batch_year, count }]`, newest first.
@@ -2143,6 +2330,7 @@ Admin endpoints are under `/admin/alumni/*` (Swagger tag `Admin · Alumni`). Per
 - `POST /admin/alumni/submissions/:id/reject { note }`.
 
 **Public endpoints (no sign-in, Swagger tag `Public · Alumni`).**
+
 - `GET /public/alumni/schools/:code`: school name and logo for the form header.
 - `POST /public/alumni/schools/:code/register`: `first_name`, `batch_year` and a `mobile` or `email` are required, plus optional identity, contact and career fields. Responds with `{ id }`.
 - `GET /public/alumni/update/:token`: the alumnus's contact and career details.
