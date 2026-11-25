@@ -38,6 +38,7 @@ function build(auto: boolean) {
     {} as never,
     devices as never,
     { driver: 'kafka', callDriver: 'off', auto } as never,
+    { toUsers: jest.fn() } as never,
   );
   return { service, rows, notifications, queue, push };
 }

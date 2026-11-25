@@ -8,6 +8,7 @@ import { appConfig, AppConfig } from '../../config/configuration';
 import { currentYearId, currentYearSql, onlyCurrentYear } from '../../shared/academic-year';
 import { todayIn } from '../../shared/dates';
 import { parentsOfStudent, teachersOfStudent } from '../../shared/student-contacts';
+import { NotificationApp } from '../notifications/notification-apps';
 import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -340,6 +341,7 @@ export class MeetingsService {
         note: dto.note ? ` Note: ${dto.note}` : '',
       },
       saved,
+      saved.scheduled_by === 'teacher' ? 'staff' : 'parent',
     );
     return presented;
   }
@@ -368,6 +370,7 @@ export class MeetingsService {
         reason: dto.reason ? ` Reason: ${dto.reason}` : '',
       },
       saved,
+      party === 'teacher' ? 'parent' : 'staff',
     );
     return presented;
   }
@@ -578,12 +581,14 @@ export class MeetingsService {
         presented.parent.id,
         { host: presented.teacher.name, student: presented.student.name, time },
         meeting,
+        'parent',
       );
       await this.notify(
         TEMPLATES.MEETING_REMINDER,
         presented.teacher.id,
         { host: presented.parent.name, student: presented.student.name, time },
         meeting,
+        'staff',
       );
       this.realtime.toUsers(this.members(meeting), 'meeting.reminder', {
         meeting_id: meeting.id,
@@ -604,9 +609,9 @@ export class MeetingsService {
     for (const meeting of due) {
       const [presented] = await this.present([meeting]);
       const time = formatMeetingTime(meeting.scheduled_end_at, this.app.timeZone);
-      for (const [userId, other] of [
-        [presented.parent.id, presented.teacher.name],
-        [presented.teacher.id, presented.parent.name],
+      for (const [userId, other, side] of [
+        [presented.parent.id, presented.teacher.name, 'parent'],
+        [presented.teacher.id, presented.parent.name, 'staff'],
       ] as const) {
         await this.notify(
           TEMPLATES.MEETING_ENDING,
@@ -618,6 +623,7 @@ export class MeetingsService {
             time,
           },
           meeting,
+          side,
         );
       }
       this.realtime.toUsers(this.members(meeting), 'meeting.reminder', {
@@ -833,6 +839,7 @@ export class MeetingsService {
         title: saved.title,
       },
       saved,
+      saved.scheduled_by === 'teacher' ? 'parent' : 'staff',
     );
     this.realtime.toUsers([presented.to.id], 'meeting.status', this.statusPayload(saved, input.actor.id));
     return presented;
@@ -925,12 +932,13 @@ export class MeetingsService {
     userId: number,
     data: Record<string, string>,
     meeting: Pick<Meeting, 'id' | 'student_id'>,
+    app: NotificationApp,
   ): Promise<void> {
     await this.notifications
       .dispatch({
         template,
         audience: { user_ids: [userId] },
-        data: { ...data, meeting_id: String(meeting.id), student_id: String(meeting.student_id) },
+        data: { ...data, meeting_id: String(meeting.id), student_id: String(meeting.student_id), app },
       })
       .catch((error: Error) => this.logger.warn(`${template} for user ${userId} not sent: ${error.message}`));
   }

@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
-import { In, IsNull, MoreThan, Not, Repository, SelectQueryBuilder } from 'typeorm';
+import { And, In, IsNull, JsonContains, MoreThan, Not, Repository, SelectQueryBuilder } from 'typeorm';
 import { AppException, AuthUser, listQuery, offset, paginate, Paginated } from '@app/common';
 import { pushConfig, PushConfig } from '../../config/configuration';
 import { ROLES } from '../access/access.catalog';
@@ -22,9 +22,10 @@ import { Notification } from './entities/notification.entity';
 import { NotificationTemplate } from './entities/notification-template.entity';
 import { JOB_QUEUE, JobQueue } from './queue/job-queue';
 import { CallSide, devicesForSide } from './call-devices';
-import { appOf, NotificationApp, templatesNotFor } from './notification-apps';
+import { appOf, NOTIFICATION_APPS, NotificationApp, templatesNotFor } from './notification-apps';
 import { PushResult, PushService } from './push.service';
 import { renderTemplate, TemplateData, toStringData } from './template.renderer';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 export interface Audience {
   user_ids?: number[];
@@ -76,6 +77,7 @@ export class NotificationsService implements OnModuleInit {
     private readonly sms: SmsService,
     private readonly devices: UserDevicesService,
     @Inject(pushConfig.KEY) private readonly pushSettings: PushConfig,
+    private readonly realtime: RealtimeGateway,
   ) {}
 
   onModuleInit(): void {
@@ -131,7 +133,12 @@ export class NotificationsService implements OnModuleInit {
 
   private appFilter(app?: NotificationApp) {
     if (!app) return {};
-    return { template_code: Not(In(templatesNotFor(app))) };
+    return {
+      template_code: Not(In(templatesNotFor(app))),
+      data: And(
+        ...NOTIFICATION_APPS.filter((other) => other !== app).map((other) => Not(JsonContains({ app: other }))),
+      ),
+    };
   }
 
   async markRead(userId: number, id: number): Promise<MyNotificationDto> {
@@ -236,7 +243,16 @@ export class NotificationsService implements OnModuleInit {
       data: payload,
     };
 
-    await this.notifications.insert({ ...base, channel: 'in_app', body, status: 'delivered', sent_at: new Date() });
+    const sentAt = new Date();
+    await this.notifications.insert({ ...base, channel: 'in_app', body, status: 'delivered', sent_at: sentAt });
+    this.realtime.toUsers([user.id], 'notification.new', {
+      category: base.category,
+      template_code: base.template_code,
+      title,
+      body,
+      data: payload,
+      created_at: sentAt,
+    });
 
     const smsFollowUp = smsBody
       ? { body: smsBody, dlt_template_id: template.dlt_template_id, language: template.language }

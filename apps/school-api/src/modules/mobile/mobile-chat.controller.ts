@@ -57,7 +57,7 @@ export class MobileTeacherChatController {
   @ApiEnvelope(ChatThreadDto, { status: HttpStatus.CREATED, message: 'Group created' })
   @ApiErrors(HttpStatus.BAD_REQUEST)
   createGroup(@CurrentUser() user: AuthUser, @Body() dto: CreateGroupChatDto) {
-    return this.chat.createGroup(user, dto);
+    return this.chat.createGroup(user, dto, undefined, 'teacher');
   }
 
   @Post('groups/:id/members')
@@ -67,7 +67,7 @@ export class MobileTeacherChatController {
   @ApiEnvelope(ChatMemberDto, { isArray: true, message: 'Members added' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN)
   addMembers(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: AddGroupMembersDto) {
-    return this.chat.addGroupMembers(user, id, dto);
+    return this.chat.addGroupMembers(user, id, dto, null, 'teacher');
   }
 
   @Delete('groups/:id')
@@ -300,7 +300,7 @@ export class MobileParentChatController {
   @ApiErrors(HttpStatus.BAD_REQUEST)
   async createGroup(@CurrentUser() user: AuthUser, @Body() dto: CreateGroupChatDto) {
     const schoolId = await this.chat.resolveActorSchool(user);
-    return this.chat.createGroup(user, dto, schoolId);
+    return this.chat.createGroup(user, dto, schoolId, 'parent');
   }
 
   @Post('chat/groups/:id/members')
@@ -310,7 +310,7 @@ export class MobileParentChatController {
   @ApiEnvelope(ChatMemberDto, { isArray: true, message: 'Members added' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND, HttpStatus.FORBIDDEN)
   addMembers(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: AddGroupMembersDto) {
-    return this.chat.addGroupMembers(user, id, dto);
+    return this.chat.addGroupMembers(user, id, dto, null, 'parent');
   }
 
   @Delete('chat/groups/:id')
