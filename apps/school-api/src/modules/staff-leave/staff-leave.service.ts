@@ -33,6 +33,9 @@ export const DEFAULT_LEAVE_TYPES: [string, string, number, boolean][] = [
 
 const BACKDATE_DAYS = 7;
 const PENDING: StaffLeaveStatus[] = ['pending_hod', 'pending_principal'];
+export const CREW_ROLES: string[] = [ROLES.DRIVER, ROLES.ATTENDANT];
+const CREW_FILTER = `EXISTS (SELECT 1 FROM user_roles cr JOIN roles crr ON crr.id = cr.role_id
+  WHERE cr.user_id = l.user_id AND crr.code IN ('DRIVER', 'ATTENDANT'))`;
 const STATUS_WORD: Record<StaffLeaveStatus, string> = {
   pending_hod: 'waiting for the HOD',
   pending_principal: 'waiting for the principal',
@@ -234,8 +237,9 @@ export class StaffLeaveService {
       throw AppException.conflict(`This request is already ${STATUS_WORD[leave.status]}`, 'LEAVE_NOT_PENDING');
     }
     if (leave.user_id === user.id) throw AppException.forbidden('You cannot decide your own leave', 'OWN_LEAVE');
-    const final = user.permissions.includes(PERMISSIONS.LEAVE_APPROVE);
     const isHod = leave.status === 'pending_hod' && leave.hod_user_id === user.id;
+    const crewHead = isHod && user.roles.includes(ROLES.TRANSPORT_INCHARGE);
+    const final = user.permissions.includes(PERMISSIONS.LEAVE_APPROVE) || crewHead;
     if (!final && !isHod) throw AppException.forbidden('You cannot decide this request', 'NOT_APPROVER');
     if (!final && user.school_id !== leave.school_id)
       throw AppException.forbidden('You cannot decide this request', 'NOT_APPROVER');
@@ -274,9 +278,60 @@ export class StaffLeaveService {
     return (await this.present([saved]))[0];
   }
 
+  async crewLeaves(schoolId: number, status: 'waiting' | 'approved' | 'rejected'): Promise<StaffLeaveDto[]> {
+    const qb = this.leaves.createQueryBuilder('l').where('l.school_id = :schoolId', { schoolId }).andWhere(CREW_FILTER);
+    if (status === 'waiting') qb.andWhere('l.status IN (:...waiting)', { waiting: PENDING });
+    else qb.andWhere('l.status = :status', { status });
+    qb.orderBy('l.from_date', status === 'waiting' ? 'ASC' : 'DESC').take(100);
+    return this.present(await qb.getMany());
+  }
+
+  async crewWaiting(schoolId: number): Promise<number> {
+    return this.leaves
+      .createQueryBuilder('l')
+      .where('l.school_id = :schoolId', { schoolId })
+      .andWhere('l.status IN (:...waiting)', { waiting: PENDING })
+      .andWhere(CREW_FILTER)
+      .getCount();
+  }
+
+  async crewOnLeave(schoolId: number, date: string): Promise<StaffLeaveDto[]> {
+    const rows = await this.leaves
+      .createQueryBuilder('l')
+      .where('l.school_id = :schoolId', { schoolId })
+      .andWhere("l.status = 'approved' AND l.from_date <= :date AND l.to_date >= :date", { date })
+      .andWhere(CREW_FILTER)
+      .orderBy('l.to_date', 'ASC')
+      .getMany();
+    return this.present(rows);
+  }
+
+  async decideCrew(user: AuthUser, id: number, dto: StaffLeaveDecisionDto): Promise<StaffLeaveDto> {
+    const [crew] = await this.dataSource.query(
+      `SELECT 1 FROM staff_leave_requests l WHERE l.id = $1 AND l.school_id = $2 AND ${CREW_FILTER}`,
+      [id, user.school_id],
+    );
+    if (!crew) throw AppException.forbidden('This is not a driver or attendant leave', 'NOT_CREW_LEAVE');
+    return this.decide(user, id, dto, user.school_id ?? undefined);
+  }
+
   private async hodFor(staff: Staff, user: AuthUser): Promise<number | null> {
     if (user.roles.includes(ROLES.HOD) || user.roles.includes(ROLES.PRINCIPAL)) return null;
+    if (user.roles.some((role) => CREW_ROLES.includes(role))) {
+      const head = await this.transportHead(staff.school_id, user.id);
+      if (head) return head;
+    }
     return departmentHodUserId(this.dataSource, staff.school_id, staff.department, user.id);
+  }
+
+  private async transportHead(schoolId: number, exceptUserId: number): Promise<number | null> {
+    const [row]: { id: number }[] = await this.dataSource.query(
+      `SELECT u.id FROM users u JOIN user_roles ur ON ur.user_id = u.id JOIN roles r ON r.id = ur.role_id
+       WHERE u.school_id = $1 AND u.deleted_at IS NULL AND u.status = 'active' AND r.code = $2 AND u.id <> $3
+       ORDER BY u.id LIMIT 1`,
+      [schoolId, ROLES.TRANSPORT_INCHARGE, exceptUserId],
+    );
+    return row ? Number(row.id) : null;
   }
 
   private async notifyApprovers(leave: StaffLeave, name: string, typeName: string): Promise<void> {

@@ -32,6 +32,7 @@ import {
   IncidentInsightsDto,
   IncidentQueryDto,
   OperationsBoardDto,
+  StudentsTodayDto,
   OperationsQueryDto,
   OptOutInputDto,
   PickupPersonInputDto,
@@ -42,6 +43,7 @@ import { DriverStudentsService } from './driver-students.service';
 import { MyStudentsDto, ScanInputDto, ScanResultDto } from './dto/driver-students.dto';
 import { IncidentsService } from './incidents.service';
 import { OperationsService } from './operations.service';
+import { StudentsTodayService } from './students-today.service';
 
 @ApiBearerAuth()
 @ApiErrors(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN)
@@ -261,7 +263,20 @@ export class AdminTransportOpsController {
     private readonly operations: OperationsService,
     private readonly duty: DriverDutyService,
     private readonly incidents: IncidentsService,
+    private readonly studentsToday: StudentsTodayService,
   ) {}
+
+  @Get('students-today')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({
+    summary: 'Bus children today: early leaves (gate passes), who is not coming per trip, and passes on hold',
+    description:
+      'View only. early_leaves: gate passes for the day that are approved (waiting at the gate) or released, for children with a bus. away: riders with a reason for the pickup and or the drop (leave, half_day, od, absent, no_bus, early_leave). on_hold: bus passes on hold. date defaults to today.',
+  })
+  @ApiEnvelope(StudentsTodayDto)
+  studentsTodayList(@SchoolId() schoolId: number, @Query() query: OperationsQueryDto) {
+    return this.studentsToday.today(schoolId, query.date);
+  }
 
   @Get('operations')
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)

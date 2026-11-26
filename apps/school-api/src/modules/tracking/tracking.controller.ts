@@ -320,13 +320,13 @@ export class DriverTripsController {
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('No child left on the bus')
   @ApiOperation({
-    summary: 'End-of-trip sweep: I walked the bus and no child is left, with a photo of the empty bus',
+    summary: 'End-of-trip sweep: I walked the bus and no child is left (a photo of the empty bus is optional)',
     description: 'Do it before or after ending the trip. The office board shows trips ended without a sweep.',
   })
   @ApiEnvelope(TripDetailDto, { message: 'No child left on the bus' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
   async sweep(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number, @Body() dto: TripSweepInputDto) {
-    return this.trips.sweep(user.school_id!, id, dto.photo_file_id, user, await this.vehicleOf(user));
+    return this.trips.sweep(user.school_id!, id, dto.photo_file_id ?? null, user, await this.vehicleOf(user));
   }
 
   @Get(':id')

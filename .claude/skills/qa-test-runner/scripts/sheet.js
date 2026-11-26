@@ -10,11 +10,11 @@ const ALIASES = {
   app: ['app', 'application', 'platform', 'channel'],
   priority: ['priority', 'pri'],
   pre: ['precondition', 'preconditions', 'pre-condition'],
-  steps: ['steps', 'test steps', 'procedure', 'step'],
+  steps: ['steps', 'test steps', 'procedure', 'step', 'steps to execute'],
   expected: ['expected', 'expected result', 'expected output'],
   status: ['status', 'result', 'test status', 'execution status'],
   actual: ['actual', 'actual result', 'observed'],
-  remarks: ['remarks', 'comments', 'notes', 'defect', 'bug'],
+  remarks: ['remarks', 'comments', 'notes', 'defect', 'bug', 'failure note'],
   by: ['tested by', 'executed by', 'tester'],
   outcome: ['unit test / bug', 'unit test or bug'],
   cause: ['bug cause', 'cause of bug', 'defect cause'],
@@ -27,7 +27,7 @@ function detect(ws) {
     const map = {}
     ws.getRow(r).eachCell((cell, c) => {
       const h = norm(cell.value).toLowerCase()
-      for (const [key, names] of Object.entries(ALIASES)) if (!map[key] && names.includes(h)) map[key] = c
+      for (const [key, names] of Object.entries(ALIASES)) if (!map[key] && (names.includes(h) || (key === 'status' && names.some((n) => h.startsWith(`${n} `))))) map[key] = c
     })
     if (map.id && (map.steps || map.title) && map.expected) return { header: r, map }
   }
@@ -64,7 +64,7 @@ function ensureColumn(ws, d, key, title) {
 }
 
 const cut = (s, n) => (s.length > n ? s.slice(0, n) + '…' : s)
-const pending = (st) => !st || /^(not run|not tested|todo|pending|blocked|n\/a)?$/i.test(st)
+const pending = (st) => !st || /^(not run|not tested|not executed|todo|pending|blocked|n\/a)?$/i.test(st)
 
 async function main() {
   const [cmd, file] = process.argv.slice(2)

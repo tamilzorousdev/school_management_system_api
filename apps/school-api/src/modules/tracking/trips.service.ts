@@ -187,16 +187,20 @@ export class TripsService {
     return this.detail(schoolId, trip.id);
   }
 
-  async sweep(schoolId: number, tripId: number, photoFileId: number, actor: AuthUser, vehicleId: number) {
+  async sweep(schoolId: number, tripId: number, photoFileId: number | null, actor: AuthUser, vehicleId: number) {
     const trip = await this.find(schoolId, tripId);
     if (trip.vehicle_id !== vehicleId) throw AppException.forbidden('This trip is not on your bus', 'NOT_YOUR_TRIP');
+    if (photoFileId !== null) await this.requireFile(schoolId, photoFileId);
+    await this.trips.update(trip.id, { sweep_photo_id: photoFileId, swept_at: new Date(), swept_by: actor.id });
+    return this.detail(schoolId, tripId);
+  }
+
+  private async requireFile(schoolId: number, fileId: number) {
     const [file] = await this.dataSource.query(`SELECT id FROM files WHERE id = $1 AND school_id = $2`, [
-      photoFileId,
+      fileId,
       schoolId,
     ]);
     if (!file) throw AppException.validation([{ field: 'photo_file_id', message: 'Upload the photo first' }]);
-    await this.trips.update(trip.id, { sweep_photo_id: photoFileId, swept_at: new Date(), swept_by: actor.id });
-    return this.detail(schoolId, tripId);
   }
 
   async end(schoolId: number, tripId: number, reason: 'driver' | 'admin', vehicleId?: number): Promise<TripDetailDto> {

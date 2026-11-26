@@ -3,7 +3,7 @@ import { Transform } from 'class-transformer';
 import { IsEmail, IsIn, IsInt, IsOptional, IsString, Length, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { MOBILE_PATTERN, normalizeMobile } from '../../../shared/mobile';
 import { CrewDetailDto } from '../../crew/dto/crew.dto';
-import { VehicleDto } from './transport.dto';
+import { VehicleDocumentDto, VehicleDto } from './transport.dto';
 
 const LANGUAGES = ['en', 'ta'] as const;
 const notNull = (_dto: object, value: unknown) => value !== null;
@@ -32,6 +32,13 @@ export class DriverProfileDto {
       'The bus I drive or attend: details, seats, documents with expiry, road-worthiness, routes and my co-crew',
   })
   vehicle: VehicleDto | null;
+
+  @ApiProperty({
+    type: [VehicleDocumentDto],
+    description:
+      'The current copy of each paper of my bus (RC, insurance, fitness, permit, PUC…) with number, expiry, verification and the file to open. Empty when I am not on a bus',
+  })
+  vehicle_documents: VehicleDocumentDto[];
 }
 
 export class UpdateDriverProfileDto {

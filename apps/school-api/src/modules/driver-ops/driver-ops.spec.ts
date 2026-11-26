@@ -8,7 +8,33 @@ import {
   metresBetween,
   minutesOf,
   reportingTime,
+  studentsTodaySummary,
 } from './driver-ops.logic';
+
+describe('transport students today', () => {
+  it('counts riders, who is away per trip, early leaves and held passes', () => {
+    expect(
+      studentsTodaySummary({
+        riders: 10,
+        away: [
+          { pickup: true, drop: true },
+          { pickup: false, drop: true },
+          { pickup: true, drop: false },
+        ],
+        earlyLeaves: ['released', 'approved', 'released'],
+        onHold: 2,
+      }),
+    ).toEqual({
+      riders: 10,
+      coming: 9,
+      away_pickup: 2,
+      away_drop: 2,
+      early_leave: 2,
+      early_leave_waiting: 1,
+      passes_on_hold: 2,
+    });
+  });
+});
 
 describe('driver duty', () => {
   it('reports 15 minutes before the first stop', () => {

@@ -4,7 +4,7 @@ import { In, Repository } from 'typeorm';
 import { AppException } from '@app/common';
 import { User } from '../users/entities/user.entity';
 import { FULL_ACCESS_ROLES, PERMISSION_CATALOG, roleConflict, ROLES } from './access.catalog';
-import { AppSection, OFFICE_APP_ROLES, Role } from './entities/role.entity';
+import { AppSection, OFFICE_APP_ROLES, Role, TRANSPORT_APP_ROLES } from './entities/role.entity';
 import { Permission } from './entities/permission.entity';
 
 export interface UserAccess {
@@ -14,7 +14,7 @@ export interface UserAccess {
   apps: AppSection[];
 }
 
-const APP_ORDER: AppSection[] = ['admin', 'staff', 'parent', 'driver', 'office'];
+const APP_ORDER: AppSection[] = ['admin', 'staff', 'parent', 'driver', 'office', 'transport'];
 
 @Injectable()
 export class AccessService {
@@ -87,5 +87,9 @@ export class AccessService {
 }
 
 export function opensApp(role: Role, app: AppSection): boolean {
-  return role.app === app || (app === 'office' && OFFICE_APP_ROLES.includes(role.code));
+  return (
+    role.app === app ||
+    (app === 'office' && OFFICE_APP_ROLES.includes(role.code)) ||
+    (app === 'transport' && TRANSPORT_APP_ROLES.includes(role.code))
+  );
 }

@@ -48,3 +48,21 @@ export function hoursBetween(from: Date, to: Date | null): number | null {
   if (!to) return null;
   return Math.round(((to.getTime() - from.getTime()) / 3_600_000) * 10) / 10;
 }
+
+export function studentsTodaySummary(input: {
+  riders: number;
+  away: { pickup: boolean; drop: boolean }[];
+  earlyLeaves: ('approved' | 'released')[];
+  onHold: number;
+}) {
+  const allDay = input.away.filter((item) => item.pickup && item.drop).length;
+  return {
+    riders: input.riders,
+    coming: input.riders - allDay,
+    away_pickup: input.away.filter((item) => item.pickup).length,
+    away_drop: input.away.filter((item) => item.drop).length,
+    early_leave: input.earlyLeaves.filter((status) => status === 'released').length,
+    early_leave_waiting: input.earlyLeaves.filter((status) => status === 'approved').length,
+    passes_on_hold: input.onHold,
+  };
+}

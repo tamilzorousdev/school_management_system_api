@@ -17,6 +17,7 @@ import { DriverStudentsService } from './driver-students.service';
 import { BusOptOut, BusPickupPerson, DriverDuty, TransportIncident } from './entities/driver-ops.entity';
 import { IncidentsService } from './incidents.service';
 import { OperationsService } from './operations.service';
+import { StudentsTodayService } from './students-today.service';
 
 @Module({
   imports: [
@@ -28,6 +29,14 @@ import { OperationsService } from './operations.service';
     StudentLifecycleModule,
   ],
   controllers: [MobileDriverOpsController, MobileParentBusRequestsController, AdminTransportOpsController],
-  providers: [DriverDutyService, IncidentsService, BusRequestsService, OperationsService, DriverStudentsService],
+  providers: [
+    DriverDutyService,
+    IncidentsService,
+    BusRequestsService,
+    OperationsService,
+    DriverStudentsService,
+    StudentsTodayService,
+  ],
+  exports: [OperationsService, StudentsTodayService],
 })
 export class DriverOpsModule {}

@@ -60,6 +60,6 @@ import { MobileDriverProfileController } from './mobile-driver-profile.controlle
     DriverRatingsService,
     BusPassService,
   ],
-  exports: [VehiclesService, RoutesService, DriverRatingsService, BusPassService],
+  exports: [VehiclesService, RoutesService, DriverRatingsService, BusPassService, VehicleDocumentsService],
 })
 export class TransportModule {}

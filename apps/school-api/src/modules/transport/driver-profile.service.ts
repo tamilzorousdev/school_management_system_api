@@ -9,6 +9,7 @@ import { Staff } from '../staff/entities/staff.entity';
 import { User } from '../users/entities/user.entity';
 import { DriverProfileDto, UpdateDriverProfileDto } from './dto/driver-profile.dto';
 import { Vehicle } from './entities/vehicle.entity';
+import { VehicleDocumentsService } from './vehicle-documents.service';
 import { VehiclesService } from './vehicles.service';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class DriverProfileService {
     @InjectRepository(Vehicle) private readonly vehicles: Repository<Vehicle>,
     private readonly crew: CrewService,
     private readonly fleet: VehiclesService,
+    private readonly vehicleDocuments: VehicleDocumentsService,
     private readonly files: FilesService,
     private readonly dataSource: DataSource,
   ) {}
@@ -31,10 +33,16 @@ export class DriverProfileService {
       ],
       order: { id: 'ASC' },
     });
+    if (!bus) return { me, duty_message: dutyMessage(me), vehicle: null, vehicle_documents: [] };
+    const [vehicle, documents] = await Promise.all([
+      this.fleet.get(staff.school_id, bus.id),
+      this.vehicleDocuments.list(staff.school_id, bus.id),
+    ]);
     return {
       me,
       duty_message: dutyMessage(me),
-      vehicle: bus ? await this.fleet.get(staff.school_id, bus.id) : null,
+      vehicle,
+      vehicle_documents: documents.filter((document) => document.current),
     };
   }
 

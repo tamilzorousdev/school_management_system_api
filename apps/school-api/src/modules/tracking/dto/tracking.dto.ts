@@ -648,8 +648,13 @@ export class StopActionInputDto {
 }
 
 export class TripSweepInputDto {
-  @ApiProperty({ example: 812, description: 'Photo of the empty bus, uploaded first with POST /files' })
+  @ApiPropertyOptional({
+    example: 812,
+    description:
+      'Photo of the empty bus, uploaded first with POST /files. Optional: the "Bus is empty" answer is enough',
+  })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
-  photo_file_id: number;
+  photo_file_id?: number;
 }

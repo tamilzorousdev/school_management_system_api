@@ -669,3 +669,104 @@ export class BusAttendanceRowDto {
   })
   mismatch: boolean;
 }
+
+export class TodayAwayDto {
+  @ApiProperty({ enum: ['leave', 'half_day', 'od', 'absent', 'no_bus', 'early_leave'], example: 'leave' })
+  reason: string;
+
+  @ApiProperty({ example: 'On leave' })
+  note: string;
+}
+
+export class TodayRiderDto {
+  @ApiProperty({ type: RefDto })
+  student: RefDto;
+
+  @ApiProperty({ nullable: true, type: String, example: 'TZMS-2024-0004' })
+  admission_no: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: '10 - A' })
+  class_section: string | null;
+
+  @ApiProperty({ type: RefDto })
+  route: RefDto;
+
+  @ApiProperty({ type: RefDto, nullable: true, description: 'The bus running the route that day (a swap counts)' })
+  bus: RefDto | null;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Anna Nagar West depot' })
+  stop: string | null;
+}
+
+export class TodayEarlyLeaveDto extends TodayRiderDto {
+  @ApiProperty({ enum: ['approved', 'released'], description: 'approved: waiting at the gate; released: gone home' })
+  status: 'approved' | 'released';
+
+  @ApiProperty({ nullable: true, type: String, example: 'Lakshmi' })
+  pickup_name: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Mother' })
+  pickup_relation: string | null;
+
+  @ApiProperty({ example: 'Fever' })
+  reason: string;
+
+  @ApiProperty({ nullable: true, type: Date })
+  released_at: Date | null;
+}
+
+export class TodayNotComingDto extends TodayRiderDto {
+  @ApiProperty({ type: TodayAwayDto, nullable: true, description: 'Why the child is not on the morning pickup' })
+  pickup: TodayAwayDto | null;
+
+  @ApiProperty({ type: TodayAwayDto, nullable: true, description: 'Why the child is not on the evening drop' })
+  drop: TodayAwayDto | null;
+}
+
+export class TodayOnHoldDto extends TodayRiderDto {
+  @ApiProperty({ nullable: true, type: String, enum: ['fee', 'office'], example: 'fee' })
+  hold_kind: string | null;
+
+  @ApiProperty({ nullable: true, type: String, example: 'Bus fee pending for Term 2' })
+  pass_note: string | null;
+}
+
+export class StudentsTodaySummaryDto {
+  @ApiProperty({ example: 120, description: 'Children with a bus' })
+  riders: number;
+
+  @ApiProperty({ example: 112, description: 'Riders on at least one trip today' })
+  coming: number;
+
+  @ApiProperty({ example: 6 })
+  away_pickup: number;
+
+  @ApiProperty({ example: 9 })
+  away_drop: number;
+
+  @ApiProperty({ example: 2, description: 'Released through the gate' })
+  early_leave: number;
+
+  @ApiProperty({ example: 1, description: 'Gate pass approved, not out of the gate yet' })
+  early_leave_waiting: number;
+
+  @ApiProperty({ example: 3 })
+  passes_on_hold: number;
+}
+
+export class StudentsTodayDto {
+  @ApiProperty({ example: '2026-11-26' })
+  date: string;
+
+  @ApiProperty({ type: StudentsTodaySummaryDto })
+  summary: StudentsTodaySummaryDto;
+
+  @ApiProperty({ type: [TodayEarlyLeaveDto] })
+  early_leaves: TodayEarlyLeaveDto[];
+
+  @ApiProperty({ type: [TodayNotComingDto] })
+  away: TodayNotComingDto[];
+
+  @ApiProperty({ type: [TodayOnHoldDto] })
+  on_hold: TodayOnHoldDto[];
+}

@@ -260,6 +260,18 @@ const TAGS: [string, string][] = [
     'Gate passes waiting in my wings; approve or reject (first answer wins with the class teacher)',
   ],
   [
+    'Mobile · Transport · Module 1: Home & Today',
+    'Transport in-charge home: trips today, SOS, drivers on duty, bus students today (early leave, not coming, passes on hold), papers expiring, fuel and crew leave waiting',
+  ],
+  [
+    'Mobile · Transport · Module 2: Buses & Drivers',
+    'Buses with details and documents; drivers and attendants with licence, documents, experience and parent rating',
+  ],
+  [
+    'Mobile · Transport · Module 3: Safety, Fuel & Crew Leave',
+    'Active SOS with acknowledge, fuel entries to review, and driver and attendant leave requests to approve',
+  ],
+  [
     'Admin · Office',
     'AO office: wings and AO assignment, wing to class to section to student drill-down, full student history, AO monitor',
   ],
@@ -428,7 +440,7 @@ const AUDIENCES: AudienceConfig[] = [
     jsonSlug: 'mobile',
     title: 'Tamilzorous School Management API · Mobile app',
     intro:
-      'Routes for the Flutter app (Parent, Staff, Driver and Office): `/mobile/parent|teacher|driver|office/*`, plus sign-in, `/me` and files.',
+      'Routes for the Flutter app (Parent, Staff, Driver, Office and Transport in-charge): `/mobile/parent|teacher|driver|office|transport/*`, plus sign-in, `/me` and files.',
     owns: /^\/api\/v\d+\/mobile\//,
   },
   {
@@ -470,6 +482,16 @@ const AUDIENCES: AudienceConfig[] = [
       'Routes for the AO (administrative officer) in the mobile app: Modules 1 to 4 (home and wings, classes and students, student history, gate pass approvals), plus sign-in, `/me` and files. A wing AO sees only their wings; the head AO sees the whole school.',
     owns: /^\/api\/v\d+\/mobile\/office\//,
     stripPrefix: 'Mobile · Office · ',
+  },
+  {
+    slug: 'mobile-transport',
+    path: 'api/docs/mobile/transport',
+    jsonSlug: 'mobile-transport',
+    title: 'Tamilzorous School Management API · Mobile · Transport In-charge',
+    intro:
+      'Routes for the transport in-charge in the Transport app: Modules 1 to 3 (home and today, buses and drivers, safety, fuel and crew leave), plus sign-in, `/me`, `/me/staff` (check-in, attendance) and files.',
+    owns: /^\/api\/v\d+\/mobile\/transport\//,
+    stripPrefix: 'Mobile · Transport · ',
   },
 ];
 
@@ -816,6 +838,7 @@ export function setupSwagger(app: INestApplication): void {
     { name: 'Mobile · Parent App (Modules 1 - 11)', url: '/api/docs/mobile-parent-json' },
     { name: 'Mobile · Driver App (Modules 1 - 5)', url: '/api/docs/mobile-driver-json' },
     { name: 'Mobile · Office App (Modules 1 - 4)', url: '/api/docs/mobile-office-json' },
+    { name: 'Mobile · Transport In-charge (Modules 1 - 3)', url: '/api/docs/mobile-transport-json' },
   ];
 
   for (const audience of AUDIENCES) {

@@ -83,8 +83,11 @@ export class SetupController {
   }
 
   @Get('academic-years')
-  @RequirePermissions(VIEW)
-  @ApiOperation({ summary: 'Academic years with their terms, newest first' })
+  @ApiOperation({
+    summary: 'Academic years with their terms, newest first',
+    description:
+      'Open to every signed-in user of the school: the admin web year picker loads it on every page, whatever the role.',
+  })
   @ApiEnvelope(AcademicYearDto, { isArray: true })
   listYears(@SchoolId() schoolId: number) {
     return this.years.list(schoolId);
