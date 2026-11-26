@@ -27,6 +27,8 @@ export const SECTION_LABELS: Record<AppSection, string> = {
   office: 'Office',
 };
 
+export const OFFICE_APP_ROLES = ['AO'];
+
 export function canOpen(app: ClientApp, sections: AppSection[]): boolean {
   if (app === 'mobile') return sections.some((section) => (MOBILE_SECTIONS as readonly string[]).includes(section));
   return sections.includes(app);

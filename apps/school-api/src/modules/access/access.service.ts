@@ -4,7 +4,7 @@ import { In, Repository } from 'typeorm';
 import { AppException } from '@app/common';
 import { User } from '../users/entities/user.entity';
 import { FULL_ACCESS_ROLES, PERMISSION_CATALOG, roleConflict, ROLES } from './access.catalog';
-import { AppSection, Role } from './entities/role.entity';
+import { AppSection, OFFICE_APP_ROLES, Role } from './entities/role.entity';
 import { Permission } from './entities/permission.entity';
 
 export interface UserAccess {
@@ -46,7 +46,7 @@ export class AccessService {
     const permissions = fullAccess
       ? PERMISSION_CATALOG.map((permission) => permission.code)
       : [...new Set(roles.flatMap((role) => (role.permissions ?? []).map((permission) => permission.code)))].sort();
-    const apps = APP_ORDER.filter((app) => roles.some((role) => role.app === app));
+    const apps = APP_ORDER.filter((app) => roles.some((role) => opensApp(role, app)));
     return { user, roles, permissions, apps };
   }
 
@@ -84,4 +84,8 @@ export class AccessService {
     const counts = new Map(rows.map((row) => [Number(row.role_id), Number(row.count)]));
     return roles.map((role) => Object.assign(role, { user_count: counts.get(role.id) ?? 0 }));
   }
+}
+
+export function opensApp(role: Role, app: AppSection): boolean {
+  return role.app === app || (app === 'office' && OFFICE_APP_ROLES.includes(role.code));
 }

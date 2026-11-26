@@ -12,6 +12,7 @@ import {
 import { AcademicYear, AcademicYearStatus } from './entities/academic-year.entity';
 import { Term } from './entities/term.entity';
 import { yearWhere } from '../../shared/year-context';
+import { AlumniRecordsService } from '../alumni/alumni-records.service';
 
 @Injectable()
 export class AcademicYearsService {
@@ -19,6 +20,7 @@ export class AcademicYearsService {
     @InjectRepository(AcademicYear) private readonly years: Repository<AcademicYear>,
     @InjectRepository(Term) private readonly terms: Repository<Term>,
     private readonly dataSource: DataSource,
+    private readonly alumni: AlumniRecordsService,
   ) {}
 
   async list(schoolId: number): Promise<AcademicYearDto[]> {
@@ -210,6 +212,8 @@ export class AcademicYearsService {
   }
 
   private async closeCurrent(manager: EntityManager, schoolId: number, actorId: number): Promise<void> {
+    const current = await manager.findOneBy(AcademicYear, { school_id: schoolId, is_current: true });
+    if (current) await this.alumni.passOut(manager, schoolId, current.id, actorId);
     await manager.update(
       AcademicYear,
       { school_id: schoolId, is_current: true },

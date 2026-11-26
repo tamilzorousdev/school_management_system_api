@@ -28,6 +28,7 @@ import { Student } from './entities/student.entity';
 import { FilesService } from '../files/files.service';
 import { GuardiansService, Invite } from './guardians.service';
 import { viewingYearId, yearClause, yearWhere } from '../../shared/year-context';
+import { wingClause } from '../../shared/wing-context';
 
 type ListedStudent = Student & {
   current?: StudentEnrollment | null;
@@ -172,7 +173,8 @@ export class StudentsService {
       .leftJoinAndMapOne('s.current_section', Section, 'sec', 'sec.id = e.section_id')
       .leftJoinAndSelect('s.guardian_links', 'gl')
       .leftJoinAndSelect('gl.guardian', 'g')
-      .where('s.school_id = :schoolId', { schoolId });
+      .where('s.school_id = :schoolId', { schoolId })
+      .andWhere(wingClause('e.class_id'));
     if (viewingYearId()) qb.andWhere('e.id IS NOT NULL');
 
     if (query.status) qb.andWhere('s.status = :status', { status: query.status });
@@ -281,9 +283,21 @@ export class StudentsService {
       [id],
     );
     const links = (student.guardian_links ?? []).filter((link) => link.guardian && !link.guardian.deleted_at);
+    const [alumni] = (await this.dataSource.query(
+      `SELECT id FROM alumni WHERE school_id = $1 AND student_id = $2 AND deleted_at IS NULL LIMIT 1`,
+      [schoolId, id],
+    )) as { id: number }[];
+    const [noc] = (await this.dataSource.query(
+      `SELECT status FROM student_nocs
+        WHERE school_id = $1 AND student_id = $2 AND status IN ('open', 'cleared') AND deleted_at IS NULL LIMIT 1`,
+      [schoolId, id],
+    )) as { status: 'open' | 'cleared' }[];
 
     return {
       ...this.toListItem(listed, siblings.length, todayIn(this.app.timeZone)),
+      left_on: student.left_on ?? null,
+      alumni_id: alumni ? Number(alumni.id) : null,
+      noc_status: noc?.status ?? null,
       blood_group: student.blood_group,
       address_line: student.address_line,
       city: student.city,
@@ -334,7 +348,13 @@ export class StudentsService {
   }
 
   async update(schoolId: number, id: number, dto: UpdateStudentDto): Promise<StudentDetailDto> {
-    await this.find(schoolId, id);
+    const student = await this.find(schoolId, id);
+    if (dto.status === 'alumni' && student.status !== 'alumni') {
+      throw AppException.badRequest(
+        'Students become alumni automatically: when a TC is issued, or when they pass out of the final class at year close.',
+        'ALUMNI_STATUS_MANAGED',
+      );
+    }
     if (Object.keys(dto).length) await this.students.update(id, dto);
     return this.get(schoolId, id);
   }

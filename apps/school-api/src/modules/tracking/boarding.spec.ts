@@ -94,6 +94,7 @@ describe('riderStatus and tripFlag', () => {
       total: 5,
       away: 1,
       waiting: 1,
+      not_at_stop: 0,
       on_bus: 1,
       off_bus: 2,
       not_boarded: 1,
@@ -132,5 +133,22 @@ describe('missedTheBus', () => {
 
   it('sends nothing when the attendant marked nobody on the trip', () => {
     expect(missedTheBus([rider(1), rider(2)])).toEqual([]);
+  });
+});
+
+describe('not at stop', () => {
+  it('records missed only before the child is on the bus', () => {
+    expect(boardingStep([], 'missed')).toBe('record');
+    expect(boardingStep(['missed'], 'missed')).toBe('duplicate');
+    expect(boardingStep(['boarded'], 'missed')).toBe('already_boarded');
+    expect(boardingStep(['missed'], 'boarded')).toBe('record');
+  });
+
+  it('shows not_at_stop until the child boards, and flags not_boarded at the end', () => {
+    const missed = { boarded: false, alighted: false, away_today: false, missed: true };
+    expect(riderStatus(missed)).toBe('not_at_stop');
+    expect(riderStatus({ ...missed, boarded: true })).toBe('on_bus');
+    expect(tripFlag(missed, true)).toBe('not_boarded');
+    expect(checklistSummary([missed], false).not_at_stop).toBe(1);
   });
 });

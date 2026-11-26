@@ -16,5 +16,6 @@ import {
   imports: [TypeOrmModule.forFeature([GateSettings, GatePass, AuthorisedPickup, GateVisit, GateBlock, GateEvent])],
   controllers: [AdminGateController, MobileGateController, ParentGateController, MeVisitorsController],
   providers: [GateCoreService, GatePassesService, GateVisitsService, GateBoardService],
+  exports: [GatePassesService],
 })
 export class GateModule {}

@@ -491,6 +491,12 @@ export class GateSettingsDto {
   })
   emergency_wait_minutes: number;
 
+  @ApiProperty({
+    example: 30,
+    description: 'A gate pass still waiting after this many minutes goes to the head AO',
+  })
+  office_escalate_minutes: number;
+
   @ApiProperty({ example: true })
   visitor_photo_required: boolean;
 
@@ -518,6 +524,13 @@ export class UpdateGateSettingsDto {
   @Min(2)
   @Max(60)
   emergency_wait_minutes?: number;
+
+  @ApiPropertyOptional({ example: 30 })
+  @ValidateIf(present)
+  @IsInt()
+  @Min(5)
+  @Max(240)
+  office_escalate_minutes?: number;
 
   @ApiPropertyOptional({ example: true })
   @ValidateIf(present)
@@ -775,6 +788,12 @@ export class GatePassDto {
 
   @ApiProperty({ example: false, description: 'Emergency not answered in time; the gate was told to call the office' })
   escalated: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'Still waiting after office_escalate_minutes, so it was sent to the head AO',
+  })
+  escalated_to_head_ao: boolean;
 
   @ApiProperty({
     example: 'TZG1.p.42.1.Xyz',

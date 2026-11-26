@@ -8,6 +8,7 @@ import { seedDemoDay4 } from './demo-day4';
 import { seedDemoDay5 } from './demo-day5';
 import { seedDemoDiary } from './demo-diary';
 import { seedDemoAppraisals } from './demo-appraisals';
+import { seedDemoAlumni } from './demo-alumni';
 import { seedDemoExams } from './demo-exams';
 import { seedDemoFeedback } from './demo-feedback';
 import { seedDemoFees } from './demo-fees';
@@ -18,11 +19,13 @@ import { seedDemoFleet, seedDriverProfiles } from './demo-fleet';
 import { seedDemoCrewAssets, seedDemoInventory } from './demo-inventory';
 import { seedDemoDriverRatings } from './demo-driver-ratings';
 import { seedDemoGate } from './demo-gate';
+import { seedDemoHostel } from './demo-hostel';
 import { seedDemoMaintenance } from './demo-maintenance';
 import { seedDemoSpecialClasses } from './demo-special-classes';
 import { seedDemoSportsOnDuty } from './demo-sports-on-duty';
 import { seedDemoStaff } from './demo-staff';
 import { seedDemoTimetable } from './demo-timetable';
+import { seedDemoWings } from './demo-wings';
 import { runSeed, seedCatalog, upsertUser } from './seed-helpers';
 
 if (process.env.NODE_ENV === 'production') {
@@ -72,4 +75,7 @@ runSeed('Demo seed', async (manager) => {
   await seedDemoInventory(manager, school);
   await seedDemoCrewAssets(manager, school);
   await seedDemoAppraisals(manager, school);
+  await seedDemoWings(manager, school);
+  await seedDemoAlumni(manager, school);
+  await seedDemoHostel(manager, school);
 });

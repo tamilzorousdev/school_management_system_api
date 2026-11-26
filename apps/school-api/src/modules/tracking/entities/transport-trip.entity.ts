@@ -6,6 +6,9 @@ export type TripKind = (typeof TRIP_KINDS)[number];
 export const TRIP_STATUSES = ['active', 'ended'] as const;
 export type TripStatus = (typeof TRIP_STATUSES)[number];
 
+export const TRIP_TRACKING = ['telematics', 'phone'] as const;
+export type TripTracking = (typeof TRIP_TRACKING)[number];
+
 export const STOP_STATUSES = ['pending', 'approaching', 'arrived', 'departed', 'skipped'] as const;
 export type StopStatus = (typeof STOP_STATUSES)[number];
 
@@ -50,8 +53,11 @@ export class TransportTrip {
   @Column({ type: 'int' })
   vehicle_id: number;
 
-  @Column({ type: 'int' })
-  device_id: number;
+  @Column({ type: 'int', nullable: true })
+  device_id: number | null;
+
+  @Column({ type: 'varchar', length: 10, default: 'telematics' })
+  tracking: TripTracking;
 
   @Column({ type: 'varchar', length: 10 })
   kind: TripKind;
@@ -110,6 +116,15 @@ export class TransportTrip {
 
   @Column({ type: 'numeric', precision: 8, scale: 1, nullable: true })
   gps_km: string | null;
+
+  @Column({ type: 'int', nullable: true })
+  sweep_photo_id: number | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  swept_at: Date | null;
+
+  @Column({ type: 'int', nullable: true })
+  swept_by: number | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   gps_checked_at: Date | null;

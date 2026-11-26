@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
@@ -25,12 +25,14 @@ export class CreateExamHallDto {
 
   @ApiPropertyOptional({ example: 'Block A' })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() === '' ? undefined : value))
   @IsString()
   @Length(1, 80)
   building?: string;
 
   @ApiPropertyOptional({ example: 'Ground Floor' })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() === '' ? undefined : value))
   @IsString()
   @Length(1, 50)
   floor?: string;
@@ -70,12 +72,14 @@ export class UpdateExamHallDto {
 
   @ApiPropertyOptional({ example: 'Block A' })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() === '' ? undefined : value))
   @IsString()
   @Length(1, 80)
   building?: string;
 
   @ApiPropertyOptional({ example: 'Ground Floor' })
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() === '' ? undefined : value))
   @IsString()
   @Length(1, 50)
   floor?: string;

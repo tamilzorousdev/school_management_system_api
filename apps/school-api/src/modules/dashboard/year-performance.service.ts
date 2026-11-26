@@ -57,7 +57,7 @@ export class YearPerformanceService {
     return this.rows(
       `SELECT e.academic_year_id AS year_id,
               COUNT(DISTINCT e.student_id)::int AS enrolled,
-              COUNT(*) FILTER (WHERE e.status = 'promoted')::int AS promoted,
+              COUNT(*) FILTER (WHERE e.status IN ('promoted', 'completed'))::int AS promoted,
               COUNT(*) FILTER (WHERE e.status = 'left')::int AS left_school
        FROM student_enrollments e
        JOIN students s ON s.id = e.student_id AND s.deleted_at IS NULL

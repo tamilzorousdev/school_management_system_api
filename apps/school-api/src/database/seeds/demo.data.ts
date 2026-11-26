@@ -26,9 +26,7 @@ export const DEMO_SCHOOL: Partial<School> = {
 export const DEMO_SCHOOL_USERS: SeedUser[] = [
   { name: 'School Admin', mobile: '9876543210', roles: [ROLES.ADMIN] },
   { name: 'Meenakshi Sundaram', mobile: '9000000001', roles: [ROLES.PRINCIPAL] },
-  // Both roles: the AO runs the office in the admin web and on the SMS
-  // Office phone app, and a role carries exactly one app.
-  { name: 'Karthik Raman', mobile: '9000000002', roles: [ROLES.AO, ROLES.OFFICE] },
+  { name: 'Karthik Raman', mobile: '9000000002', roles: [ROLES.AO] },
   { name: 'Selvam Murugan', mobile: '9000000003', roles: [ROLES.TRANSPORT_INCHARGE] },
   { name: 'Priya Venkatesh', mobile: '9000000004', roles: [ROLES.TEACHER, ROLES.HOD] },
   { name: 'Lakshmi Narayanan', mobile: '9000000005', roles: [ROLES.PARENT], language: 'ta' },
@@ -39,4 +37,12 @@ export const DEMO_SCHOOL_USERS: SeedUser[] = [
   { name: 'Divya Shankar', mobile: '9000000010', roles: [ROLES.ACCOUNTANT] },
   { name: 'Muniyandi Raja', mobile: '9000000011', roles: [ROLES.GATE_INCHARGE], language: 'ta' },
   { name: 'Muthu Kumar', mobile: '9000000012', roles: [ROLES.STORE_KEEPER] },
+  { name: 'Meena Rajan', mobile: '9000000013', roles: [ROLES.AO] },
+  { name: 'Ravi Shankar', mobile: '9000000014', roles: [ROLES.AO] },
+  { name: 'Senthil Nathan', mobile: '9000000019', roles: [ROLES.WARDEN] },
+  { name: 'Kavitha Ramesh', mobile: '9000000020', roles: [ROLES.ASSISTANT_WARDEN] },
+  { name: 'Saranya Devi', mobile: '9000000021', roles: [ROLES.AO] },
+  { name: 'Gopal Krishnan', mobile: '9000000022', roles: [ROLES.AO] },
+  { name: 'Hema Malini', mobile: '9000000023', roles: [ROLES.AO] },
+  { name: 'Suresh Babu', mobile: '9000000024', roles: [ROLES.AO] },
 ];

@@ -1075,6 +1075,9 @@ export class QuizzesService {
     let attendedCount = 0;
     let totalScoreSum = 0;
     let highestScore = 0;
+    let lowestScore = Infinity;
+    let passCount = 0;
+    let failCount = 0;
 
     const studentRoster = enrolledStudents.map((st) => {
       const sub = subMap.get(st.id);
@@ -1085,8 +1088,12 @@ export class QuizzesService {
         status = sub.status;
         if (sub.status === 'completed') {
           completedCount++;
-          totalScoreSum += Number(sub.score);
-          if (Number(sub.score) > highestScore) highestScore = Number(sub.score);
+          const score = Number(sub.score);
+          totalScoreSum += score;
+          if (score > highestScore) highestScore = score;
+          if (score < lowestScore) lowestScore = score;
+          if (sub.passed) passCount++;
+          else failCount++;
         } else if (sub.status === 'in_progress') {
           inProgressCount++;
         }
@@ -1109,26 +1116,47 @@ export class QuizzesService {
       };
     });
 
+    if (lowestScore === Infinity) lowestScore = 0;
     const averageScore = completedCount > 0 ? Math.round((totalScoreSum / completedCount) * 10) / 10 : 0;
+    const passRate =
+      quiz.pass_marks === null ? null : completedCount > 0 ? Math.round((passCount / completedCount) * 100) : 0;
 
     const questionStats = (quiz.questions ?? []).map((q) => {
       const qAnswers = answers.filter((a) => a.question_id === q.id);
       const correctCount = qAnswers.filter((a) => a.is_correct).length;
       const totalAnswers = qAnswers.length;
-      const accuracyPercent = totalAnswers > 0 ? Math.round((correctCount / totalAnswers) * 100) : 0;
+      const successRate = totalAnswers > 0 ? Math.round((correctCount / totalAnswers) * 100) : 0;
 
       return {
         question_id: q.id,
         sequence: q.sequence,
         question_text: q.question_text,
+        marks: Number(q.marks),
         correct_option: q.correct_option,
         total_answers: totalAnswers,
+        total_attempts: totalAnswers,
         correct_count: correctCount,
-        accuracy_percent: accuracyPercent,
+        accuracy_percent: successRate,
+        success_rate: successRate,
       };
     });
 
     return {
+      quiz_id: quiz.id,
+      title: quiz.title,
+      total_students: enrolledStudents.length,
+      total_submissions: subs.length,
+      completed_count: completedCount,
+      expired_count: expiredCount,
+      average_score: averageScore,
+      highest_score: highestScore,
+      lowest_score: lowestScore,
+      pass_count: passCount,
+      fail_count: failCount,
+      pass_percentage: passRate,
+      question_stats: questionStats,
+
+      // Nested metadata for any consumers
       quiz: {
         id: quiz.id,
         title: quiz.title,
@@ -1152,12 +1180,8 @@ export class QuizzesService {
         expired_count: expiredCount,
         average_score: averageScore,
         highest_score: highestScore,
-        pass_percent:
-          quiz.pass_marks === null
-            ? null
-            : completedCount > 0
-              ? Math.round((studentRoster.filter((r) => r.passed).length / completedCount) * 100)
-              : 0,
+        lowest_score: lowestScore,
+        pass_percent: passRate,
       },
       students: studentRoster,
       questions: questionStats,

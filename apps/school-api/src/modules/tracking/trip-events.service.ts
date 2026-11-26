@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { STOP_FOR_TRIP_SQL } from '../transport/transport.logic';
 import { InjectRepository } from '@nestjs/typeorm';
+import { WingScopeService } from '../office/wing-scope.service';
 import { DataSource, Repository } from 'typeorm';
 import { AppException } from '@app/common';
 import { appConfig, AppConfig, telematicsConfig, TelematicsConfig } from '../../config/configuration';
@@ -8,12 +9,13 @@ import { VehicleFaultEvent } from '../fleet-ops/fleet-ops.logic';
 import { MaintenanceService } from '../fleet-ops/maintenance.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BoardingChecklistService } from './boarding-checklist.service';
-import { TransportTrip, TripPosition } from './entities/transport-trip.entity';
+import { TransportTrip, TripPosition, TripStop } from './entities/transport-trip.entity';
+import { StopAction } from './dto/tracking.dto';
 import { TripEvent, TripEventType } from './entities/trip-event.entity';
 import { TelematicsAlertEvent } from './fleet-alerts.logic';
 import { FleetAlertsService } from './fleet-alerts.service';
 import { LiveGateway } from './live.gateway';
-import { applyStopEvent, minutesFrom, signatureValid } from './tracking.logic';
+import { applyStopEvent, minutesFrom, plannedGapSeconds, signatureValid } from './tracking.logic';
 import { TripsService } from './trips.service';
 
 export interface TelematicsEvent {
@@ -41,6 +43,7 @@ export class TripEventsService {
     private readonly alerts: FleetAlertsService,
     private readonly maintenance: MaintenanceService,
     private readonly dataSource: DataSource,
+    private readonly wings: WingScopeService,
     @Inject(telematicsConfig.KEY) private readonly config: TelematicsConfig,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
@@ -142,6 +145,87 @@ export class TripEventsService {
     });
   }
 
+  async phoneStarted(trip: TransportTrip): Promise<void> {
+    if (trip.tracking !== 'phone') return;
+    await this.handle(trip, this.localEvent(trip, 'trip.started', null));
+  }
+
+  async afterManualEnd(trip: TransportTrip, reason: string): Promise<void> {
+    await this.handle(trip, { ...this.localEvent(trip, 'trip.ended', null), end_reason: reason });
+  }
+
+  async phonePosition(trip: TransportTrip, position: TripPosition): Promise<void> {
+    await this.handle(trip, { ...this.localEvent(trip, 'trip.position', null), at: position.recorded_at, position });
+  }
+
+  async driverStop(trip: TransportTrip, stopId: number, action: StopAction, reason?: string): Promise<void> {
+    if (trip.status !== 'active') throw AppException.conflict('This trip has ended', 'TRIP_ENDED');
+    if (trip.tracking !== 'phone') {
+      throw AppException.conflict('The GPS tracker moves the stops on this bus', 'TRIP_TRACKED_BY_GPS');
+    }
+    const index = trip.stops.findIndex((stop) => stop.stop_id === stopId);
+    if (index < 0) throw AppException.notFound('This stop is not on the trip', 'STOP_NOT_FOUND');
+    const stop = trip.stops[index]!;
+    if (action === 'skipped') {
+      await this.skipStop(trip, index, reason);
+    } else {
+      await this.handle(trip, this.localEvent(trip, action === 'arrived' ? 'stop.arrived' : 'stop.departed', stop));
+    }
+    if (action !== 'arrived') await this.approachNext(trip, index);
+  }
+
+  private async skipStop(trip: TransportTrip, index: number, reason?: string): Promise<void> {
+    const stop = trip.stops[index]!;
+    if (stop.status === 'departed' || stop.status === 'skipped') return;
+    const at = new Date();
+    trip.stops = trip.stops.map((item, position) =>
+      position === index ? { ...item, status: 'skipped' as const, eta_seconds: null } : item,
+    );
+    await this.trips.update(trip.id, { stops: trip.stops });
+    const [info] = await this.dataSource.query(
+      `SELECT v.registration_no, v.name AS bus FROM vehicles v WHERE v.id = $1`,
+      [trip.vehicle_id],
+    );
+    const bus = info ? `${info.bus} (${info.registration_no})` : 'The school bus';
+    const notified = await this.send('BUS_STOP_SKIPPED', await this.parents(trip, stop.stop_id), {
+      bus,
+      stop: stop.name,
+      reason: reason?.trim() ? ` Reason: ${reason.trim()}` : '',
+    }).catch((error: Error) => {
+      this.logger.warn(`Trip ${trip.id} skip notice failed: ${error.message}`);
+      return 0;
+    });
+    this.gateway.event(trip, {
+      type: 'stop.skipped',
+      at: at.toISOString(),
+      stop: { id: stop.stop_id, name: stop.name, sequence: stop.sequence },
+      eta_seconds: null,
+      position: trip.last_position,
+      end_reason: null,
+      notified,
+    });
+  }
+
+  private async approachNext(trip: TransportTrip, index: number): Promise<void> {
+    const next = trip.stops.slice(index + 1).find((stop) => stop.status === 'pending');
+    if (!next) return;
+    await this.handle(trip, {
+      ...this.localEvent(trip, 'stop.approaching', next),
+      eta_seconds: plannedGapSeconds(trip.stops[index]!.planned_time, next.planned_time),
+    });
+  }
+
+  private localEvent(trip: TransportTrip, type: TelematicsEvent['type'], stop: TripStop | null): TelematicsEvent {
+    return {
+      type,
+      at: new Date().toISOString(),
+      trip: { id: 0, ref: '', device_id: 0, kind: trip.kind },
+      stop: stop ? { ref: String(stop.stop_id), name: stop.name, sequence: stop.sequence } : null,
+      eta_seconds: null,
+      position: null,
+    };
+  }
+
   private async notify(trip: TransportTrip, event: TelematicsEvent, stopId: number | null, at: Date): Promise<number> {
     const [info] = await this.dataSource.query(
       `SELECT v.registration_no, v.name AS bus, r.name AS route FROM vehicles v, transport_routes r WHERE v.id = $1 AND r.id = $2`,
@@ -184,13 +268,14 @@ export class TripEventsService {
     }
     const missing = (await this.tripsService.riders(trip)).filter((rider) => !rider.boarded && !rider.away_today);
     if (!missing.length) return 0;
-    const teachers: { student_id: number; class_teacher_user_id: number | null }[] = await this.dataSource.query(
-      `SELECT e.student_id, sec.class_teacher_user_id FROM student_enrollments e
+    const teachers: { student_id: number; class_id: number; class_teacher_user_id: number | null }[] =
+      await this.dataSource.query(
+        `SELECT e.student_id, e.class_id, sec.class_teacher_user_id FROM student_enrollments e
        JOIN sections sec ON sec.id = e.section_id
        JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current
        WHERE e.student_id = ANY($1)`,
-      [missing.map((rider) => rider.student_id)],
-    );
+        [missing.map((rider) => rider.student_id)],
+      );
     const bySection = new Map<number, { section: string; names: string[] }>();
     for (const rider of missing) {
       const teacher = teachers.find((row) => Number(row.student_id) === rider.student_id)?.class_teacher_user_id;
@@ -208,7 +293,35 @@ export class TripEventsService {
         names: group.names.join(', '),
       });
     }
+    sent += await this.tellWingAos(trip, bus, missing, teachers);
     await this.trips.update(trip.id, { not_boarded_sent_at: new Date() });
+    return sent;
+  }
+
+  private async tellWingAos(
+    trip: TransportTrip,
+    bus: string,
+    missing: { student_id: number; full_name: string; class_section?: string | null }[],
+    enrolments: { student_id: number; class_id: number }[],
+  ): Promise<number> {
+    const byAo = new Map<number, string[]>();
+    for (const rider of missing) {
+      const classId = enrolments.find((row) => Number(row.student_id) === rider.student_id)?.class_id;
+      if (!classId) continue;
+      const aos = await this.wings.aoUsersForClass(trip.school_id, Number(classId));
+      const label = rider.class_section ? `${rider.full_name} (${rider.class_section})` : rider.full_name;
+      for (const ao of aos) byAo.set(ao, [...(byAo.get(ao) ?? []), label]);
+    }
+    let sent = 0;
+    for (const [aoId, names] of byAo) {
+      sent += await this.send('TRIP_NOT_BOARDED', [aoId], {
+        bus,
+        section: 'your wing',
+        count: String(names.length),
+        names: names.join(', '),
+        role: 'office',
+      });
+    }
     return sent;
   }
 
