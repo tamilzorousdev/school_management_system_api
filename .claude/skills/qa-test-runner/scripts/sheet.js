@@ -16,6 +16,8 @@ const ALIASES = {
   actual: ['actual', 'actual result', 'observed'],
   remarks: ['remarks', 'comments', 'notes', 'defect', 'bug'],
   by: ['tested by', 'executed by', 'tester'],
+  outcome: ['unit test / bug', 'unit test or bug'],
+  cause: ['bug cause', 'cause of bug', 'defect cause'],
   on: ['tested on', 'executed on', 'date', 'test date', 'execution date'],
 }
 const norm = (v) => String(v?.text ?? v?.result ?? v ?? '').replace(/\s+/g, ' ').trim()
@@ -41,6 +43,24 @@ async function open(file) {
 function arg(name, def) {
   const i = process.argv.indexOf('--' + name)
   return i > 0 ? process.argv[i + 1] : def
+}
+
+const OUTCOME_TITLE = 'Unit Test / Bug'
+const CAUSE_TITLE = 'Bug Cause'
+const isFail = (st) => /^fail/i.test(st)
+const outcomeFor = (st) => (isFail(st) ? 'Bug' : /^pass/i.test(st) ? 'Unit test done' : '')
+
+function ensureColumn(ws, d, key, title) {
+  if (d.map[key]) return
+  const headerRow = ws.getRow(d.header)
+  const col = Math.max(...Object.values(d.map), headerRow.cellCount, ws.columnCount) + 1
+  const cell = headerRow.getCell(col)
+  const left = headerRow.getCell(col - 1)
+  cell.value = title
+  cell.style = { ...left.style }
+  ws.getColumn(col).width = key === 'cause' ? 60 : 18
+  headerRow.commit()
+  d.map[key] = col
 }
 
 const cut = (s, n) => (s.length > n ? s.slice(0, n) + '…' : s)
@@ -116,7 +136,7 @@ async function main() {
     const planned = []
     const rejected = []
     for (const line of results) {
-      const [ref, rawStatus = '', actual = '', remarks = '', id = ''] = line.split('\t')
+      const [ref, rawStatus = '', actual = '', remarks = '', id = '', cause = ''] = line.split('\t')
       const status = VALID.find((v) => v.toLowerCase() === rawStatus.trim().toLowerCase())
       const [sn, rs] = (ref || '').split('!')
       const ws = wb.getWorksheet(sn)
@@ -135,9 +155,10 @@ async function main() {
       if (!pending(current) && !force) { reject(`already has status "${current}" (use --force to overwrite)`); continue }
       if (!actual.trim()) { reject('actual result is empty'); continue }
       if ((status === 'Fail' || status === 'Fail (code)' || status === 'Blocked') && !remarks.trim()) { reject('Fail and Blocked need a remark (cause, repro or blocking id)'); continue }
+      if (isFail(status) && !cause.trim()) { reject('Fail needs a cause (6th column): product defect, wrong test or data issue, with file:line'); continue }
       if (/^pass \(code\)$/i.test(status) && !/code|inspect/i.test(actual + remarks)) { reject('Pass (code) must say it was a code inspection') ; continue }
       seen.add(ref)
-      planned.push({ ref, row, d, status, actual: actual.trim(), remarks: remarks.trim(), sheetId })
+      planned.push({ ref, row, d, ws, status, actual: actual.trim(), remarks: remarks.trim(), cause: cause.trim(), sheetId })
     }
     rejected.forEach((m) => console.error('REJECTED ' + m))
     if (dry) {
@@ -146,6 +167,12 @@ async function main() {
       return
     }
     for (const p of planned) {
+      ensureColumn(p.ws, p.d, 'outcome', OUTCOME_TITLE)
+      ensureColumn(p.ws, p.d, 'cause', CAUSE_TITLE)
+    }
+    for (const p of planned) {
+      p.row.getCell(p.d.map.outcome).value = outcomeFor(p.status)
+      p.row.getCell(p.d.map.cause).value = isFail(p.status) ? p.cause : ''
       p.row.getCell(p.d.map.status).value = p.status
       if (p.d.map.actual) p.row.getCell(p.d.map.actual).value = p.actual
       if (p.d.map.remarks && p.remarks) p.row.getCell(p.d.map.remarks).value = p.remarks
@@ -160,7 +187,7 @@ async function main() {
       const ws = check.getWorksheet(p.ref.split('!')[0])
       const d = detect(ws)
       const row = ws.getRow(Number(p.ref.split('!')[1]))
-      const ok = norm(row.getCell(d.map.id).value) === p.sheetId && norm(row.getCell(d.map.status).value) === p.status && (!d.map.actual || norm(row.getCell(d.map.actual).value) === p.actual)
+      const ok = norm(row.getCell(d.map.id).value) === p.sheetId && norm(row.getCell(d.map.status).value) === p.status && (!d.map.actual || norm(row.getCell(d.map.actual).value) === p.actual) && d.map.outcome && norm(row.getCell(d.map.outcome).value) === outcomeFor(p.status) && (!isFail(p.status) || norm(row.getCell(d.map.cause).value) === p.cause)
       if (!ok) { bad++; console.error('VERIFY FAILED ' + p.ref) }
     }
     console.log(`updated ${planned.length} rows, rejected ${rejected.length}, verified after save ${planned.length - bad}/${planned.length}; backup at ${backup}`)
@@ -180,11 +207,11 @@ async function main() {
         const st = d.map.status ? norm(row.getCell(d.map.status).value) : ''
         const key = st || '(untested)'
         total[key] = (total[key] || 0) + 1
-        if (/^fail/i.test(st)) open.push([`${ws.name}!${r}`, id, d.map.priority ? norm(row.getCell(d.map.priority).value) : '', d.map.actual ? cut(norm(row.getCell(d.map.actual).value), 100) : '', d.map.remarks ? cut(norm(row.getCell(d.map.remarks).value), 160) : ''].join('\t'))
+        if (/^fail/i.test(st)) open.push([`${ws.name}!${r}`, id, d.map.priority ? norm(row.getCell(d.map.priority).value) : '', d.map.actual ? cut(norm(row.getCell(d.map.actual).value), 100) : '', d.map.cause ? cut(norm(row.getCell(d.map.cause).value), 160) : (d.map.remarks ? cut(norm(row.getCell(d.map.remarks).value), 160) : '')].join('\t'))
       }
     }
     console.log('status counts: ' + JSON.stringify(total))
-    if (open.length) { console.log('failures (ref, id, priority, actual, remarks):'); open.forEach((l) => console.log(l)) }
+    if (open.length) { console.log('bugs (ref, id, priority, actual, cause):'); open.forEach((l) => console.log(l)) }
   }
 }
 main().catch((e) => { console.error(e.message); process.exit(1) })

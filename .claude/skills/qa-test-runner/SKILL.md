@@ -37,7 +37,14 @@ If `info` finds no header, the column names are unusual: look at the first 6 row
    - **Web case:** first check `e2e/` in the web repo (folder from `node .claude/skills/fullstack-feature/scripts/paths.js`, line `web=`) for an existing script that covers it (`npm run test:regression` is available). Otherwise inspect the code: grep the screen text, route, validation and API call in `<web>/src/features/<feature>/` and judge against the expected result. Result is `Pass (code)` or `Fail (code)`; never `Pass` without saying it was a code inspection.
    - **Staff, Parent or Driver app case:** inspect the Flutter code the same way (grep the screen string or route in `<flutter>/packages/`; folder from the same `paths.js`, line `flutter=`). Anything that needs a device, camera, push, GPS or real network is `Not run` with remark "needs device".
 4. Decide the result: `Pass`, `Fail`, `Blocked` (precondition or data missing), `Not run`. On `Fail` open the code once to say why: product defect, wrong test, or data issue; put one line in Remarks with `file:line` when it is a defect.
-5. Write one TSV line per case to a scratch file: `ref<TAB>status<TAB>actual (status code + key result, under 150 chars)<TAB>remarks<TAB>id` (id is the test case id from `next`; always include it). Run `set ... --dry-run` first, fix every REJECTED line, then run `set` for real. Write after every batch so work is never lost.
+5. Write one TSV line per case to a scratch file: `ref<TAB>status<TAB>actual (status code + key result, under 150 chars)<TAB>remarks<TAB>id<TAB>cause` (id is the test case id from `next`; always include it; cause is required on `Fail`, empty otherwise). Run `set ... --dry-run` first, fix every REJECTED line, then run `set` for real. Write after every batch so work is never lost.
+
+## Unit Test / Bug and Bug Cause columns (added by `set`)
+
+`set` creates two columns at the end of the sheet's header row if they are missing, and fills them from the result:
+- `Unit Test / Bug`: `Unit test done` for `Pass` and `Pass (code)`, `Bug` for `Fail` and `Fail (code)`, empty for `Blocked` and `Not run`.
+- `Bug Cause`: required for every Bug. One line: classification (product defect, wrong test, data or environment issue), the cause, and `file:line` for a defect. Empty when not a bug.
+Never add these columns by hand and never rename them; `summary` lists the bugs with their cause.
 
 ## Status validation (enforced by `set`)
 
