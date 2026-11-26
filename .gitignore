@@ -7,3 +7,4 @@ coverage
 uploads
 .env
 fees_module_analysis
+.claude/settings.local.json
