@@ -148,6 +148,7 @@ In every module chapter: `x.3` Features, `x.4` Business rules, `x.5` Role access
 
 ## 6. Rules to remember
 
+- Commits, pull requests and merges use your own git name only. The skills never add Claude or AI attribution lines. Check your git name once: `git config user.name` and `git config user.email` in each repo.
 - Never commit `.claude/settings.local.json` or any file that holds your own paths.
 - Run data-changing tests only on a scratch database.
 - The test sheet is the source of truth: Claude fills result columns only and does not rewrite cases.

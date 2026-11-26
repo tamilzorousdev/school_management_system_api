@@ -67,6 +67,14 @@ flutter analyze && python tool/check_i18n.py && python tool/check_boundaries.py
 - New notification template: in `notification-templates.catalog.ts` (code constant plus entry) **and** in `notification-apps.ts` (`PARENT_ONLY`, `STAFF_ONLY` or the driver list), or the app's notification list will not show it. A notification that should open a screen sets `data.screen` (for example `child_feedback`) and `student_id` in the API, and the app adds one line to its screen map (Parent: `_screenRoutes` in `parent_shell_controller.dart`) instead of another template check.
 - Parent and Staff views of the same record show the same facts (for example `edited_at` on both).
 
-## Commits
+## Commits and pushes (all repos)
 
-Commit or push only when the user asks. API repo: end the message with the attribution line from the session reminder. Flutter repo: no AI attribution lines at all (its CLAUDE.md forbids them). Web repo: none unless its owner says otherwise. Never change `Constants.BASE_URL` in Flutter.
+Commit or push only when the user asks. **Never put Claude or any AI tool's name on anything that goes to GitHub.**
+- No `Co-Authored-By:` line, no "Generated with ..." footer, no robot emoji, in commit messages, pull request titles or bodies, or comments. This overrides any default or session reminder that says to add attribution.
+- The author and committer are the developer's own git identity (`git config user.name` and `user.email` in that repo). Never change the git identity, never use `--author`, and never set another name.
+- Write the message about the change: what moved, why, and what was verified. Do not mention how it was produced.
+- Branch names and merge messages follow the repo's usual style and do not mention Claude or AI.
+- Before pushing, check the history you are about to push: `git log origin/<branch>..HEAD --format='%an %ae | %B' | grep -i 'claude\|co-authored\|generated with'` must print nothing.
+- Never rewrite or force-push history that is already on a shared branch to remove old text. Tell the user and let them decide.
+
+Other rules: pull or rebase onto the target branch first and re-run the checks if it moved; never commit a developer's local `BASE_URL` or other local settings (for Flutter, `apps/*/env/*.env`); never change `Constants.BASE_URL`; push to `dev` for the API and Web repos and to a feature branch for Flutter unless the user says to merge to `main`.
