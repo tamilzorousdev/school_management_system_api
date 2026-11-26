@@ -49,7 +49,7 @@ const pending = (st) => !st || /^(not run|not tested|todo|pending|blocked|n\/a)?
 async function main() {
   const [cmd, file] = process.argv.slice(2)
   if (!cmd || !file) {
-    console.log('usage: node sheet.js info|next|set <xlsx> [--sheet S] [--module M] [--app A] [--n 20] [--results file.tsv]')
+    console.log('usage: node sheet.js info|next|set|summary <xlsx> [--sheet S] [--module M] [--app A] [--n 20] [--results file.tsv] [--dry-run] [--force]')
     process.exit(1)
   }
   const wb = await open(file)
@@ -105,28 +105,86 @@ async function main() {
   }
 
   if (cmd === 'set') {
-    const results = fs.readFileSync(arg('results'), 'utf8').split('\n').filter(Boolean)
+    const VALID = ['Pass', 'Fail', 'Blocked', 'Not run', 'Pass (code)', 'Fail (code)']
+    const dry = process.argv.includes('--dry-run')
+    const force = process.argv.includes('--force')
+    const results = fs.readFileSync(arg('results'), 'utf8').split('\n').filter((l) => l.trim())
     const backup = path.join(os.tmpdir(), 'qa-backup-' + path.basename(file))
     if (!fs.existsSync(backup)) fs.copyFileSync(file, backup)
     const today = new Date().toISOString().slice(0, 10)
-    let done = 0
+    const seen = new Set()
+    const planned = []
+    const rejected = []
     for (const line of results) {
-      const [ref, status, actual = '', remarks = ''] = line.split('\t')
-      const [sn, rs] = ref.split('!')
+      const [ref, rawStatus = '', actual = '', remarks = '', id = ''] = line.split('\t')
+      const status = VALID.find((v) => v.toLowerCase() === rawStatus.trim().toLowerCase())
+      const [sn, rs] = (ref || '').split('!')
       const ws = wb.getWorksheet(sn)
       const d = ws && detect(ws)
-      if (!d || !d.map.status) { console.error('skip ' + ref); continue }
-      const row = ws.getRow(Number(rs))
-      row.getCell(d.map.status).value = status
-      if (d.map.actual) row.getCell(d.map.actual).value = actual
-      if (d.map.remarks && remarks) row.getCell(d.map.remarks).value = remarks
-      if (d.map.by) row.getCell(d.map.by).value = 'Claude (QA skill)'
-      if (d.map.on) row.getCell(d.map.on).value = today
-      row.commit()
-      done++
+      const reject = (why) => rejected.push(`${ref}: ${why}`)
+      if (!d || !d.map.status) { reject('sheet or status column not found'); continue }
+      if (!status) { reject(`status "${rawStatus}" must be one of ${VALID.join(', ')}`); continue }
+      const rowNo = Number(rs)
+      if (!Number.isInteger(rowNo) || rowNo <= d.header || rowNo > ws.rowCount) { reject('row out of range'); continue }
+      if (seen.has(ref)) { reject('duplicate ref in results'); continue }
+      const row = ws.getRow(rowNo)
+      const sheetId = norm(row.getCell(d.map.id).value)
+      if (!sheetId) { reject('row has no test case id'); continue }
+      if (id && id.trim() !== sheetId) { reject(`id mismatch: results say "${id.trim()}", sheet row has "${sheetId}"`); continue }
+      const current = norm(row.getCell(d.map.status).value)
+      if (!pending(current) && !force) { reject(`already has status "${current}" (use --force to overwrite)`); continue }
+      if (!actual.trim()) { reject('actual result is empty'); continue }
+      if ((status === 'Fail' || status === 'Fail (code)' || status === 'Blocked') && !remarks.trim()) { reject('Fail and Blocked need a remark (cause, repro or blocking id)'); continue }
+      if (/^pass \(code\)$/i.test(status) && !/code|inspect/i.test(actual + remarks)) { reject('Pass (code) must say it was a code inspection') ; continue }
+      seen.add(ref)
+      planned.push({ ref, row, d, status, actual: actual.trim(), remarks: remarks.trim(), sheetId })
     }
-    await wb.xlsx.writeFile(file)
-    console.log(`updated ${done} rows; backup at ${backup}`)
+    rejected.forEach((m) => console.error('REJECTED ' + m))
+    if (dry) {
+      planned.forEach((p) => console.log(`would set ${p.ref} (${p.sheetId}) -> ${p.status}`))
+      console.log(`dry run: ${planned.length} valid, ${rejected.length} rejected; nothing written`)
+      return
+    }
+    for (const p of planned) {
+      p.row.getCell(p.d.map.status).value = p.status
+      if (p.d.map.actual) p.row.getCell(p.d.map.actual).value = p.actual
+      if (p.d.map.remarks && p.remarks) p.row.getCell(p.d.map.remarks).value = p.remarks
+      if (p.d.map.by) p.row.getCell(p.d.map.by).value = 'Claude (QA skill)'
+      if (p.d.map.on) p.row.getCell(p.d.map.on).value = today
+      p.row.commit()
+    }
+    if (planned.length) await wb.xlsx.writeFile(file)
+    const check = await open(file)
+    let bad = 0
+    for (const p of planned) {
+      const ws = check.getWorksheet(p.ref.split('!')[0])
+      const d = detect(ws)
+      const row = ws.getRow(Number(p.ref.split('!')[1]))
+      const ok = norm(row.getCell(d.map.id).value) === p.sheetId && norm(row.getCell(d.map.status).value) === p.status && (!d.map.actual || norm(row.getCell(d.map.actual).value) === p.actual)
+      if (!ok) { bad++; console.error('VERIFY FAILED ' + p.ref) }
+    }
+    console.log(`updated ${planned.length} rows, rejected ${rejected.length}, verified after save ${planned.length - bad}/${planned.length}; backup at ${backup}`)
+    if (bad || rejected.length) process.exitCode = 2
+  }
+
+  if (cmd === 'summary') {
+    const total = {}
+    const open = []
+    for (const ws of sheets) {
+      const d = detect(ws)
+      if (!d) continue
+      for (let r = d.header + 1; r <= ws.rowCount; r++) {
+        const row = ws.getRow(r)
+        const id = norm(row.getCell(d.map.id).value)
+        if (!id) continue
+        const st = d.map.status ? norm(row.getCell(d.map.status).value) : ''
+        const key = st || '(untested)'
+        total[key] = (total[key] || 0) + 1
+        if (/^fail/i.test(st)) open.push([`${ws.name}!${r}`, id, d.map.priority ? norm(row.getCell(d.map.priority).value) : '', d.map.actual ? cut(norm(row.getCell(d.map.actual).value), 100) : '', d.map.remarks ? cut(norm(row.getCell(d.map.remarks).value), 160) : ''].join('\t'))
+      }
+    }
+    console.log('status counts: ' + JSON.stringify(total))
+    if (open.length) { console.log('failures (ref, id, priority, actual, remarks):'); open.forEach((l) => console.log(l)) }
   }
 }
 main().catch((e) => { console.error(e.message); process.exit(1) })

@@ -11,7 +11,8 @@ Test sheets are put by the QA team in `scope_documents/<group>/test-cases/*.xlsx
 Q=.claude/skills/qa-test-runner/scripts
 node $Q/sheet.js info <xlsx>                                  # sheets, header row, detected columns, status and module counts
 node $Q/sheet.js next <xlsx> --module Auth --n 20 [--app A]    # next untested cases, one compact TSV line each
-node $Q/sheet.js set  <xlsx> --results out.tsv                 # write results in one batch (backup goes to the temp folder)
+node $Q/sheet.js set  <xlsx> --results out.tsv [--dry-run]     # validate, write in one batch, re-read to verify (backup goes to the temp folder)
+node $Q/sheet.js summary <xlsx>                                # status counts and the failures with their remarks
 node $Q/call.js <mobile> <METHOD> </path> ['{"json":1}']       # authenticated API call, prints "status compact-json"
 ```
 
@@ -20,6 +21,8 @@ node $Q/call.js <mobile> <METHOD> </path> ['{"json":1}']       # authenticated A
 If `info` finds no header, the column names are unusual: look at the first 6 rows once, then add the names to `ALIASES` at the top of `sheet.js`. Required columns: id, steps or title, expected, status. Optional: module, app, priority, actual, remarks, tested by, tested on.
 
 ## Before the first case
+
+0. Find the sheet: `find scope_documents -name '*.xlsx'`. If none exists, stop and tell the user where to put it; never invent cases.
 
 1. API running and healthy: `curl -s localhost:3000/api/v1/health`. If not, ask the user to start it (`npm run start:dev`); do not start databases or seed anything yourself.
 2. Mutating cases need a scratch database: read `DB_NAME` in `.env`; it must contain `test` or `e2e`. If it does not, run read-only cases only and mark the rest `Blocked` with remark "needs scratch DB".
@@ -34,7 +37,23 @@ If `info` finds no header, the column names are unusual: look at the first 6 row
    - **Web case:** first check `e2e/` in the web repo (folder from `node .claude/skills/fullstack-feature/scripts/paths.js`, line `web=`) for an existing script that covers it (`npm run test:regression` is available). Otherwise inspect the code: grep the screen text, route, validation and API call in `<web>/src/features/<feature>/` and judge against the expected result. Result is `Pass (code)` or `Fail (code)`; never `Pass` without saying it was a code inspection.
    - **Staff, Parent or Driver app case:** inspect the Flutter code the same way (grep the screen string or route in `<flutter>/packages/`; folder from the same `paths.js`, line `flutter=`). Anything that needs a device, camera, push, GPS or real network is `Not run` with remark "needs device".
 4. Decide the result: `Pass`, `Fail`, `Blocked` (precondition or data missing), `Not run`. On `Fail` open the code once to say why: product defect, wrong test, or data issue; put one line in Remarks with `file:line` when it is a defect.
-5. Write one TSV line per case to a scratch file: `ref<TAB>status<TAB>actual (status code + key result, under 150 chars)<TAB>remarks`, then `set` them. Write after every batch so work is never lost.
+5. Write one TSV line per case to a scratch file: `ref<TAB>status<TAB>actual (status code + key result, under 150 chars)<TAB>remarks<TAB>id` (id is the test case id from `next`; always include it). Run `set ... --dry-run` first, fix every REJECTED line, then run `set` for real. Write after every batch so work is never lost.
+
+## Status validation (enforced by `set`)
+
+- Status is exactly one of `Pass`, `Fail`, `Blocked`, `Not run`, `Pass (code)`, `Fail (code)`.
+- Actual is never empty. `Fail`, `Fail (code)` and `Blocked` need a Remark (cause and repro, or the blocking id). `Pass (code)` must say it was a code inspection.
+- The row's id must match the id in the TSV; a row that already has a result is not overwritten unless the user asked for a re-test (`--force`).
+- After saving, `set` re-reads the file and confirms each row; exit code 2 or any `VERIFY FAILED` line means the batch is not trusted: re-run those rows.
+- Before the final message run `summary` and report its counts, not your memory of them.
+
+## Issues need the user's confirmation before any code change
+
+Testing only records results. When a case fails or reveals a defect:
+1. Record the result and remark in the sheet (that is not a code change).
+2. Never edit product code (API, web, Flutter), tests, seeds, migrations or config on your own, however small the fix looks.
+3. At the end of the batch (or the run), list the defects with id, cause, `file:line` and the proposed fix, then ask the user to confirm which to fix (AskUserQuestion when available). Fix only the confirmed ones, then re-run the failed case and its neighbours and update the sheet.
+4. A wrong test case in the sheet is also reported, not rewritten.
 
 ## Test like a senior tester
 
@@ -47,7 +66,7 @@ If `info` finds no header, the column names are unusual: look at the first 6 row
 ## Rules that keep it cheap and honest
 
 - Never paste full responses or long code into the conversation; `call.js` already trims. Log the evidence in the Actual column instead.
-- Do not re-test rows that already have a status. Do not "fix" the product unless the user asks; record the defect.
+- Do not re-test rows that already have a status. Do not "fix" the product without the user's confirmation; record the defect and ask.
 - A case that depends on a failed earlier case is `Blocked`, with the blocking id in Remarks.
 - Cases that change data (create, approve, delete) run last in their module, so earlier read cases see clean data.
-- Final message: counts of Pass, Fail, Blocked, Not run, the 5 most serious failures (id, one line), and what the user must do for the rest (start the API, scratch DB, device). Nothing else.
+- Final message: counts of Pass, Fail, Blocked, Not run, the 5 most serious failures (id, one line), and the defects awaiting the user's decision to fix (yes/no per defect), and what the user must do for the rest (start the API, scratch DB, device). Nothing else.
