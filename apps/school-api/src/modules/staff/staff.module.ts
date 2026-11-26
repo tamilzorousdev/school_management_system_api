@@ -37,12 +37,7 @@ import { StaffService } from './staff.service';
     AccessModule,
     SignaturesModule,
   ],
-  controllers: [
-    StaffController,
-    TeacherAssignmentsController,
-    StaffAppraisalController,
-    KraConfigController,
-  ],
+  controllers: [StaffController, TeacherAssignmentsController, StaffAppraisalController, KraConfigController],
   providers: [StaffService, AssignmentsService, AppraisalsService, KraConfigService],
   exports: [StaffService, AssignmentsService, AppraisalsService, KraConfigService],
 })

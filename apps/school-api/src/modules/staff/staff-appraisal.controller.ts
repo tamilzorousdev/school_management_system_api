@@ -77,19 +77,13 @@ export class StaffAppraisalController {
   @ResponseMessage('Staff appraisals uploaded and imported')
   @ApiOperation({ summary: 'Bulk upload / import staff appraisals from spreadsheet' })
   @ApiEnvelope(StaffAppraisalDto, { isArray: true })
-  bulkImport(
-    @SchoolId() schoolId: number,
-    @CurrentUser() user: AuthUser,
-    @Body() dtos: StaffAppraisalInputDto[],
-  ) {
+  bulkImport(@SchoolId() schoolId: number, @CurrentUser() user: AuthUser, @Body() dtos: StaffAppraisalInputDto[]) {
     const canManage =
       user.roles.includes(ROLES.SUPER_ADMIN) ||
       user.roles.includes(ROLES.ADMIN) ||
       user.roles.includes(ROLES.PRINCIPAL);
     if (!canManage) {
-      throw AppException.forbidden(
-        'Only an Admin, Super Admin, or Principal can upload or edit appraisals.',
-      );
+      throw AppException.forbidden('Only an Admin, Super Admin, or Principal can upload or edit appraisals.');
     }
     return this.appraisals.bulkImport(schoolId, user, dtos);
   }
@@ -111,9 +105,7 @@ export class StaffAppraisalController {
       user.roles.includes(ROLES.ADMIN) ||
       user.roles.includes(ROLES.PRINCIPAL);
     if (!canManage) {
-      throw AppException.forbidden(
-        'Only an Admin, Super Admin, or Principal can edit appraisals.',
-      );
+      throw AppException.forbidden('Only an Admin, Super Admin, or Principal can edit appraisals.');
     }
     return this.appraisals.update(schoolId, id, dto);
   }
@@ -130,9 +122,7 @@ export class StaffAppraisalController {
       user.roles.includes(ROLES.ADMIN) ||
       user.roles.includes(ROLES.PRINCIPAL);
     if (!canManage) {
-      throw AppException.forbidden(
-        'Only an Admin, Super Admin, or Principal can approve and finalize appraisals.',
-      );
+      throw AppException.forbidden('Only an Admin, Super Admin, or Principal can approve and finalize appraisals.');
     }
     return this.appraisals.finalize(schoolId, id, user);
   }

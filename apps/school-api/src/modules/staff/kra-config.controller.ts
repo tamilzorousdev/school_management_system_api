@@ -1,29 +1,9 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpStatus,
-  Param,
-  ParseIntPipe,
-  Post,
-  Put,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpStatus, Param, ParseIntPipe, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-  ApiEnvelope,
-  ApiErrors,
-  RequirePermissions,
-  ResponseMessage,
-} from '@app/common';
+import { ApiEnvelope, ApiErrors, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS } from '../access/access.catalog';
-import {
-  BulkUpdateKraConfigDto,
-  CreateKraConfigDto,
-  KraConfigDto,
-  UpdateKraConfigDto,
-} from './dto/kra-config.dto';
+import { BulkUpdateKraConfigDto, CreateKraConfigDto, KraConfigDto, UpdateKraConfigDto } from './dto/kra-config.dto';
 import { KraConfigService } from './kra-config.service';
 
 @ApiTags('Admin · Staff KRA Configuration')
@@ -67,11 +47,7 @@ export class KraConfigController {
   @ApiOperation({ summary: 'Update a KRA configuration' })
   @ApiEnvelope(KraConfigDto, { message: 'KRA configuration updated' })
   @ApiErrors(HttpStatus.NOT_FOUND, HttpStatus.BAD_REQUEST)
-  update(
-    @SchoolId() schoolId: number,
-    @Param('id', ParseIntPipe) id: number,
-    @Body() dto: UpdateKraConfigDto,
-  ) {
+  update(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateKraConfigDto) {
     return this.kraService.update(schoolId, id, dto);
   }
 

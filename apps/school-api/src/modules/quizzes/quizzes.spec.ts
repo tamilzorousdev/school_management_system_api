@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { AuthUser } from '@app/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OnlineQuiz } from './entities/online-quiz.entity';
 import { QuizAnswer } from './entities/quiz-answer.entity';
@@ -10,6 +11,17 @@ import { QuizzesService } from './quizzes.service';
 
 describe('QuizzesService', () => {
   let service: QuizzesService;
+
+  const createMockUser = (partial: Partial<AuthUser> = {}): AuthUser => ({
+    id: 1,
+    session_id: 1,
+    school_id: 1,
+    name: 'Test User',
+    mobile: '9000000001',
+    roles: ['ADMIN'],
+    permissions: [],
+    ...partial,
+  });
 
   const mockQuizRepo = {
     create: jest.fn().mockImplementation((dto) => ({ id: 1, ...dto })),
@@ -192,12 +204,12 @@ describe('QuizzesService', () => {
       });
       mockDataSource.query.mockResolvedValue([{ user_id: 101 }]);
 
-      const adminUser = {
+      const adminUser = createMockUser({
         id: 2,
         school_id: 1,
         roles: ['ADMIN'],
         permissions: ['exams.manage'],
-      } as any;
+      });
 
       const dto = {
         academic_year_id: 1,
@@ -237,31 +249,25 @@ describe('QuizzesService', () => {
 
   describe('quiz permissions', () => {
     it('always allows admin and principal to create quizzes', async () => {
-      const admin = { id: 1, roles: ['ADMIN'], permissions: [] } as any;
-      const principal = { id: 2, roles: ['PRINCIPAL'], permissions: [] } as any;
+      const admin = createMockUser({ id: 1, roles: ['ADMIN'] });
+      const principal = createMockUser({ id: 2, roles: ['PRINCIPAL'] });
       expect(await service.canUserCreateQuiz(1, admin)).toBe(true);
       expect(await service.canUserCreateQuiz(1, principal)).toBe(true);
     });
 
     it('allows staff in permitted_user_ids to create quizzes', async () => {
-      mockDataSource.query.mockResolvedValueOnce([
-        { allow_all_teachers: false, permitted_user_ids: [15, 20] },
-      ]);
-      const permittedStaff = { id: 20, roles: ['STAFF'], permissions: [] } as any;
+      mockDataSource.query.mockResolvedValueOnce([{ allow_all_teachers: false, permitted_user_ids: [15, 20] }]);
+      const permittedStaff = createMockUser({ id: 20, roles: ['STAFF'] });
       expect(await service.canUserCreateQuiz(1, permittedStaff)).toBe(true);
 
-      mockDataSource.query.mockResolvedValueOnce([
-        { allow_all_teachers: false, permitted_user_ids: [15, 20] },
-      ]);
-      const otherStaff = { id: 99, roles: ['STAFF'], permissions: [] } as any;
+      mockDataSource.query.mockResolvedValueOnce([{ allow_all_teachers: false, permitted_user_ids: [15, 20] }]);
+      const otherStaff = createMockUser({ id: 99, roles: ['STAFF'] });
       expect(await service.canUserCreateQuiz(1, otherStaff)).toBe(false);
     });
 
     it('allows all teachers when allow_all_teachers is true', async () => {
-      mockDataSource.query.mockResolvedValueOnce([
-        { allow_all_teachers: true, permitted_user_ids: [] },
-      ]);
-      const teacher = { id: 45, roles: ['TEACHER'], permissions: [] } as any;
+      mockDataSource.query.mockResolvedValueOnce([{ allow_all_teachers: true, permitted_user_ids: [] }]);
+      const teacher = createMockUser({ id: 45, roles: ['TEACHER'] });
       expect(await service.canUserCreateQuiz(1, teacher)).toBe(true);
     });
 
@@ -270,7 +276,7 @@ describe('QuizzesService', () => {
         .mockResolvedValueOnce([]) // insert query
         .mockResolvedValueOnce([{ allow_all_teachers: true, permitted_user_ids: [10] }]) // fetch perm
         .mockResolvedValueOnce([]); // fetch staff
-      const admin = { id: 1, roles: ['ADMIN'], permissions: ['exams.manage'] } as any;
+      const admin = createMockUser({ id: 1, roles: ['ADMIN'], permissions: ['exams.manage'] });
 
       const res = await service.updateQuizPermissions(1, admin, {
         allow_all_teachers: true,

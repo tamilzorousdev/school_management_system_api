@@ -156,11 +156,7 @@ export class AppraisalsService {
     return (await this.presentMany([saved]))[0];
   }
 
-  async bulkImport(
-    schoolId: number,
-    reviewer: AuthUser,
-    dtos: StaffAppraisalInputDto[],
-  ): Promise<StaffAppraisalDto[]> {
+  async bulkImport(schoolId: number, reviewer: AuthUser, dtos: StaffAppraisalInputDto[]): Promise<StaffAppraisalDto[]> {
     const results: StaffAppraisalDto[] = [];
     for (const dto of dtos) {
       try {
@@ -308,12 +304,7 @@ export class AppraisalsService {
     return (await this.presentMany([saved]))[0];
   }
 
-  async raiseAppeal(
-    schoolId: number,
-    user: AuthUser,
-    id: number,
-    dto: AppraisalAppealDto,
-  ): Promise<StaffAppraisalDto> {
+  async raiseAppeal(schoolId: number, user: AuthUser, id: number, dto: AppraisalAppealDto): Promise<StaffAppraisalDto> {
     const appraisal = await this.appraisals.findOne({
       where: { id, school_id: schoolId },
     });
@@ -367,247 +358,261 @@ export class AppraisalsService {
   }
 
   async metrics(schoolId: number, staffId: number, academicYearId?: number): Promise<StaffPerformanceMetricsDto> {
-    const staffRow = await this.staff.findOne({
-      where: [
-        { id: staffId, school_id: schoolId },
-        { user_id: staffId, school_id: schoolId },
-      ],
-    });
-    if (!staffRow) {
-      this.logger.warn(`Staff member ${staffId} not found in school ${schoolId} for metrics`);
+    try {
+      const staffRow = await this.staff.findOne({
+        where: [
+          { id: staffId, school_id: schoolId },
+          { user_id: staffId, school_id: schoolId },
+        ],
+      });
+      if (!staffRow) {
+        this.logger.warn(`Staff member ${staffId} not found in school ${schoolId} for metrics`);
+        return this.defaultMetrics(staffId);
+      }
+
+      const userRow = await this.users.findOne({ where: { id: staffRow.user_id } });
+
+      // 1. Staff attendance records
+      let totalWorkingDays = 0;
+      let presentDays = 0;
+      let absentDays = 0;
+      let attendancePercentage = 100.0;
+      try {
+        const attResult = await this.appraisals.query(
+          `SELECT 
+             COUNT(*) FILTER (WHERE status = 'present') as present_days,
+             COUNT(*) FILTER (WHERE status = 'absent' OR status = 'on_leave') as absent_days,
+             COUNT(*) as total_days
+           FROM staff_attendance
+           WHERE school_id = $1 AND user_id = $2`,
+          [schoolId, staffRow.user_id],
+        );
+        totalWorkingDays = Number(attResult[0]?.total_days ?? 0);
+        presentDays = Number(attResult[0]?.present_days ?? 0);
+        absentDays = Number(attResult[0]?.absent_days ?? 0);
+        attendancePercentage = totalWorkingDays > 0 ? Math.round((presentDays / totalWorkingDays) * 1000) / 10 : 100.0;
+      } catch (e) {
+        this.logger.warn(`Staff attendance query failed: ${(e as Error).message}`);
+      }
+
+      // 2. Assigned teaching periods, sections & workload schedule
+      const yearFilter = academicYearId ? 'AND ta.academic_year_id = $3' : '';
+      const params: (number | string)[] = [schoolId, staffRow.user_id];
+      if (academicYearId) params.push(academicYearId);
+
+      let assignedPeriods = 0;
+      let totalSections = 0;
+      let teachingAssignments: TeachingAssignmentSummaryDto[] = [];
+      try {
+        const assignResult = await this.appraisals.query(
+          `SELECT 
+             COALESCE(SUM(ta.periods_per_week), 0) as total_periods,
+             COUNT(DISTINCT ta.section_id) as total_sections
+           FROM teacher_assignments ta
+           WHERE ta.school_id = $1 AND ta.teacher_user_id = $2 AND ta.deleted_at IS NULL ${yearFilter}`,
+          params,
+        );
+        assignedPeriods = Number(assignResult[0]?.total_periods ?? 0);
+        totalSections = Number(assignResult[0]?.total_sections ?? 0);
+
+        const teachingAssignmentsRaw = await this.appraisals.query(
+          `SELECT 
+             ta.id,
+             c.name as class_name,
+             sec.name as section_name,
+             s.name as subject_name,
+             ta.periods_per_week
+           FROM teacher_assignments ta
+           JOIN sections sec ON sec.id = ta.section_id
+           JOIN classes c ON c.id = sec.class_id
+           JOIN subjects s ON s.id = ta.subject_id
+           WHERE ta.school_id = $1 AND ta.teacher_user_id = $2 AND ta.deleted_at IS NULL ${yearFilter}
+           ORDER BY c.grade_level ASC, sec.name ASC, s.name ASC`,
+          params,
+        );
+        teachingAssignments = teachingAssignmentsRaw.map((r: Record<string, unknown>) => ({
+          id: Number(r.id),
+          class_name: String(r.class_name),
+          section_name: String(r.section_name),
+          subject_name: String(r.subject_name),
+          periods_per_week: Number(r.periods_per_week),
+        }));
+      } catch (e) {
+        this.logger.warn(`Teaching assignments query failed: ${(e as Error).message}`);
+      }
+
+      // 3. Diary & Homework tracking
+      let diaryEntriesCount = 0;
+      let homeworkCount = 0;
+      let recentHomework: RecentHomeworkItemDto[] = [];
+      try {
+        const diaryStats = await this.appraisals.query(
+          `SELECT 
+             COUNT(*) FILTER (WHERE type = 'homework') as homework_cnt,
+             COUNT(*) as total_cnt
+           FROM diary_entries
+           WHERE school_id = $1 AND created_by = $2 AND deleted_at IS NULL`,
+          [schoolId, staffRow.user_id],
+        );
+        diaryEntriesCount = Number(diaryStats[0]?.total_cnt ?? 0);
+        homeworkCount = Number(diaryStats[0]?.homework_cnt ?? 0);
+
+        const recentHomeworkRaw = await this.appraisals.query(
+          `SELECT 
+             de.id,
+             de.title,
+             de.due_date,
+             de.created_at,
+             s.name as subject_name,
+             CONCAT(c.name, ' - ', sec.name) as class_section
+           FROM diary_entries de
+           LEFT JOIN subjects s ON s.id = de.subject_id
+           LEFT JOIN sections sec ON sec.id = de.section_id
+           LEFT JOIN classes c ON c.id = sec.class_id
+           WHERE de.school_id = $1 AND de.created_by = $2 AND de.type = 'homework' AND de.deleted_at IS NULL
+           ORDER BY de.created_at DESC
+           LIMIT 5`,
+          [schoolId, staffRow.user_id],
+        );
+        recentHomework = recentHomeworkRaw.map((r: Record<string, unknown>) => ({
+          id: Number(r.id),
+          title: String(r.title),
+          due_date: r.due_date
+            ? r.due_date instanceof Date
+              ? r.due_date.toISOString().slice(0, 10)
+              : String(r.due_date)
+            : null,
+          created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+          subject_name: r.subject_name ? String(r.subject_name) : null,
+          class_section: r.class_section ? String(r.class_section) : null,
+        }));
+      } catch (e) {
+        this.logger.warn(`Diary query failed: ${(e as Error).message}`);
+      }
+
+      // 4. Student academic outcomes: Pass % vs Fail % in subjects taught
+      let totalStudentsEvaluated = 0;
+      let passedStudents = 0;
+      let failedStudents = 0;
+      let averageStudentMarks: number | null = null;
+      let studentPassPercentage: number | null = null;
+      let studentFailPercentage: number | null = null;
+      try {
+        const examYearFilter = academicYearId ? 'AND ta.academic_year_id = $3' : '';
+        const passResult = await this.appraisals.query(
+          `SELECT 
+             COUNT(*) FILTER (WHERE em.marks >= COALESCE(es.pass_marks, 35)) as passed_students,
+             COUNT(*) FILTER (WHERE em.marks < COALESCE(es.pass_marks, 35) OR em.is_absent = true) as failed_students,
+             COUNT(*) as total_students,
+             ROUND(AVG(em.marks)::numeric, 1) as avg_marks
+           FROM exam_marks em
+           JOIN student_enrollments se ON se.student_id = em.student_id
+           JOIN teacher_assignments ta ON ta.section_id = se.section_id AND ta.subject_id = em.subject_id
+           LEFT JOIN exam_subjects es ON es.exam_id = em.exam_id AND es.subject_id = em.subject_id AND es.class_id = se.class_id
+           WHERE em.school_id = $1 AND ta.teacher_user_id = $2 AND ta.deleted_at IS NULL ${examYearFilter}`,
+          params,
+        );
+        totalStudentsEvaluated = Number(passResult[0]?.total_students ?? 0);
+        passedStudents = Number(passResult[0]?.passed_students ?? 0);
+        failedStudents = Number(passResult[0]?.failed_students ?? 0);
+        averageStudentMarks = passResult[0]?.avg_marks !== null ? Number(passResult[0]?.avg_marks) : null;
+        studentPassPercentage =
+          totalStudentsEvaluated > 0 ? Math.round((passedStudents / totalStudentsEvaluated) * 1000) / 10 : null;
+        studentFailPercentage =
+          totalStudentsEvaluated > 0 ? Math.round((failedStudents / totalStudentsEvaluated) * 1000) / 10 : null;
+      } catch (e) {
+        this.logger.warn(`Exam marks query failed: ${(e as Error).message}`);
+      }
+
+      // 5. Parent rating and student feedback
+      let parentRatingAvg: number | null = null;
+      let parentRatingCount = 0;
+      let studentFeedbackAvg: number | null = null;
+      let studentFeedbackCount = 0;
+      try {
+        const parentRatingResult = await this.appraisals.query(
+          `SELECT 
+             ROUND(AVG(stars)::numeric, 1) as avg_stars,
+             COUNT(*) as total_ratings
+           FROM teacher_ratings
+           WHERE school_id = $1 AND teacher_user_id = $2 AND deleted_at IS NULL`,
+          [schoolId, staffRow.user_id],
+        );
+        parentRatingAvg = parentRatingResult[0]?.avg_stars ? Number(parentRatingResult[0].avg_stars) : null;
+        parentRatingCount = Number(parentRatingResult[0]?.total_ratings ?? 0);
+
+        const studentFeedbackResult = await this.appraisals.query(
+          `SELECT 
+             ROUND(AVG(studies)::numeric, 1) as avg_studies,
+             COUNT(*) as total_feedback
+           FROM student_feedback
+           WHERE school_id = $1 AND teacher_user_id = $2 AND deleted_at IS NULL`,
+          [schoolId, staffRow.user_id],
+        );
+        studentFeedbackAvg = studentFeedbackResult[0]?.avg_studies
+          ? Number(studentFeedbackResult[0].avg_studies)
+          : null;
+        studentFeedbackCount = Number(studentFeedbackResult[0]?.total_feedback ?? 0);
+      } catch (e) {
+        this.logger.warn(`Feedback query failed: ${(e as Error).message}`);
+      }
+
       return {
         staff_id: staffId,
-        user_id: staffId,
-        name: 'Staff',
-        attendance_percentage: 100,
-        present_days: 0,
-        absent_days: 0,
-        total_working_days: 0,
-        assigned_periods_per_week: 0,
-        total_sections_taught: 0,
-        diary_entries_count: 0,
-        homework_count: 0,
-        student_pass_percentage: null,
-        student_fail_percentage: null,
-        passed_students: 0,
-        failed_students: 0,
-        total_students_evaluated: 0,
-        average_student_marks: null,
-        parent_rating_average: null,
-        parent_rating_count: 0,
-        student_feedback_average: null,
-        student_feedback_count: 0,
-        teaching_assignments: [],
-        recent_homework: [],
+        user_id: staffRow.user_id,
+        name: userRow?.name ?? 'Staff',
+        attendance_percentage: attendancePercentage,
+        present_days: presentDays,
+        absent_days: absentDays,
+        total_working_days: totalWorkingDays,
+        assigned_periods_per_week: assignedPeriods,
+        total_sections_taught: totalSections,
+        diary_entries_count: diaryEntriesCount,
+        homework_count: homeworkCount,
+        student_pass_percentage: studentPassPercentage,
+        student_fail_percentage: studentFailPercentage,
+        passed_students: passedStudents,
+        failed_students: failedStudents,
+        total_students_evaluated: totalStudentsEvaluated,
+        average_student_marks: averageStudentMarks,
+        parent_rating_average: parentRatingAvg,
+        parent_rating_count: parentRatingCount,
+        student_feedback_average: studentFeedbackAvg,
+        student_feedback_count: studentFeedbackCount,
+        teaching_assignments: teachingAssignments,
+        recent_homework: recentHomework,
       };
+    } catch (err) {
+      this.logger.error(`Error loading metrics for staff ${staffId}: ${(err as Error).message}`);
+      return this.defaultMetrics(staffId);
     }
+  }
 
-    const userRow = await this.users.findOne({ where: { id: staffRow.user_id } });
-
-    // 1. Staff attendance records
-    let totalWorkingDays = 0;
-    let presentDays = 0;
-    let absentDays = 0;
-    let attendancePercentage = 100.0;
-    try {
-      const attResult = await this.appraisals.query(
-        `SELECT 
-           COUNT(*) FILTER (WHERE status = 'present') as present_days,
-           COUNT(*) FILTER (WHERE status = 'absent' OR status = 'on_leave') as absent_days,
-           COUNT(*) as total_days
-         FROM staff_attendance
-         WHERE school_id = $1 AND user_id = $2`,
-        [schoolId, staffRow.user_id],
-      );
-      totalWorkingDays = Number(attResult[0]?.total_days ?? 0);
-      presentDays = Number(attResult[0]?.present_days ?? 0);
-      absentDays = Number(attResult[0]?.absent_days ?? 0);
-      attendancePercentage =
-        totalWorkingDays > 0 ? Math.round((presentDays / totalWorkingDays) * 1000) / 10 : 100.0;
-    } catch (e) {
-      this.logger.warn(`Staff attendance query failed: ${(e as Error).message}`);
-    }
-
-    // 2. Assigned teaching periods, sections & workload schedule
-    const yearFilter = academicYearId ? 'AND ta.academic_year_id = $3' : '';
-    const params: (number | string)[] = [schoolId, staffRow.user_id];
-    if (academicYearId) params.push(academicYearId);
-
-    let assignedPeriods = 0;
-    let totalSections = 0;
-    let teachingAssignments: TeachingAssignmentSummaryDto[] = [];
-    try {
-      const assignResult = await this.appraisals.query(
-        `SELECT 
-           COALESCE(SUM(ta.periods_per_week), 0) as total_periods,
-           COUNT(DISTINCT ta.section_id) as total_sections
-         FROM teacher_assignments ta
-         WHERE ta.school_id = $1 AND ta.teacher_user_id = $2 AND ta.deleted_at IS NULL ${yearFilter}`,
-        params,
-      );
-      assignedPeriods = Number(assignResult[0]?.total_periods ?? 0);
-      totalSections = Number(assignResult[0]?.total_sections ?? 0);
-
-      const teachingAssignmentsRaw = await this.appraisals.query(
-        `SELECT 
-           ta.id,
-           c.name as class_name,
-           sec.name as section_name,
-           s.name as subject_name,
-           ta.periods_per_week
-         FROM teacher_assignments ta
-         JOIN sections sec ON sec.id = ta.section_id
-         JOIN classes c ON c.id = sec.class_id
-         JOIN subjects s ON s.id = ta.subject_id
-         WHERE ta.school_id = $1 AND ta.teacher_user_id = $2 AND ta.deleted_at IS NULL ${yearFilter}
-         ORDER BY c.grade_level ASC, sec.name ASC, s.name ASC`,
-        params,
-      );
-      teachingAssignments = teachingAssignmentsRaw.map((r: Record<string, unknown>) => ({
-        id: Number(r.id),
-        class_name: String(r.class_name),
-        section_name: String(r.section_name),
-        subject_name: String(r.subject_name),
-        periods_per_week: Number(r.periods_per_week),
-      }));
-    } catch (e) {
-      this.logger.warn(`Teaching assignments query failed: ${(e as Error).message}`);
-    }
-
-    // 3. Diary & Homework tracking
-    let diaryEntriesCount = 0;
-    let homeworkCount = 0;
-    let recentHomework: RecentHomeworkItemDto[] = [];
-    try {
-      const diaryStats = await this.appraisals.query(
-        `SELECT 
-           COUNT(*) FILTER (WHERE type = 'homework') as homework_cnt,
-           COUNT(*) as total_cnt
-         FROM diary_entries
-         WHERE school_id = $1 AND created_by = $2 AND deleted_at IS NULL`,
-        [schoolId, staffRow.user_id],
-      );
-      diaryEntriesCount = Number(diaryStats[0]?.total_cnt ?? 0);
-      homeworkCount = Number(diaryStats[0]?.homework_cnt ?? 0);
-
-      const recentHomeworkRaw = await this.appraisals.query(
-        `SELECT 
-           de.id,
-           de.title,
-           de.due_date,
-           de.created_at,
-           s.name as subject_name,
-           CONCAT(c.name, ' - ', sec.name) as class_section
-         FROM diary_entries de
-         LEFT JOIN subjects s ON s.id = de.subject_id
-         LEFT JOIN sections sec ON sec.id = de.section_id
-         LEFT JOIN classes c ON c.id = sec.class_id
-         WHERE de.school_id = $1 AND de.created_by = $2 AND de.type = 'homework' AND de.deleted_at IS NULL
-         ORDER BY de.created_at DESC
-         LIMIT 5`,
-        [schoolId, staffRow.user_id],
-      );
-      recentHomework = recentHomeworkRaw.map((r: Record<string, unknown>) => ({
-        id: Number(r.id),
-        title: String(r.title),
-        due_date: r.due_date ? (r.due_date instanceof Date ? r.due_date.toISOString().slice(0, 10) : String(r.due_date)) : null,
-        created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
-        subject_name: r.subject_name ? String(r.subject_name) : null,
-        class_section: r.class_section ? String(r.class_section) : null,
-      }));
-    } catch (e) {
-      this.logger.warn(`Diary query failed: ${(e as Error).message}`);
-    }
-
-    // 4. Student academic outcomes: Pass % vs Fail % in subjects taught
-    let totalStudentsEvaluated = 0;
-    let passedStudents = 0;
-    let failedStudents = 0;
-    let averageStudentMarks: number | null = null;
-    let studentPassPercentage: number | null = null;
-    let studentFailPercentage: number | null = null;
-    try {
-      const examYearFilter = academicYearId ? 'AND ta.academic_year_id = $3' : '';
-      const passResult = await this.appraisals.query(
-        `SELECT 
-           COUNT(*) FILTER (WHERE em.marks >= COALESCE(es.pass_marks, 35)) as passed_students,
-           COUNT(*) FILTER (WHERE em.marks < COALESCE(es.pass_marks, 35) OR em.is_absent = true) as failed_students,
-           COUNT(*) as total_students,
-           ROUND(AVG(em.marks)::numeric, 1) as avg_marks
-         FROM exam_marks em
-         JOIN student_enrollments se ON se.student_id = em.student_id
-         JOIN teacher_assignments ta ON ta.section_id = se.section_id AND ta.subject_id = em.subject_id
-         LEFT JOIN exam_subjects es ON es.exam_id = em.exam_id AND es.subject_id = em.subject_id AND es.class_id = se.class_id
-         WHERE em.school_id = $1 AND ta.teacher_user_id = $2 AND ta.deleted_at IS NULL ${examYearFilter}`,
-        params,
-      );
-      totalStudentsEvaluated = Number(passResult[0]?.total_students ?? 0);
-      passedStudents = Number(passResult[0]?.passed_students ?? 0);
-      failedStudents = Number(passResult[0]?.failed_students ?? 0);
-      averageStudentMarks = passResult[0]?.avg_marks !== null ? Number(passResult[0]?.avg_marks) : null;
-      studentPassPercentage =
-        totalStudentsEvaluated > 0 ? Math.round((passedStudents / totalStudentsEvaluated) * 1000) / 10 : null;
-      studentFailPercentage =
-        totalStudentsEvaluated > 0 ? Math.round((failedStudents / totalStudentsEvaluated) * 1000) / 10 : null;
-    } catch (e) {
-      this.logger.warn(`Exam marks query failed: ${(e as Error).message}`);
-    }
-
-    // 5. Parent rating and student feedback
-    let parentRatingAvg: number | null = null;
-    let parentRatingCount = 0;
-    let studentFeedbackAvg: number | null = null;
-    let studentFeedbackCount = 0;
-    try {
-      const parentRatingResult = await this.appraisals.query(
-        `SELECT 
-           ROUND(AVG(stars)::numeric, 1) as avg_stars,
-           COUNT(*) as total_ratings
-         FROM teacher_ratings
-         WHERE school_id = $1 AND teacher_user_id = $2 AND deleted_at IS NULL`,
-        [schoolId, staffRow.user_id],
-      );
-      parentRatingAvg = parentRatingResult[0]?.avg_stars ? Number(parentRatingResult[0].avg_stars) : null;
-      parentRatingCount = Number(parentRatingResult[0]?.total_ratings ?? 0);
-
-      const studentFeedbackResult = await this.appraisals.query(
-        `SELECT 
-           ROUND(AVG(studies)::numeric, 1) as avg_studies,
-           COUNT(*) as total_feedback
-         FROM student_feedback
-         WHERE school_id = $1 AND teacher_user_id = $2 AND deleted_at IS NULL`,
-        [schoolId, staffRow.user_id],
-      );
-      studentFeedbackAvg = studentFeedbackResult[0]?.avg_studies ? Number(studentFeedbackResult[0].avg_studies) : null;
-      studentFeedbackCount = Number(studentFeedbackResult[0]?.total_feedback ?? 0);
-    } catch (e) {
-      this.logger.warn(`Feedback query failed: ${(e as Error).message}`);
-    }
-
+  private defaultMetrics(staffId: number): StaffPerformanceMetricsDto {
     return {
       staff_id: staffId,
-      user_id: staffRow.user_id,
-      name: userRow?.name ?? 'Staff',
-      attendance_percentage: attendancePercentage,
-      present_days: presentDays,
-      absent_days: absentDays,
-      total_working_days: totalWorkingDays,
-      assigned_periods_per_week: assignedPeriods,
-      total_sections_taught: totalSections,
-      diary_entries_count: diaryEntriesCount,
-      homework_count: homeworkCount,
-      student_pass_percentage: studentPassPercentage,
-      student_fail_percentage: studentFailPercentage,
-      passed_students: passedStudents,
-      failed_students: failedStudents,
-      total_students_evaluated: totalStudentsEvaluated,
-      average_student_marks: averageStudentMarks,
-      parent_rating_average: parentRatingAvg,
-      parent_rating_count: parentRatingCount,
-      student_feedback_average: studentFeedbackAvg,
-      student_feedback_count: studentFeedbackCount,
-      teaching_assignments: teachingAssignments,
-      recent_homework: recentHomework,
+      user_id: staffId,
+      name: 'Staff',
+      attendance_percentage: 100,
+      present_days: 0,
+      absent_days: 0,
+      total_working_days: 0,
+      assigned_periods_per_week: 0,
+      total_sections_taught: 0,
+      diary_entries_count: 0,
+      homework_count: 0,
+      student_pass_percentage: null,
+      student_fail_percentage: null,
+      passed_students: 0,
+      failed_students: 0,
+      total_students_evaluated: 0,
+      average_student_marks: null,
+      parent_rating_average: null,
+      parent_rating_count: 0,
+      student_feedback_average: null,
+      student_feedback_count: 0,
+      teaching_assignments: [],
+      recent_homework: [],
     };
   }
 

@@ -14,12 +14,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import {
-  KRA_APPLICABILITY,
-  KRA_CATEGORIES,
-  KraApplicability,
-  KraCategory,
-} from '../entities/kra-config.entity';
+import { KRA_APPLICABILITY, KRA_CATEGORIES, KraApplicability, KraCategory } from '../entities/kra-config.entity';
 import { OVERALL_RATINGS, OverallRating } from '../entities/staff-appraisal.entity';
 
 export class KraConfigDto {

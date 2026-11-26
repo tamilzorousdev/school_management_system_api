@@ -3,12 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AppException } from '@app/common';
 import { KraConfig } from './entities/kra-config.entity';
-import {
-  BulkUpdateKraConfigDto,
-  CreateKraConfigDto,
-  KraConfigDto,
-  UpdateKraConfigDto,
-} from './dto/kra-config.dto';
+import { BulkUpdateKraConfigDto, CreateKraConfigDto, KraConfigDto, UpdateKraConfigDto } from './dto/kra-config.dto';
 
 export const DEFAULT_SCHOOL_KRAS = [
   {

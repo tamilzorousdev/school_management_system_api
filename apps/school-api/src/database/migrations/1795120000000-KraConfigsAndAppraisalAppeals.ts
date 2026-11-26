@@ -27,9 +27,7 @@ export class KraConfigsAndAppraisalAppeals1795120000000 implements MigrationInte
       )`,
     );
 
-    await queryRunner.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_kra_configs_school" ON "kra_configs" ("school_id")`,
-    );
+    await queryRunner.query(`CREATE INDEX IF NOT EXISTS "IDX_kra_configs_school" ON "kra_configs" ("school_id")`);
     await queryRunner.query(
       `CREATE INDEX IF NOT EXISTS "IDX_kra_configs_school_active" ON "kra_configs" ("school_id", "is_active")`,
     );

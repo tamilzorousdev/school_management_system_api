@@ -188,9 +188,7 @@ export class QuizzesService {
       );
       if (!rows.length) return false;
       const perm = rows[0];
-      const permittedIds: number[] = Array.isArray(perm.permitted_user_ids)
-        ? perm.permitted_user_ids.map(Number)
-        : [];
+      const permittedIds: number[] = Array.isArray(perm.permitted_user_ids) ? perm.permitted_user_ids.map(Number) : [];
 
       if (permittedIds.includes(user.id)) return true;
 
@@ -221,9 +219,7 @@ export class QuizzesService {
       );
       if (rows.length) {
         allowAllTeachers = Boolean(rows[0].allow_all_teachers);
-        permittedUserIds = Array.isArray(rows[0].permitted_user_ids)
-          ? rows[0].permitted_user_ids.map(Number)
-          : [];
+        permittedUserIds = Array.isArray(rows[0].permitted_user_ids) ? rows[0].permitted_user_ids.map(Number) : [];
       }
     } catch (e) {
       this.logger.warn(`Failed to fetch quiz permissions: ${(e as Error).message}`);
@@ -257,11 +253,9 @@ export class QuizzesService {
         [schoolId],
       );
 
-      staffList = staffRows.map((r: any) => {
+      staffList = staffRows.map((r: Record<string, unknown>) => {
         const userId = Number(r.user_id);
-        const hasPermission =
-          permittedUserIds.includes(userId) ||
-          (allowAllTeachers && r.staff_type === 'teaching');
+        const hasPermission = permittedUserIds.includes(userId) || (allowAllTeachers && r.staff_type === 'teaching');
         return {
           staff_id: Number(r.staff_id),
           user_id: userId,
@@ -288,11 +282,7 @@ export class QuizzesService {
     };
   }
 
-  async updateQuizPermissions(
-    schoolId: number,
-    adminUser: AuthUser,
-    dto: UpdateQuizPermissionsDto,
-  ) {
+  async updateQuizPermissions(schoolId: number, adminUser: AuthUser, dto: UpdateQuizPermissionsDto) {
     const isManager =
       adminUser.roles.includes(ROLES.SUPER_ADMIN) ||
       adminUser.roles.includes(ROLES.ADMIN) ||

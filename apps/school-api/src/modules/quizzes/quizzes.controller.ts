@@ -103,11 +103,7 @@ export class QuizzesController {
   @ApiOperation({ summary: 'Admin or Principal create a new online test / quiz' })
   @ApiEnvelope(Object, { status: HttpStatus.CREATED, message: 'Online test / quiz created' })
   @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.FORBIDDEN)
-  create(
-    @SchoolId() schoolId: number,
-    @CurrentUser() user: AuthUser,
-    @Body() dto: CreateQuizDto,
-  ) {
+  create(@SchoolId() schoolId: number, @CurrentUser() user: AuthUser, @Body() dto: CreateQuizDto) {
     return this.quizzes.adminCreate(schoolId, user, dto);
   }
 
