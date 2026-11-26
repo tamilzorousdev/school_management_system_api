@@ -36,12 +36,15 @@ export class HostelVisitorsService {
   ) {}
 
   async list(schoolId: number, query: VisitQueryDto): Promise<Paginated<VisitDto>> {
-    const params: unknown[] = [schoolId, this.app.timeZone];
+    const params: unknown[] = [schoolId];
     const where = ['v.school_id = $1'];
     if (query.hostel_id) where.push(`v.hostel_id = $${params.push(query.hostel_id)}`);
     if (query.admission_id) where.push(`v.admission_id = $${params.push(query.admission_id)}`);
     if (query.status) where.push(`v.status = $${params.push(query.status)}`);
-    if (query.date) where.push(`(v.created_at AT TIME ZONE $2)::date = $${params.push(query.date)}`);
+    if (query.date) {
+      const zone = `$${params.push(this.app.timeZone)}`;
+      where.push(`(v.created_at AT TIME ZONE ${zone})::date = $${params.push(query.date)}`);
+    }
     for (const word of (query.search ?? '').split(/\s+/).filter(Boolean)) {
       const slot = `$${params.push(`%${escapeLike(word)}%`)}`;
       where.push(
