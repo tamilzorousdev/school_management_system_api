@@ -267,14 +267,7 @@ export class FeedbackService {
   }
 
   async giveFeedback(teacher: AuthUser, studentId: number, dto: StudentFeedbackInputDto): Promise<StudentFeedbackDto> {
-    const schoolId = this.schoolOf(teacher);
-    const school = await this.school(schoolId);
-    if (!school.student_feedback_enabled) {
-      throw AppException.forbidden('The school has not opened student feedback now', 'FEEDBACK_CLOSED');
-    }
-    const year = await this.viewedYear(schoolId);
-    const term = await this.term(schoolId, year);
-    if (!term) throw AppException.badRequest('Today is not inside any term of this year', 'NO_TERM_NOW');
+    const { schoolId, year, term } = await this.openWindow(teacher);
     await this.assignments.assertTeachesStudent(schoolId, teacher.id, studentId);
     const repo = this.dataSource.getRepository(StudentFeedback);
     const existing = await repo.findOneBy({
@@ -308,6 +301,46 @@ export class FeedbackService {
     const [presented] = await this.presentFeedback([saved], year);
     await this.tellParents(presented!);
     return presented!;
+  }
+
+  async updateFeedback(
+    teacher: AuthUser,
+    studentId: number,
+    dto: StudentFeedbackInputDto,
+  ): Promise<StudentFeedbackDto> {
+    const { schoolId, year, term } = await this.openWindow(teacher);
+    await this.assignments.assertTeachesStudent(schoolId, teacher.id, studentId);
+    const repo = this.dataSource.getRepository(StudentFeedback);
+    const existing = await repo.findOneBy({
+      teacher_user_id: teacher.id,
+      student_id: studentId,
+      academic_year_id: year.id,
+      term_id: term.id,
+    });
+    if (!existing) {
+      throw AppException.notFound(`You have not given feedback for ${term.name} yet`, 'FEEDBACK_NOT_FOUND');
+    }
+    existing.studies = dto.studies;
+    existing.behaviour = dto.behaviour;
+    existing.sports = dto.sports ?? null;
+    existing.remark = dto.remark?.trim() || null;
+    existing.edited_at = new Date();
+    const saved = await repo.save(existing);
+    const [presented] = await this.presentFeedback([saved], year);
+    await this.tellParents(presented!, true);
+    return presented!;
+  }
+
+  private async openWindow(teacher: AuthUser): Promise<{ schoolId: number; year: AcademicYear; term: TermRefDto }> {
+    const schoolId = this.schoolOf(teacher);
+    const school = await this.school(schoolId);
+    if (!school.student_feedback_enabled) {
+      throw AppException.forbidden('The school has not opened student feedback now', 'FEEDBACK_CLOSED');
+    }
+    const year = await this.viewedYear(schoolId);
+    const term = await this.term(schoolId, year);
+    if (!term) throw AppException.badRequest('Today is not inside any term of this year', 'NO_TERM_NOW');
+    return { schoolId, year, term };
   }
 
   async ratings(schoolId: number, query: RatingsQueryDto): Promise<Paginated<RatingDto>> {
@@ -531,7 +564,7 @@ export class FeedbackService {
     return { exam, teachers: rows };
   }
 
-  private async tellParents(feedback: StudentFeedbackDto): Promise<void> {
+  private async tellParents(feedback: StudentFeedbackDto, updated = false): Promise<void> {
     const [row] = await this.dataSource.query(
       `SELECT array_remove(array_agg(DISTINCT g.user_id), NULL) AS user_ids
        FROM student_guardians sg JOIN guardians g ON g.id = sg.guardian_id AND g.deleted_at IS NULL
@@ -547,7 +580,7 @@ export class FeedbackService {
     ];
     this.notifications
       .dispatch({
-        template: TEMPLATES.STUDENT_FEEDBACK,
+        template: updated ? TEMPLATES.STUDENT_FEEDBACK_UPDATED : TEMPLATES.STUDENT_FEEDBACK,
         audience: { user_ids: userIds },
         data: {
           student: feedback.student.name,
@@ -557,6 +590,7 @@ export class FeedbackService {
           summary: parts.join(', '),
           remark: feedback.remark ? ` “${feedback.remark}”` : '',
           feedback_id: String(feedback.id),
+          screen: 'child_feedback',
         },
       })
       .catch((error: Error) => this.logger.warn(`STUDENT_FEEDBACK ${feedback.id} failed: ${error.message}`));
@@ -602,6 +636,7 @@ export class FeedbackService {
         sports_label: starLabel(row.sports),
         remark: row.remark,
         created_at: row.created_at,
+        edited_at: row.edited_at,
       };
     });
   }

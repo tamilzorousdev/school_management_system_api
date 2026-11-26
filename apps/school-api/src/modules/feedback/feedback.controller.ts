@@ -232,4 +232,21 @@ export class MobileTeacherFeedbackController {
   ) {
     return this.feedback.giveFeedback(user, studentId, dto);
   }
+
+  @Put('feedback/students/:studentId')
+  @ResponseMessage('Feedback updated')
+  @ApiOperation({
+    summary: 'Change the feedback I gave a student this term',
+    description:
+      'Replaces studies, behaviour, sports and remark, only while the term runs and the school has feedback open; the parents get a notification. 403 FEEDBACK_CLOSED, NOT_YOUR_SECTION; 404 FEEDBACK_NOT_FOUND, STUDENT_NOT_FOUND; 400 NO_TERM_NOW.',
+  })
+  @ApiEnvelope(StudentFeedbackDto, { message: 'Feedback updated' })
+  @ApiErrors(HttpStatus.BAD_REQUEST, HttpStatus.NOT_FOUND)
+  update(
+    @CurrentUser() user: AuthUser,
+    @Param('studentId', ParseIntPipe) studentId: number,
+    @Body() dto: StudentFeedbackInputDto,
+  ) {
+    return this.feedback.updateFeedback(user, studentId, dto);
+  }
 }

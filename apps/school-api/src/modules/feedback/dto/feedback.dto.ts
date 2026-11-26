@@ -325,6 +325,9 @@ export class StudentFeedbackDto {
 
   @ApiProperty()
   created_at: Date;
+
+  @ApiProperty({ nullable: true, type: Date, description: 'When the teacher last changed it; null if never changed' })
+  edited_at: Date | null;
 }
 
 export class FeedbackRosterStudentDto {

@@ -78,4 +78,7 @@ export class StudentFeedback extends SchoolScopedEntity {
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   remark: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  edited_at: Date | null;
 }

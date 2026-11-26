@@ -124,6 +124,7 @@ export const TEMPLATES = {
   SPECIAL_CLASS_ABSENT: 'SPECIAL_CLASS_ABSENT',
   TEACHER_RATED: 'TEACHER_RATED',
   STUDENT_FEEDBACK: 'STUDENT_FEEDBACK',
+  STUDENT_FEEDBACK_UPDATED: 'STUDENT_FEEDBACK_UPDATED',
   EMERGENCY_BROADCAST: 'EMERGENCY_BROADCAST',
   EMERGENCY_APPROVAL_NEEDED: 'EMERGENCY_APPROVAL_NEEDED',
   EMERGENCY_REVIEWED: 'EMERGENCY_REVIEWED',
@@ -636,6 +637,25 @@ export const TEMPLATE_CATALOG: TemplateDefinition[] = [
       },
       ta: {
         title: '{{teacher}} அவர்களிடமிருந்து {{student}} பற்றிய கருத்து',
+        body: '{{term}}: {{summary}}.{{remark}}',
+        sms_body: null,
+      },
+    },
+  },
+  {
+    code: TEMPLATES.STUDENT_FEEDBACK_UPDATED,
+    category: 'system',
+    push: true,
+    sms: 'never',
+    critical: false,
+    text: {
+      en: {
+        title: 'Feedback on {{student}} updated by {{teacher}}',
+        body: '{{term}}: {{summary}}.{{remark}}',
+        sms_body: null,
+      },
+      ta: {
+        title: '{{teacher}} அவர்கள் {{student}} பற்றிய கருத்தைப் புதுப்பித்துள்ளார்',
         body: '{{term}}: {{summary}}.{{remark}}',
         sms_body: null,
       },

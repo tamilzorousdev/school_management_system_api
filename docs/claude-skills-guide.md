@@ -62,6 +62,10 @@ What happens:
 
 After that, review the changes in each repo. Claude commits or pushes only when you ask.
 
+The skill does not stop at the routes that already exist. Before building, it checks what each role needs (create, view, change, remove, notify, closed and empty states) against the current API, and adds or extends API routes, fields and notifications where something is missing. It keeps old routes working. After an API change that adds a migration or a notification template, restart your local API before testing in the app.
+
+For anything bigger than a small fix, the skill first writes a short plan in the reply (what exists, the gaps, a recommended approach with one alternative, phases, risks and at most four decisions with defaults). After you choose, it builds, proves the result with tests and real evidence, and gives you a numbered test script for each role. The full checklist is `.claude/skills/fullstack-feature/reference/senior-playbook.md`.
+
 Tips:
 
 - Need only one layer? Say so: "API only, the apps come later".
