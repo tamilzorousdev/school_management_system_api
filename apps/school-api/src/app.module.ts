@@ -47,6 +47,7 @@ import { PayrollModule } from './modules/payroll/payroll.module';
 import { FeesModule } from './modules/fees/fees.module';
 import { LibraryModule } from './modules/library/library.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
+import { CanteenModule } from './modules/canteen/canteen.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { ExamsModule } from './modules/exams/exams.module';
 import { QuizzesModule } from './modules/quizzes/quizzes.module';
@@ -94,6 +95,7 @@ import { HostelModule } from './modules/hostel/hostel.module';
     HostelModule,
     AccountsModule,
     InventoryModule,
+    CanteenModule,
     ExamsModule,
     QuizzesModule,
     TransportModule,

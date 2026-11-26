@@ -95,6 +95,12 @@ export const PERMISSIONS = {
   HOSTEL_COMPLAINT: 'hostel.complaint',
   HOSTEL_MAINTENANCE: 'hostel.maintenance',
   HOSTEL_INVENTORY: 'hostel.inventory',
+  CANTEEN_VIEW: 'canteen.view',
+  CANTEEN_MANAGE: 'canteen.manage',
+  CANTEEN_ORDER: 'canteen.order',
+  CANTEEN_WALLET: 'canteen.wallet',
+  CANTEEN_STOCK: 'canteen.stock',
+  CANTEEN_REPORTS: 'canteen.reports',
   HOSTEL_DISCIPLINE: 'hostel.discipline',
   HOSTEL_CHECKOUT: 'hostel.checkout',
   HOSTEL_REPORTS: 'hostel.reports',
@@ -362,6 +368,28 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { code: PERMISSIONS.HOSTEL_LOCKER, name: 'Hostel student lockers', group: 'Hostel' },
   { code: PERMISSIONS.HOSTEL_MEDICAL, name: 'Hostel health log, sick bay and medication', group: 'Hostel' },
   { code: PERMISSIONS.HOSTEL_LAUNDRY, name: 'Hostel laundry batches', group: 'Hostel' },
+  {
+    code: PERMISSIONS.CANTEEN_VIEW,
+    name: 'See the canteen dashboard, menu, diners, orders, stock, staff and feedback',
+    group: 'Canteen',
+  },
+  {
+    code: PERMISSIONS.CANTEEN_MANAGE,
+    name: 'Set up the canteen, menu, diners and cards, tables, staff and resolve complaints',
+    group: 'Canteen',
+  },
+  {
+    code: PERMISSIONS.CANTEEN_ORDER,
+    name: 'Take canteen orders, issue tokens, bill, run the kitchen and log feedback',
+    group: 'Canteen',
+  },
+  { code: PERMISSIONS.CANTEEN_WALLET, name: 'Top up, refund and adjust canteen wallets', group: 'Canteen' },
+  {
+    code: PERMISSIONS.CANTEEN_STOCK,
+    name: 'Canteen stock, suppliers, purchase orders and food waste',
+    group: 'Canteen',
+  },
+  { code: PERMISSIONS.CANTEEN_REPORTS, name: 'Canteen reports and analytics', group: 'Canteen' },
 ];
 
 export const ROLES = {
@@ -542,6 +570,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.HOSTEL_LEAVE_APPROVE,
       PERMISSIONS.HOSTEL_REPORTS,
       PERMISSIONS.HOSTEL_FEES,
+      PERMISSIONS.CANTEEN_VIEW,
+      PERMISSIONS.CANTEEN_REPORTS,
     ],
   },
   {
@@ -602,6 +632,8 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       'Runs school inventory in the admin web: asset register and tags, allocation and returns, transfers, maintenance, stock, requisitions and verification.',
     app: 'admin',
     permissions: [
+      PERMISSIONS.CANTEEN_VIEW,
+      PERMISSIONS.CANTEEN_STOCK,
       PERMISSIONS.INVENTORY_VIEW,
       PERMISSIONS.INVENTORY_MANAGE,
       PERMISSIONS.INVENTORY_STOCK,
