@@ -23,3 +23,9 @@ Every user-facing string is `'key'.tr`, added to both `sms_core/lib/language/lan
 
 ## Conventions and done (sections 7 to 9)
 `snake_case.dart` files, `PascalCase` classes, `const` constructors, `withValues(alpha:)`. Done = widget check reported, no duplicated widget code, no literal colours, `CoreWidget` wired, route in the module's page list, endpoint in `Constants` + repository, strings in en and ta, `flutter analyze` clean, `check_boundaries.py` and `check_i18n.py` pass. If `flutter` is not on PATH, use the full path to its executable. Commits carry no AI attribution.
+
+## Gotchas found the hard way
+- **Close the screen before the toast.** `Get.back(result: ...)` first, then `showSuccessToast(...)`. A toast is a route, so `Get.back()` after it closes the toast and the screen stays open.
+- **Never run `dart format` on an existing file you only edited a little.** It rewrites unrelated lines (blank lines, wrapping) and buries your change in noise. Format only the new files you created, or restore the file with git and reapply your edit.
+- `ResponseData.payload` is the `data` of the envelope and works for a list as well as a map; `errorCode` is the API's `error` string.
+- PUT and PATCH exist in `RequestType`; use them for updates instead of POSTing.

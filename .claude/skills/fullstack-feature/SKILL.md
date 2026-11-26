@@ -11,6 +11,10 @@ Repos: the API is this repo. The Web and Flutter folders differ on every machine
 
 Digests: `reference/web.md` for the Web repo and `reference/flutter.md` for the Flutter repo. Read the digests, not the three CLAUDE.md files. Open a full CLAUDE.md only for a section the digest points to.
 
+## Work like a senior engineer
+
+For any task bigger than a small fix, read `reference/senior-playbook.md` first. In short: understand the goal, put a plan in the reply (today, gaps, recommended approach with one alternative, phases, risks, at most four decisions with defaults), build small and additive, prove it with tests and real evidence (API calls, emulator screenshots and logs when available), hand the user a numbered test script per role, and record any new lesson in these skill files. Debug from evidence, never from guesses.
+
 ## Save tokens
 
 - Do not explore. For every layer copy the nearest finished sibling (table below): `grep -rl` the sibling, read only the 1 to 3 files you need.
@@ -21,11 +25,15 @@ Digests: `reference/web.md` for the Web repo and `reference/flutter.md` for the 
 
 ## Steps
 
-1. **Contract first (write it in the reply, 10 to 25 lines).** Endpoints (method, path, route family), permission or role, request fields with limits, response fields (snake_case), error codes, status values. Every later step uses this block unchanged. Ask the user only if a rule truly cannot be decided from the scope doc or code.
+1. **API fit check, then the contract (write it in the reply, 10 to 25 lines).**
+   - **The API serves the product, not the other way round.** Do not limit the apps to the routes that already exist, and do not work around a missing route in the app. A task that says "Mobile only" or "uses APIs that already exist" is a starting point, not a limit.
+   - Walk the lifecycle for every role that touches the feature and tick what the existing API already gives: create, list and read (each role), change, remove or undo, notify, history (created and edited times), and the closed, empty and error states. Read the module's controller and service (route list first) and the scope document gaps (section x.12).
+   - Every unticked item that the user needs becomes an **API change** in the contract: a new route, a new optional field, a new nullable column with a migration, a new notification template. Keep it backward compatible (old routes and fields keep working), and add the service tests and the `docs/api-guide.md` lines. If the choice is a product rule (time limit on editing, who is notified, what history to show), propose a default in the contract and continue; ask only if the answer changes the data model.
+   - Then write the contract: endpoints (method, path, route family), permission or role, request fields with limits, response fields (snake_case), error codes, status values, plus the API changes. Every later step uses this block unchanged.
 2. **API.** Follow the API CLAUDE.md "Adding a module" checklist: entity, migration (generate, review SQL), DTOs, service, admin controller under `admin/<feature>`, mobile controller under `mobile/<role>/<feature>` reusing the service, permission in `access.catalog.ts` plus seed, Swagger tags (mobile needs a module tag from the catalogs), notification template if a message is sent, `*.spec.ts`, and `docs/api-guide.md` for any client-visible change. Admin routes need school scoping and year handling (`yearWhere`).
 3. **Web (only if admin screens are needed).** `src/features/<feature>/api.ts` types mirror the DTOs; page from the list-page recipe; route in `router.tsx`, menu in `config/nav.ts` with its permission, shortcut in `config/shortcuts.ts`.
 4. **Flutter (only if Staff, Parent or Driver screens are needed).** Constants entry, repository method, model, screen pair (view plus controller), route in the owning module's page list, strings in both `lang_en.dart` and `lang_ta.dart`. Run the widget-reuse check first.
-5. **Verify** (commands below). Fix everything the tools report in your own diff.
+5. **Verify** (commands below). Fix everything the tools report in your own diff. A new migration or notification template is applied when the API restarts (`DB_MIGRATE_ON_START`, `SEED_ON_START`): ask the user to restart their API before a live test, and never start a second API instance on their database.
 6. **Report** in 8 lines or fewer: what changed per repo (file list only), the contract, what was verified and its result, what was not verified (for example no device run), follow-ups.
 
 ## Reference implementations to copy
@@ -56,6 +64,8 @@ flutter analyze && python tool/check_i18n.py && python tool/check_boundaries.py
 - Error codes the clients switch on exist in the API and are handled (web toast or field error, Flutter snackbar plus Tamil text).
 - New permission: in `access.catalog.ts`, seeded, used by the web menu `permission`, and (if a role needs it) listed in the role mapping.
 - New mobile route: right route family and module tag, otherwise Swagger drops it.
+- New notification template: in `notification-templates.catalog.ts` (code constant plus entry) **and** in `notification-apps.ts` (`PARENT_ONLY`, `STAFF_ONLY` or the driver list), or the app's notification list will not show it. A notification that should open a screen sets `data.screen` (for example `child_feedback`) and `student_id` in the API, and the app adds one line to its screen map (Parent: `_screenRoutes` in `parent_shell_controller.dart`) instead of another template check.
+- Parent and Staff views of the same record show the same facts (for example `edited_at` on both).
 
 ## Commits
 

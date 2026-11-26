@@ -36,6 +36,14 @@ If `info` finds no header, the column names are unusual: look at the first 6 row
 4. Decide the result: `Pass`, `Fail`, `Blocked` (precondition or data missing), `Not run`. On `Fail` open the code once to say why: product defect, wrong test, or data issue; put one line in Remarks with `file:line` when it is a defect.
 5. Write one TSV line per case to a scratch file: `ref<TAB>status<TAB>actual (status code + key result, under 150 chars)<TAB>remarks`, then `set` them. Write after every batch so work is never lost.
 
+## Test like a senior tester
+
+- Work risk first: P1 cases (sign-in, permissions, data loss, money) before P2 and P3.
+- When the sheet is thin around a rule (a limit, a role, a state change), run the boundary and negative cases yourself, and mark them as extra in Remarks. Never replace the QA team's cases.
+- For every Fail, write the shortest repro in Remarks (user, call or taps, expected, actual) and classify it: product defect, wrong test, or data or environment issue. After a fix, re-run the failed case and its neighbours.
+- Look at the real thing when you can: for app cases on a connected emulator, take a screenshot (`adb exec-out screencap -p`) and read the app log before you decide. Say "inspected, not run" when you only read code.
+- Never mark Pass from assumption. If you cannot run it, it is `Not run` with the reason.
+
 ## Rules that keep it cheap and honest
 
 - Never paste full responses or long code into the conversation; `call.js` already trims. Log the evidence in the Actual column instead.
