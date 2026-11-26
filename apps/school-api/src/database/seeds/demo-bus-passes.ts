@@ -73,7 +73,19 @@ export async function seedDemoRouteFees(manager: EntityManager, school: School):
 
 export async function seedDemoBusPasses(manager: EntityManager, school: School): Promise<void> {
   const schoolId = school.id;
-  if (await manager.existsBy(BusPassSettings, { school_id: schoolId })) {
+  // The settings row alone is not proof the passes are there. A database
+  // that ended up with passes but no settings row — this one had 54 and 0 —
+  // walked straight past this guard into the insert below and broke
+  // UQ_bus_passes_student_year, and because the whole demo seed is one
+  // transaction that rolled back every step before it too: the users, their
+  // roles, the diary, the library. Guard on the rows the constraint protects,
+  // and put the missing settings row back while we are here.
+  const hasPasses = await manager.existsBy(BusPass, { school_id: schoolId });
+  const hasSettings = await manager.existsBy(BusPassSettings, { school_id: schoolId });
+  if (hasPasses || hasSettings) {
+    if (!hasSettings) {
+      await manager.insert(BusPassSettings, { school_id: schoolId, grace_days: GRACE_DAYS, updated_by: null });
+    }
     console.log('  Bus passes and safety alerts: already set up: kept');
     return;
   }
