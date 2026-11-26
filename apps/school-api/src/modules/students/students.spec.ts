@@ -105,7 +105,9 @@ describe('permissions', () => {
     const holders = ROLE_CATALOG.filter((item) => rolePermissions(item).includes(PERMISSIONS.SUBSTITUTES_MANAGE)).map(
       (item) => item.code,
     );
-    expect(holders.sort()).toEqual(['AO', 'SUPER_ADMIN']);
+    // OFFICE is the same officer on the phone app, not a third party: a role
+    // carries one app, so the AO's authority needs a role per client.
+    expect(holders.sort()).toEqual(['AO', 'OFFICE', 'SUPER_ADMIN']);
   });
 });
 

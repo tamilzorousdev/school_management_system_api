@@ -26,7 +26,9 @@ export const DEMO_SCHOOL: Partial<School> = {
 export const DEMO_SCHOOL_USERS: SeedUser[] = [
   { name: 'School Admin', mobile: '9876543210', roles: [ROLES.ADMIN] },
   { name: 'Meenakshi Sundaram', mobile: '9000000001', roles: [ROLES.PRINCIPAL] },
-  { name: 'Karthik Raman', mobile: '9000000002', roles: [ROLES.AO] },
+  // Both roles: the AO runs the office in the admin web and on the SMS
+  // Office phone app, and a role carries exactly one app.
+  { name: 'Karthik Raman', mobile: '9000000002', roles: [ROLES.AO, ROLES.OFFICE] },
   { name: 'Selvam Murugan', mobile: '9000000003', roles: [ROLES.TRANSPORT_INCHARGE] },
   { name: 'Priya Venkatesh', mobile: '9000000004', roles: [ROLES.TEACHER, ROLES.HOD] },
   { name: 'Lakshmi Narayanan', mobile: '9000000005', roles: [ROLES.PARENT], language: 'ta' },

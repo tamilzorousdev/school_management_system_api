@@ -14,7 +14,7 @@ export interface UserAccess {
   apps: AppSection[];
 }
 
-const APP_ORDER: AppSection[] = ['admin', 'staff', 'parent', 'driver'];
+const APP_ORDER: AppSection[] = ['admin', 'staff', 'parent', 'driver', 'office'];
 
 @Injectable()
 export class AccessService {

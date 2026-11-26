@@ -10,10 +10,10 @@ import {
 } from 'typeorm';
 import { Permission } from './permission.entity';
 
-export const APP_SECTIONS = ['admin', 'staff', 'parent', 'driver'] as const;
+export const APP_SECTIONS = ['admin', 'staff', 'parent', 'driver', 'office'] as const;
 export type AppSection = (typeof APP_SECTIONS)[number];
 
-export const MOBILE_SECTIONS = ['parent', 'staff', 'driver'] as const;
+export const MOBILE_SECTIONS = ['parent', 'staff', 'driver', 'office'] as const;
 export type MobileSection = (typeof MOBILE_SECTIONS)[number];
 
 export const CLIENT_APPS = ['admin', 'mobile', ...MOBILE_SECTIONS] as const;
@@ -24,6 +24,7 @@ export const SECTION_LABELS: Record<AppSection, string> = {
   staff: 'Staff',
   parent: 'Parent',
   driver: 'Driver',
+  office: 'Office',
 };
 
 export function canOpen(app: ClientApp, sections: AppSection[]): boolean {
