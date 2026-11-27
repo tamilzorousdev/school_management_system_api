@@ -110,10 +110,7 @@ export class NotificationsService implements OnModuleInit {
 
   async mine(userId: number, query: MyNotificationsQueryDto): Promise<Paginated<MyNotificationDto>> {
     const where = {
-      user_id: userId,
-      channel: 'in_app' as const,
-      status: Not('expired' as const),
-      ...this.appFilter(query.app),
+      ...this.inbox(userId, query.app),
       ...(query.unread ? { read_at: IsNull() } : {}),
       ...(query.category ? { category: query.category } : {}),
     };
@@ -128,8 +125,17 @@ export class NotificationsService implements OnModuleInit {
 
   async unreadCount(userId: number, app?: NotificationApp): Promise<number> {
     return this.notifications.count({
-      where: { user_id: userId, channel: 'in_app', read_at: IsNull(), ...this.appFilter(app) },
+      where: { ...this.inbox(userId, app), read_at: IsNull() },
     });
+  }
+
+  private inbox(userId: number, app?: NotificationApp) {
+    return {
+      user_id: userId,
+      channel: 'in_app' as const,
+      status: Not('expired' as const),
+      ...this.appFilter(app),
+    };
   }
 
   private appFilter(app?: NotificationApp) {
@@ -153,9 +159,9 @@ export class NotificationsService implements OnModuleInit {
     return this.toMine(row);
   }
 
-  async markAllRead(userId: number): Promise<{ updated: number }> {
+  async markAllRead(userId: number, app?: NotificationApp): Promise<{ updated: number }> {
     const result = await this.notifications.update(
-      { user_id: userId, channel: 'in_app', read_at: IsNull() },
+      { ...this.inbox(userId, app), read_at: IsNull() },
       { read_at: new Date(), status: 'read' },
     );
     return { updated: result.affected ?? 0 };

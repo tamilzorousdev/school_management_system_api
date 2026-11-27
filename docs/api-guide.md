@@ -246,6 +246,8 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 - Remove on sign-out: handled by `POST /auth/logout`. To remove a token alone: `DELETE /me/devices?fcm_token=...`.
 - Push `data` always has `notification_id`, `category` and `template`, plus the values used in the message (for example `bus`, `stop`, `minutes`). Use `category` to open the right screen.
 - The notification centre is `GET /me/notifications` (in-app copy of every message), `GET /me/notifications/unread-count`, `PATCH /me/notifications/{id}/read` and `POST /me/notifications/read-all`.
+- Every mobile role (Staff, Parent, Office, Driver, Transport in-charge) uses this one notification centre. Send `app` (`parent`, `staff`, `driver`, `office`, `transport`) on the list, on `unread-count` and on `read-all`, so one account with several roles only sees, counts and clears the notifications of the app that is open. The list also takes `unread=true` and `category`. `read-all` without `app` marks everything, as before.
+- The badge count leaves out expired notifications (for example an ended emergency), exactly like the list.
 
 ## Which school
 

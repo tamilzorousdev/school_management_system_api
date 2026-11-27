@@ -1,6 +1,6 @@
 import { HOSTEL_PARENT_TEMPLATES, HOSTEL_STAFF_TEMPLATES } from './hostel-templates.catalog';
 
-export const NOTIFICATION_APPS = ['parent', 'staff', 'driver'] as const;
+export const NOTIFICATION_APPS = ['parent', 'staff', 'driver', 'office', 'transport'] as const;
 export type NotificationApp = (typeof NOTIFICATION_APPS)[number];
 
 const PARENT_ONLY = [
