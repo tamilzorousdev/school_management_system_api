@@ -61,12 +61,25 @@ describe('inbox scope', () => {
   });
 
   it.each<NotificationApp>(['office', 'transport'])(
-    'the %s app hides parent, staff and driver only notifications',
+    'the %s app keeps staff notifications and hides parent and driver only ones',
     (app) => {
       const hidden = templatesNotFor(app);
-      expect(hidden).toEqual(expect.arrayContaining([...templatesNotFor('staff'), ...templatesNotFor('parent')]));
+      expect(hidden).toEqual(expect.arrayContaining(['STUDENT_ABSENT', 'BUS_OPT_OUT']));
+      expect(hidden).not.toContain('GATE_PASS_REQUESTED');
+      expect(hidden).not.toContain('FLEET_DOCUMENT_EXPIRY');
     },
   );
+
+  it('the office app hides chat rows meant for the parent or driver app, not the staff one', async () => {
+    const { service, notifications } = build();
+    await service.unreadCount(5, 'office');
+    const [{ where }] = notifications.count.mock.calls[0] as unknown as [{ where: Where }];
+    const operators = (where.data as FindOperator<FindOperator<unknown>[]>).value;
+    const hiddenApps = operators.map((not) => (not.value as unknown as { app: string }).app);
+    expect(hiddenApps).toEqual(expect.arrayContaining(['parent', 'driver']));
+    expect(hiddenApps).not.toContain('staff');
+    expect(hiddenApps).not.toContain('office');
+  });
 
   it('uses the same scope for the list, the badge and read all', async () => {
     const { service, notifications } = build();

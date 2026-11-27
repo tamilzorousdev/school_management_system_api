@@ -143,8 +143,21 @@ const APP_OF = new Map<string, NotificationApp>([
   ...DRIVER_ONLY.map((code): [string, NotificationApp] => [code, 'driver']),
 ]);
 
+const SEES: Record<NotificationApp, readonly NotificationApp[]> = {
+  parent: ['parent'],
+  staff: ['staff'],
+  driver: ['driver'],
+  office: ['office', 'staff'],
+  transport: ['transport', 'staff'],
+};
+
+export function appsSeenBy(app: NotificationApp): readonly NotificationApp[] {
+  return SEES[app];
+}
+
 export function templatesNotFor(app: NotificationApp): string[] {
-  return [...APP_OF.entries()].filter(([, owner]) => owner !== app).map(([code]) => code);
+  const seen = appsSeenBy(app);
+  return [...APP_OF.entries()].filter(([, owner]) => !seen.includes(owner)).map(([code]) => code);
 }
 
 export function appOf(code: string | null): NotificationApp | null {

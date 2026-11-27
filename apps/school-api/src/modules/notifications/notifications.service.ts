@@ -23,7 +23,7 @@ import { Notification } from './entities/notification.entity';
 import { NotificationTemplate } from './entities/notification-template.entity';
 import { JOB_QUEUE, JobQueue } from './queue/job-queue';
 import { CallSide, devicesForSide } from './call-devices';
-import { appOf, NOTIFICATION_APPS, NotificationApp, templatesNotFor } from './notification-apps';
+import { appOf, appsSeenBy, NOTIFICATION_APPS, NotificationApp, templatesNotFor } from './notification-apps';
 import { PushResult, PushService, PushTarget } from './push.service';
 import { renderTemplate, TemplateData, toStringData } from './template.renderer';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -143,7 +143,9 @@ export class NotificationsService implements OnModuleInit {
     return {
       template_code: Not(In(templatesNotFor(app))),
       data: And(
-        ...NOTIFICATION_APPS.filter((other) => other !== app).map((other) => Not(JsonContains({ app: other }))),
+        ...NOTIFICATION_APPS.filter((other) => !appsSeenBy(app).includes(other)).map((other) =>
+          Not(JsonContains({ app: other })),
+        ),
       ),
     };
   }
