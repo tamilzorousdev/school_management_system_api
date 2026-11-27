@@ -114,7 +114,15 @@ export class TripHandoverService {
     for (const rider of onBoard) {
       const users = parentsOf(rider.student_id);
       if (users.length) {
-        told += await send(TEMPLATES.BUS_HANDOVER_ONBOARD, { user_ids: users }, { ...base, student: rider.full_name });
+        told += await send(
+          TEMPLATES.BUS_HANDOVER_ONBOARD,
+          { user_ids: users },
+          {
+            ...base,
+            student: rider.full_name,
+            student_id: String(rider.student_id),
+          },
+        );
       }
     }
     const waitingParents = [...new Set(waiting.flatMap((rider) => parentsOf(rider.student_id)))];
