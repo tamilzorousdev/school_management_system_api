@@ -1396,11 +1396,13 @@ export class RoutesService {
             route: routeOf(change.after.route_id)?.name ?? 'the school bus',
             pickup: legs.pickup,
             drop: legs.drop,
+            student_id: String(change.student_id),
           });
         } else if (change.before) {
           await this.send(TEMPLATES.TRANSPORT_REMOVED, schoolId, guardians, {
             student: name,
             route: routeOf(change.before.route_id)?.name ?? 'the school bus',
+            student_id: String(change.student_id),
           });
         }
         const oldBus = busOf(change.before);
