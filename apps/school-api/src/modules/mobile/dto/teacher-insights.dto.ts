@@ -3,6 +3,7 @@ import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional } from 'class-validator';
 import { toBoolean } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
+import { IdentityDto } from '../../../shared/identity';
 import { TeacherClassDto } from '../../staff/dto/staff-response.dto';
 import { LeaveTypeDto, StaffLeaveDto } from '../../staff-leave/dto/staff-leave.dto';
 import { RefDto } from '../../students/dto/student-response.dto';
@@ -151,7 +152,7 @@ export class MyClassDto extends TeacherClassDto {
   class_teacher_summary: ClassTeacherSummaryDto | null;
 }
 
-export class TeacherProfileDto {
+export class TeacherProfileDto extends IdentityDto {
   @ApiProperty({ example: 5 })
   user_id: number;
 

@@ -19,7 +19,12 @@ import {
   UpdateGuardianLinkDto,
   UpdateStudentDto,
 } from './dto/student-input.dto';
-import { StudentDetailDto, StudentInsightsDto, StudentListItemDto } from './dto/student-response.dto';
+import {
+  CommunitySummaryDto,
+  StudentDetailDto,
+  StudentInsightsDto,
+  StudentListItemDto,
+} from './dto/student-response.dto';
 import { EmergencyContact } from './entities/emergency-contact.entity';
 import { StudentEnrollment } from './entities/student-enrollment.entity';
 import { StudentGuardian } from './entities/student-guardian.entity';
@@ -29,6 +34,16 @@ import { FilesService } from '../files/files.service';
 import { GuardiansService, Invite } from './guardians.service';
 import { viewingYearId, yearClause, yearWhere } from '../../shared/year-context';
 import { wingClause } from '../../shared/wing-context';
+import {
+  AadhaarDto,
+  IdentityDto,
+  COMMUNITIES,
+  COMMUNITY_LABELS,
+  identityColumns,
+  identityOf,
+  withoutIdentity,
+} from '../../shared/identity';
+import { FieldCipher } from '../security/field-cipher';
 
 type ListedStudent = Student & {
   current?: StudentEnrollment | null;
@@ -46,6 +61,7 @@ export class StudentsService {
     private readonly files: FilesService,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
+    private readonly cipher: FieldCipher,
   ) {}
 
   async create(schoolId: number, dto: CreateStudentDto): Promise<StudentDetailDto> {
@@ -129,6 +145,7 @@ export class StudentsService {
         disability_category: dto.disability_category ?? null,
         disability_percentage: dto.disability_percentage ?? null,
         is_adopted: dto.is_adopted ?? false,
+        ...identityColumns(dto, this.encrypt),
       }),
     );
     await manager.insert(StudentEnrollment, {
@@ -180,6 +197,8 @@ export class StudentsService {
     if (query.status) qb.andWhere('s.status = :status', { status: query.status });
     if (query.gender) qb.andWhere('s.gender = :gender', { gender: query.gender });
     if (query.house) qb.andWhere('LOWER(s.house) = LOWER(:house)', { house: query.house });
+    if (query.community) qb.andWhere('s.community = :community', { community: query.community });
+    if (query.religion) qb.andWhere('s.religion = :religion', { religion: query.religion });
     if (query.class_id) qb.andWhere('e.class_id = :classId', { classId: query.class_id });
     if (query.section_id) qb.andWhere('e.section_id = :sectionId', { sectionId: query.section_id });
     if (query.no_section !== undefined)
@@ -308,6 +327,7 @@ export class StudentsService {
       disability_category: student.disability_category ?? null,
       disability_percentage: student.disability_percentage ? Number(student.disability_percentage) : null,
       is_adopted: Boolean(student.is_adopted),
+      ...identityOf(student),
       guardian_details: links
         .sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
         .map((link) => ({
@@ -355,9 +375,51 @@ export class StudentsService {
         'ALUMNI_STATUS_MANAGED',
       );
     }
-    if (Object.keys(dto).length) await this.students.update(id, dto);
+    const columns = { ...withoutIdentity(dto), ...identityColumns(dto, this.encrypt) };
+    if (Object.keys(columns).length) await this.students.update(id, columns);
     return this.get(schoolId, id);
   }
+
+  async identity(schoolId: number, id: number): Promise<IdentityDto> {
+    return identityOf(await this.find(schoolId, id));
+  }
+
+  async aadhaar(schoolId: number, id: number): Promise<AadhaarDto> {
+    const row = await this.students
+      .createQueryBuilder('s')
+      .select(['s.id', 's.aadhaar_enc'])
+      .where('s.id = :id AND s.school_id = :schoolId', { id, schoolId })
+      .getOne();
+    if (!row) throw AppException.notFound('Student not found', 'STUDENT_NOT_FOUND');
+    return { aadhaar_no: row.aadhaar_enc ? this.cipher.decrypt(row.aadhaar_enc) : null };
+  }
+
+  async communitySummary(schoolId: number, classId?: number): Promise<CommunitySummaryDto> {
+    const year = await this.years.findOneBy(yearWhere(schoolId));
+    const rows = (await this.dataSource.query(
+      `SELECT s.community, COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE s.gender = 'male')::int AS boys,
+              COUNT(*) FILTER (WHERE s.gender = 'female')::int AS girls
+         FROM students s
+         JOIN student_enrollments e ON e.student_id = s.id AND e.academic_year_id = $2
+        WHERE s.school_id = $1 AND s.deleted_at IS NULL AND s.status = 'active'
+          AND ($3::int IS NULL OR e.class_id = $3) AND ${wingClause('e.class_id')}
+        GROUP BY s.community`,
+      [schoolId, year?.id ?? 0, classId ?? null],
+    )) as { community: string | null; total: number; boys: number; girls: number }[];
+    const counted = new Map(rows.map((row) => [row.community, row]));
+    const empty = { total: 0, boys: 0, girls: 0 };
+    return {
+      total: rows.reduce((sum, row) => sum + row.total, 0),
+      not_recorded: counted.get(null)?.total ?? 0,
+      items: COMMUNITIES.map((community) => {
+        const { total, boys, girls } = counted.get(community) ?? empty;
+        return { community, label: COMMUNITY_LABELS[community], total, boys, girls };
+      }),
+    };
+  }
+
+  private readonly encrypt = (plain: string) => this.cipher.encrypt(plain);
 
   async setEnrollment(schoolId: number, id: number, dto: EnrollmentInputDto): Promise<StudentDetailDto> {
     await this.find(schoolId, id);

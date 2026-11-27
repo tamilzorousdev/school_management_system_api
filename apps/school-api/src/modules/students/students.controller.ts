@@ -25,9 +25,11 @@ import {
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS, ROLES } from '../access/access.catalog';
 import { AdmissionsService } from './admissions.service';
+import { AadhaarDto } from '../../shared/identity';
 import {
   AdmissionInputDto,
   AdmissionQueryDto,
+  CommunitySummaryQueryDto,
   CreateStudentDto,
   DecisionDto,
   EmergencyContactsDto,
@@ -46,6 +48,7 @@ import {
 import {
   AdmissionDto,
   AdmissionInsightsDto,
+  CommunitySummaryDto,
   GuardianDetailDto,
   GuardianInsightsDto,
   GuardianListItemDto,
@@ -85,6 +88,25 @@ export class StudentsController {
   @ApiEnvelope(StudentInsightsDto)
   insights(@SchoolId() schoolId: number) {
     return this.students.insights(schoolId);
+  }
+
+  @Get('community-summary')
+  @RequirePermissions(PERMISSIONS.STUDENTS_VIEW)
+  @ApiOperation({
+    summary: 'Active students this year by community (OC, BC, BCM, MBC, DNC, SC, SCA, ST), with boys and girls',
+  })
+  @ApiEnvelope(CommunitySummaryDto)
+  communitySummary(@SchoolId() schoolId: number, @Query() query: CommunitySummaryQueryDto) {
+    return this.students.communitySummary(schoolId, query.class_id);
+  }
+
+  @Get(':id/aadhaar')
+  @RequirePermissions(PERMISSIONS.IDENTITY_AADHAAR)
+  @ApiOperation({ summary: 'Full Aadhaar number (decrypted). Needs the identity.aadhaar permission.' })
+  @ApiEnvelope(AadhaarDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  aadhaar(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.students.aadhaar(schoolId, id);
   }
 
   @Get(':id')

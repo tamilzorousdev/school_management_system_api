@@ -1,5 +1,6 @@
 import { SchoolScopedEntity } from '@app/common';
 import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany } from 'typeorm';
+import { Community, Religion } from '../../../shared/identity';
 import { User } from '../../users/entities/user.entity';
 import { StaffBankAccount } from './staff-bank-account.entity';
 import { StaffDocument } from './staff-document.entity';
@@ -63,6 +64,30 @@ export class Staff extends SchoolScopedEntity {
 
   @Column({ type: 'date', nullable: true })
   left_on: string | null;
+
+  @Column({ type: 'varchar', length: 5, nullable: true })
+  community: Community | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  caste: string | null;
+
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  religion: Religion | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  nationality: string | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  mother_tongue: string | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  community_certificate_no: string | null;
+
+  @Column({ type: 'text', nullable: true, select: false })
+  aadhaar_enc: string | null;
+
+  @Column({ type: 'varchar', length: 4, nullable: true })
+  aadhaar_last4: string | null;
 
   @Column({ type: 'int', nullable: true })
   signature_file_id: number | null;

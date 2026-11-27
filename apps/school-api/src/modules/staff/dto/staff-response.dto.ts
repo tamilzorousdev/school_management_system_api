@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, IntersectionType } from '@nestjs/swagger';
+import { IdentityDto } from '../../../shared/identity';
 import { VERIFICATION_STATUSES, VerificationStatus } from '../../../shared/verification';
 import { FileDto } from '../../files/dto/file.dto';
 import { PersonNameDto } from '../../student-records/dto/records.dto';
@@ -205,7 +206,7 @@ export class TeachingAssignmentDto {
   periods_per_week: number;
 }
 
-export class StaffDetailDto extends StaffListItemDto {
+export class StaffDetailDto extends IntersectionType(StaffListItemDto, IdentityDto) {
   @ApiProperty({ enum: LANGUAGES })
   language: Language;
 

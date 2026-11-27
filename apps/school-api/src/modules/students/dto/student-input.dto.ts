@@ -20,6 +20,7 @@ import {
 } from 'class-validator';
 import { ListQueryDto, toBoolean } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
+import { COMMUNITIES, Community, IdentityInputDto, RELIGIONS, Religion } from '../../../shared/identity';
 import { IsMobile, MOBILE_PATTERN, normalizeMobile } from '../../../shared/mobile';
 import { LANGUAGES, Language } from '../../users/entities/user.entity';
 import { ADMISSION_STATUSES, AdmissionStatus } from '../entities/admission.entity';
@@ -113,7 +114,7 @@ export class EmergencyContactInputDto {
   mobile: string;
 }
 
-export class StudentProfileDto {
+export class StudentProfileDto extends IdentityInputDto {
   @ApiProperty({ example: 'Kavin' })
   @Transform(trim)
   @IsString()
@@ -405,6 +406,24 @@ export class StudentQueryDto extends ListQueryDto {
   @IsString()
   @MaxLength(20)
   house?: string;
+
+  @ApiPropertyOptional({ enum: COMMUNITIES })
+  @IsOptional()
+  @IsIn(COMMUNITIES)
+  community?: Community;
+
+  @ApiPropertyOptional({ enum: RELIGIONS })
+  @IsOptional()
+  @IsIn(RELIGIONS)
+  religion?: Religion;
+}
+
+export class CommunitySummaryQueryDto {
+  @ApiPropertyOptional({ example: 4 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  class_id?: number;
 }
 
 export class AdmissionInputDto {

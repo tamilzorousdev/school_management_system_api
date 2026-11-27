@@ -15,6 +15,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ListQueryDto } from '@app/common';
+import { IdentityDto } from '../../../shared/identity';
 import { SCHOOL_BOARDS, SchoolBoard } from '../../schools/entities/school.entity';
 import { TeachersTodayDto } from './office-teachers.dto';
 import { BusesTodayDto, StudentBusTodayDto } from './office-bus.dto';
@@ -351,7 +352,7 @@ export class GuardianRefDto {
   can_pickup: boolean;
 }
 
-export class StudentBasicsDto {
+export class StudentBasicsDto extends IdentityDto {
   @ApiProperty({ example: 41 })
   id: number;
 

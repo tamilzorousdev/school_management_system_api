@@ -959,6 +959,25 @@ A school is split into **wings** (for example Pre-primary LKG–UKG, Primary 1�
 
 **Office app (Flutter, role AO)**: `GET /mobile/office/home` (`me`, `wings`, `pending_gate_passes`), `GET /mobile/office/dashboard` (same as above), `GET /mobile/office/students/{id}/documents`, `GET /mobile/office/students/{id}/report-card/pdf` (`term_id`/`exam_id` optional; the student response gives it as `report_card_pdf_path`), `GET /mobile/office/wings/{id}/classes`, `/classes/{id}/sections`, `/sections/{id}/students`, `/students/{id}`, `/students/{id}/timeline` (same shapes as above), `GET /mobile/office/gate-passes` (waiting in my wings), `GET /mobile/office/gate-passes/{id}`, `POST /mobile/office/gate-passes/{id}/decision` `{ approve, note? }` (first answer wins with the class teacher: 409 `PASS_ALREADY_DECIDED`). Pushes for the AO carry `role: "office"`. Swagger: `/api/docs/mobile/office`.
 
+## Community and identity (students and staff)
+
+Students and staff carry the same optional fields. Send them on `POST/PATCH /admin/students` and `POST/PATCH /admin/staff`; every field is optional, `null` or an empty string clears it, and leaving a field out keeps it.
+
+| Field | Rule |
+| --- | --- |
+| `community` | `oc`, `bc`, `bcm`, `mbc`, `dnc`, `sc`, `sca`, `st` (case does not matter on input; labels OC, BC, BCM, MBC, DNC, SC, SCA, ST) |
+| `caste` | text, up to 80 |
+| `religion` | `hindu`, `muslim`, `christian`, `sikh`, `jain`, `buddhist`, `other` |
+| `nationality`, `mother_tongue` | text, up to 40 (the forms suggest Indian and Tamil) |
+| `community_certificate_no` | text, up to 40 |
+| `aadhaar_no` | input only: 12 digits starting 2 to 9, spaces or dashes allowed. Stored encrypted; responses carry `aadhaar_masked` (`XXXX0123`) |
+
+Responses: `GET /admin/students/{id}`, `GET /admin/staff/{id}`, `GET /admin|mobile/office/students/{id}` (`student`) `GET /me/staff/profile`, `GET /mobile/teacher/profile` and the parent's `GET /mobile/parent/children/{id}/identity` (read-only, own child only) return `community`, `caste`, `religion`, `nationality`, `mother_tongue`, `community_certificate_no`, `aadhaar_masked`. Lists do not.
+
+- `GET /admin/students?community=bc&religion=hindu` filters the student list.
+- `GET /admin/students/community-summary?class_id=` (`students.view`): active students this year, `{ total, not_recorded, items: [{ community, label, total, boys, girls }] }`, every community in the fixed order.
+- `GET /admin/students/{id}/aadhaar` and `GET /admin/staff/{id}/aadhaar` return `{ aadhaar_no }` in full; they need the `identity.aadhaar` permission (school admin by default).
+
 ## My staff profile (any staff: teacher, AO, office)
 
 Shared `/me/staff/*` routes (Swagger tag `Me · Staff profile`, in both docs). 404 `STAFF_NOT_FOUND` when the user has no staff record.

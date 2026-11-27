@@ -9,6 +9,7 @@ import { BehaviourInputDto, BehaviourNoteDto, HealthDto, StudentDocumentDto } fr
 import { StudentRecordsService } from '../student-records/student-records.service';
 import { StudentDetailDto } from '../students/dto/student-response.dto';
 import { StudentsService } from '../students/students.service';
+import { IdentityDto } from '../../shared/identity';
 import { ChildCardDto } from './dto/mobile.dto';
 import { BenchPlanDto, BenchQueryDto, RosterQueryDto, RosterStudentDto } from './dto/teacher-app.dto';
 import {
@@ -41,6 +42,7 @@ export class MobileParentChildController {
     private readonly lifecycle: StudentLifecycleService,
     private readonly parentTeachers: ParentTeachersService,
     private readonly childHolidays: HolidaysService,
+    private readonly students: StudentsService,
   ) {}
 
   @Get('holidays')
@@ -118,6 +120,18 @@ export class MobileParentChildController {
   @ApiEnvelope(DigitalIdDto)
   async idCard(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
     return this.lifecycle.digitalId(await this.access.childSchool(user.id, id), id);
+  }
+
+  @Get('identity')
+  @ApiTags(PARENT_MODULE_TAGS.MODULE_1)
+  @ApiOperation({
+    summary: 'Community and identity details the school has recorded for the child (read-only)',
+    description:
+      'community, caste, religion, nationality, mother_tongue, community_certificate_no and aadhaar_masked (last 4 only); null when not recorded. Only the school office can change them.',
+  })
+  @ApiEnvelope(IdentityDto)
+  async identity(@CurrentUser() user: AuthUser, @Param('id', ParseIntPipe) id: number) {
+    return this.students.identity(await this.access.childSchool(user.id, id), id);
   }
 
   @Get('documents')

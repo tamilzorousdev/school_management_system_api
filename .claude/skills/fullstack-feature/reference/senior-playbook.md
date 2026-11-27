@@ -26,7 +26,7 @@ Stop and wait only when the answer changes scope or the data model. Otherwise st
 - **Language:** English and Tamil in the app; server labels are English only, so the app owns the words.
 - **Scale:** pagination, indexes, no per-row queries in a loop.
 - **Compatibility:** additive changes only (new route, optional field, nullable column); old app versions keep working; `v2` only for a breaking change.
-- **Data:** safe migration, nullable or defaulted, nothing destructive.
+- **Data:** safe migration, nullable or defaulted, nothing destructive. `migration:generate` on a local database also picks up unrelated drift (dropped constraints on other tables); when its SQL touches tables you did not change, write the migration by hand with only your columns.
 - **Abuse:** one-per-window rules, moderation, rate limits where a user can spam.
 
 ## 4. Build small and clean

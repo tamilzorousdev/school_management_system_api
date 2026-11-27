@@ -21,6 +21,8 @@ import {
 } from './dto/teacher-insights.dto';
 import { affectedPeriods, balanceAfter, impactSummary, SlotRow, sectionsOf } from './teacher-insights.logic';
 
+import { identityOf } from '../../shared/identity';
+
 @Injectable()
 export class TeacherInsightsService {
   constructor(
@@ -230,6 +232,7 @@ export class TeacherInsightsService {
         .join(' · '),
       signature_file_id: staff.signature_file_id ?? null,
       signature_url: this.files.linkFor(staff.signature_file_id),
+      ...identityOf(staff),
     };
   }
 
