@@ -12,60 +12,69 @@ Proposed module split for the module-wise scope document. It follows the 8 group
 ## B. Students and admissions
 6. **Admissions and student records**: students, guardians, documents, ID cards and QR
 7. **Student import**: bulk import
-8. **Student lifecycle**: promotion, transfer, TC, withdrawal
+8. **Student lifecycle**: promotion, transfer, TC, withdrawal, No Objection Certificate
+9. **Alumni**: alumni records, public alumni page (Group B, chapter 8 ALM)
 
 ## C. Academics
-9. **Timetable and substitutes**
-10. **Attendance** (student)
-11. **Diary and homework**
-12. **Exams and results**
-13. **Quizzes**
-14. **Activities, achievements and performance**
-15. **Events**
+10. **Timetable and substitutes**
+11. **Attendance** (student)
+12. **Diary and homework**
+13. **Exams and results**
+14. **Quizzes**
+15. **Activities, achievements and performance**: includes parent ratings and teacher term feedback
+16. **Events**
 
 ## D. Staff and HR
-16. **Staff records**
-17. **Staff attendance**
-18. **Staff leave**
-19. **Payroll**
-20. **Appraisals**
+17. **Staff records**
+18. **Staff attendance**
+19. **Staff leave**
+20. **Payroll**
+21. **Appraisals**
 
 ## E. Finance
-21. **Fees**: structures, collection, discounts, refunds, late fees, online payments
-22. **Accounts**: expenses, income, approvals
+22. **Fees**: structures, collection, discounts, refunds, late fees, online payments
+23. **Accounts**: expenses, income, approvals
 
 ## F. Communication
-23. **Announcements and notifications**: push, SMS, templates
-24. **Chat**
-25. **Meetings and calls**
-26. **Surveys and feedback forms**
-27. **Emergency broadcasts**
+24. **Announcements and notifications**: push, SMS, templates
+25. **Chat**
+26. **Meetings and calls**
+27. **Surveys and feedback forms**
+28. **Emergency broadcasts**
+29. **Grievances**
 
 ## G. Transport and fleet
-28. **Transport**: routes, stops, bus passes, transport fees
-29. **Fleet and live tracking**: buses, Telematics read-only status
-30. **Crew and driver app**: drivers, attendants, trips, boarding, SOS
-31. **Fleet maintenance**
+30. **Transport**: routes, stops, bus passes, transport fees
+31. **Fleet and live tracking**: buses, Telematics read-only status
+32. **Crew and driver role**: drivers, attendants, trips, boarding, SOS (SMS Transport app)
+33. **Fleet maintenance**
+34. **Transport in-charge**: `admin` console plus `mobile/transport` routes (no Flutter app carries this role)
 
 ## H. Campus operations
-32. **Gate and visitors**: gate passes
-33. **Library**
-34. **Inventory**
+35. **Gate and visitors**: gate passes
+36. **Library**
+37. **Inventory**
+38. **Hostel**: admissions, rooms, movement, care, conduct, duty, safety, reports; Warden and Assistant warden roles
+39. **Canteen**: menu, orders, kitchen, wallet, stock, purchases, staff, waste, feedback
+40. **Gallery**: albums, content, mobile galleries
 
 ## I. Cross-cutting
-35. **Mobile app shells**: Staff, Parent and Driver menus. Parent and teacher previews are in the web.
+41. **Mobile apps**: three Android apps built from shared packages, every one with the Parent role: SMS (Parent and Staff), SMS Transport (Parent and Driver), SMS Office (Parent and Office). Role chooser, menus and tabs per app. Parent and teacher previews are in the web.
+42. **Office app (AO)**: head AO and wing AO, `admin/office` and `mobile/office` routes, home and wings, classes, sections and students, student history, gate pass approvals (own scope document in `scope_documents/office-app/`)
 
-## Suggested merges (35 to about 25)
+## Suggested merges (42 to about 30)
 
 - Merge 4 into 3.
-- Merge 7 into 6, and 8 into 6 or keep it on its own.
-- Merge 17 and 18 into one "Staff attendance and leave".
-- Merge 20 into 19, or into 16.
-- Merge 28 and 31 into the transport chapters.
-- Merge 35 into the per-role mobile coverage.
+- Merge 7 into 6, and 8 and 9 into one "Student lifecycle and alumni" chapter, or keep them on their own.
+- Merge 18 and 19 into one "Staff attendance and leave".
+- Merge 21 into 20, or into 17.
+- Merge 30, 33 and 34 into the transport chapters.
+- Merge 38, 39 and 40 into a light "Campus services" chapter if the first pass is short.
+- Merge 41 and 42 into the per-role mobile coverage.
 
 ## Open decisions
 
-1. 35-module split or the merged ~25?
-2. Which modules are out of the first pass? Fleet and Telematics only read from another service, so they could be a light chapter.
-3. Mobile menus inside each module chapter (suggested, with a screen table per platform) or in their own chapter?
+1. 42-module split or the merged ~30?
+2. Which modules are out of the first pass? Fleet and Telematics only read from another service, so they could be a light chapter. Hostel, Canteen and Gallery have no scope document yet.
+3. Mobile menus inside each module chapter (suggested, with a screen table per app and role) or in their own chapter?
+4. The Transport in-charge has API routes but no Flutter app: build the screens or leave the role web-only?

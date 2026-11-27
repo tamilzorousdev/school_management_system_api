@@ -77,3 +77,7 @@ Testing only records results. When a case fails or reveals a defect:
 - A case that depends on a failed earlier case is `Blocked`, with the blocking id in Remarks.
 - Cases that change data (create, approve, delete) run last in their module, so earlier read cases see clean data.
 - Final message: counts of Pass, Fail, Blocked, Not run, the 5 most serious failures (id, one line), and the defects awaiting the user's decision to fix (yes/no per defect), and what the user must do for the rest (start the API, scratch DB, device). Nothing else.
+
+## Token budget
+
+Keep token use low: read only the part of a file you need (offset and limit, `scope-lookup`, grep), never print whole files, sheets or responses, send independent tool calls together, delegate only broad fan-out work, and report in a few lines. Finish the task without re-checking what is already verified.

@@ -18,3 +18,7 @@ node $S find "$D" "ATT-R-12"    # grep: prints line number and the line
 Chapter map (same in groups A, B, C): section `x.3` Features, `x.4` Business rules, `x.5` Role access, `x.6` User flows, `x.7` Screens, `x.8` API reference, `x.9` Data and states, `x.10` Notifications, `x.11` Test scenarios, `x.12` Gaps. Ids look like `ATT-F-01`, `ATT-R-12`, `ATT-T-05`.
 
 Pick the smallest section that answers the question. Tables print one row per line, cells separated by ` | `.
+
+## Token budget
+
+Keep token use low: read only the part of a file you need (offset and limit, `scope-lookup`, grep), never print whole files, sheets or responses, send independent tool calls together, delegate only broad fan-out work, and report in a few lines. Finish the task without re-checking what is already verified.

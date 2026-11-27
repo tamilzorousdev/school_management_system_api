@@ -78,3 +78,7 @@ Commit or push only when the user asks. **Never put Claude or any AI tool's name
 - Never rewrite or force-push history that is already on a shared branch to remove old text. Tell the user and let them decide.
 
 Other rules: pull or rebase onto the target branch first and re-run the checks if it moved; never commit a developer's local `BASE_URL` or other local settings (for Flutter, `apps/*/env/*.env`); never change `Constants.BASE_URL`; push to `dev` for the API and Web repos and to a feature branch for Flutter unless the user says to merge to `main`.
+
+## Token budget
+
+Keep token use low: read only the part of a file you need (offset and limit, `scope-lookup`, grep), never print whole files, sheets or responses, send independent tool calls together, delegate only broad fan-out work, and report in a few lines. Finish the task without re-checking what is already verified.

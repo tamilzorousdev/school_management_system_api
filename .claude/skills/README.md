@@ -5,6 +5,7 @@
 | `fullstack-feature` | Build a feature across the API, Admin Web and Flutter app from one prompt |
 | `qa-test-runner` | Run the QA test-case sheet, inspect code, and fill the result columns |
 | `scope-lookup` | Read one section of a scope document without loading the whole file |
+| `scope-doc-writer` | Write or update a scope document (.docx) from the API, web and Flutter code in the Group A, B and C layout |
 
 Test sheets go in `scope_documents/<group>/test-cases/`. The Flutter repo keeps its own skills in its `.claude/skills/` (`widget-catalog`, `flutter-flavors`).
 
