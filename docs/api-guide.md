@@ -246,6 +246,21 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 - Remove on sign-out: handled by `POST /auth/logout`. To remove a token alone: `DELETE /me/devices?fcm_token=...`.
 - Push `data` always has `notification_id`, `category` and `template`, plus the values used in the message (for example `bus`, `stop`, `minutes`). Use `category` to open the right screen.
 - The notification centre is `GET /me/notifications` (in-app copy of every message), `GET /me/notifications/unread-count`, `PATCH /me/notifications/{id}/read` and `POST /me/notifications/read-all`.
+- `app` in push `data` (`parent`, `staff`, `driver`) names the app the message belongs to; the app switches to that role before opening it. Templates that go to more than one kind of user (`BUS_SWAPPED` to parents and crew, `STAFF_LEAVE_STATUS` to teachers and crew) carry the right `app` per person and show in every app's inbox.
+
+**Driver app push routing.** Check in this order:
+
+| Push | Opens |
+| --- | --- |
+| `SOS_*`, `TRANSPORT_INCIDENT*`, or any `category: alert` | Safety tab (SOS status) |
+| `CREW_DOCUMENT_EXPIRY*`, `CREW_BLOCKED` | Me tab → My documents |
+| `BUS_DOCUMENT_EXPIRY*` | Bus tab → bus papers |
+| `FUEL_ENTRY_REVIEWED` (`fuel_id`) | Bus tab, fuel entries |
+| `PRE_TRIP*`, `VEHICLE_*`, `BUS_PROBLEM*` | Bus tab |
+| `STAFF_LEAVE_STATUS` (`leave_id`) | My leave (duty) |
+| `GATE_EARLY_LEAVE_BUS` | My students, early-leave filter |
+| any other `category: transport` (`TRIP_NOT_BOARDED`, `STUDENTS_LEFT_ON_BUS`, `BUS_RIDER_CHANGED`, `BUS_SWAPPED`, `BUS_OPT_OUT`, `BUS_PICKUP_PERSON`, …) | The running trip; Home when no trip runs |
+| anything else | Home |
 
 ## Which school
 

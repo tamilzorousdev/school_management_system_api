@@ -1,5 +1,6 @@
 import { parseOneSignalApps, parsePairs } from '../../config/configuration';
 import { pushTargets } from './notifications.service';
+import { appOf, templatesNotFor } from './notification-apps';
 import { UserDevice } from '../users/entities/user-device.entity';
 
 const device = (token: string, oneSignalAppId: string | null): UserDevice =>
@@ -43,5 +44,24 @@ describe('parsePairs', () => {
       '637c058f': 'TZSMS_DRIVER',
       c066ba63: 'TZSMS_OFFICE',
     });
+  });
+});
+
+describe('appOf for driver pushes', () => {
+  it('sends the fuel review to the driver app', () => {
+    expect(appOf('FUEL_ENTRY_REVIEWED')).toBe('driver');
+    expect(templatesNotFor('driver')).not.toContain('FUEL_ENTRY_REVIEWED');
+  });
+
+  it('keeps bus swaps and leave decisions in every app, since crew get them too', () => {
+    expect(appOf('BUS_SWAPPED')).toBeNull();
+    expect(appOf('STAFF_LEAVE_STATUS')).toBeNull();
+    expect(templatesNotFor('driver')).not.toContain('BUS_SWAPPED');
+    expect(templatesNotFor('driver')).not.toContain('STAFF_LEAVE_STATUS');
+  });
+
+  it('keeps SOS updates in the driver app only', () => {
+    expect(appOf('SOS_ACKNOWLEDGED')).toBe('driver');
+    expect(templatesNotFor('parent')).toContain('SOS_ACKNOWLEDGED');
   });
 });

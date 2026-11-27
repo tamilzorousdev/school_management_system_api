@@ -999,7 +999,16 @@ export class RoutesService {
       reason: reason ? `Reason: ${reason}` : '',
       route_id: String(route.id),
     };
-    await this.send(TEMPLATES.BUS_SWAPPED, schoolId, [...new Set([...parents, ...crew])], data);
+    await this.send(
+      TEMPLATES.BUS_SWAPPED,
+      schoolId,
+      parents.filter((id) => !crew.includes(id)),
+      {
+        ...data,
+        app: 'parent',
+      },
+    );
+    await this.send(TEMPLATES.BUS_SWAPPED, schoolId, crew, { ...data, app: 'driver' });
     await this.routeChanges.insert({
       school_id: schoolId,
       route_id: route.id,

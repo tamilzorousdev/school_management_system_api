@@ -260,6 +260,7 @@ export class StaffLeaveService {
       const [applicant] = await this.dataSource.query(`SELECT name FROM users WHERE id = $1`, [saved.user_id]);
       await this.notifyApprovers(saved, applicant?.name ?? '', type.name);
     }
+    const app = (await this.isCrewLeave(saved.id)) ? 'driver' : 'staff';
     await this.notifications
       .dispatch({
         template: 'STAFF_LEAVE_STATUS',
@@ -272,6 +273,7 @@ export class StaffLeaveService {
           status: STATUS_WORD[status],
           leave_id: String(saved.id),
           note: dto.note ? ` Note: ${dto.note}` : '',
+          app,
         },
       })
       .catch((error: Error) => this.logger.warn(`Leave status for ${saved.id} not sent: ${error.message}`));
@@ -304,6 +306,14 @@ export class StaffLeaveService {
       .orderBy('l.to_date', 'ASC')
       .getMany();
     return this.present(rows);
+  }
+
+  private async isCrewLeave(id: number): Promise<boolean> {
+    const [crew] = await this.dataSource.query(
+      `SELECT 1 FROM staff_leave_requests l WHERE l.id = $1 AND ${CREW_FILTER}`,
+      [id],
+    );
+    return Boolean(crew);
   }
 
   async decideCrew(user: AuthUser, id: number, dto: StaffLeaveDecisionDto): Promise<StaffLeaveDto> {
