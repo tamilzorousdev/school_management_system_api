@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, IsNull, Repository } from 'typeorm';
 import { AppException, AuthUser, paginate, Paginated } from '@app/common';
 import { yearClause } from '../../shared/year-context';
+import { IdentityColumns, identityOf } from '../../shared/identity';
 import { inWings, wingClassIds } from '../../shared/wing-context';
 import { PERMISSIONS } from '../access/access.catalog';
 import { ExamsService } from '../exams/exams.service';
@@ -440,6 +441,7 @@ export class OfficeService {
         house: (row.house as string | null) ?? null,
         address:
           [row.address_line, row.city, row.pincode].filter((part) => part !== null && part !== '').join(', ') || null,
+        ...identityOf(row as Partial<IdentityColumns>),
       },
       current: current
         ? {

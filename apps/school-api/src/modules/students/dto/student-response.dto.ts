@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, IntersectionType } from '@nestjs/swagger';
+import { COMMUNITIES, Community, IdentityDto } from '../../../shared/identity';
 import { ADMISSION_STATUSES, AdmissionStatus } from '../entities/admission.entity';
 import { BLOOD_GROUPS, BloodGroup, GENDERS, Gender, STUDENT_STATUSES, StudentStatus } from '../entities/student.entity';
 import { ENROLLMENT_STATUSES, EnrollmentStatus } from '../entities/student-enrollment.entity';
@@ -156,7 +157,7 @@ export class EmergencyContactDto {
   mobile: string;
 }
 
-export class StudentDetailDto extends StudentListItemDto {
+export class StudentDetailDto extends IntersectionType(StudentListItemDto, IdentityDto) {
   @ApiProperty({
     example: '2026-03-31',
     nullable: true,
@@ -216,6 +217,34 @@ export class StudentDetailDto extends StudentListItemDto {
 
   @ApiProperty({ type: [EmergencyContactDto] })
   emergency_contacts: EmergencyContactDto[];
+}
+
+export class CommunityCountDto {
+  @ApiProperty({ enum: COMMUNITIES, example: 'bc' })
+  community: Community;
+
+  @ApiProperty({ example: 'BC' })
+  label: string;
+
+  @ApiProperty({ example: 120 })
+  total: number;
+
+  @ApiProperty({ example: 64 })
+  boys: number;
+
+  @ApiProperty({ example: 56 })
+  girls: number;
+}
+
+export class CommunitySummaryDto {
+  @ApiProperty({ example: 312, description: 'Active students this year' })
+  total: number;
+
+  @ApiProperty({ example: 18, description: 'Active students with no community recorded' })
+  not_recorded: number;
+
+  @ApiProperty({ type: [CommunityCountDto], description: 'Every community, in the fixed order, zero when none' })
+  items: CommunityCountDto[];
 }
 
 export class StudentInsightsDto {

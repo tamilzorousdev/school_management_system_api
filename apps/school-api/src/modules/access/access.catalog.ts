@@ -13,6 +13,7 @@ export const PERMISSIONS = {
   STAFF_VIEW: 'staff.view',
   STAFF_MANAGE: 'staff.manage',
   STAFF_BANK: 'staff.bank',
+  IDENTITY_AADHAAR: 'identity.aadhaar',
   ATTENDANCE_VIEW: 'attendance.view',
   ATTENDANCE_MANAGE: 'attendance.manage',
   LEAVE_APPROVE: 'leave.approve',
@@ -138,6 +139,7 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   { code: PERMISSIONS.STAFF_VIEW, name: 'View staff, teacher profiles and assignments', group: 'Staff' },
   { code: PERMISSIONS.STAFF_MANAGE, name: 'Add and edit staff, verify documents, assign teachers', group: 'Staff' },
   { code: PERMISSIONS.STAFF_BANK, name: 'See and edit staff bank and PAN details', group: 'Staff' },
+  { code: PERMISSIONS.IDENTITY_AADHAAR, name: 'See full Aadhaar numbers of students and staff', group: 'Students' },
   { code: PERMISSIONS.ATTENDANCE_VIEW, name: 'See student and staff attendance', group: 'Attendance' },
   {
     code: PERMISSIONS.ATTENDANCE_MANAGE,

@@ -12,6 +12,8 @@ import { StaffQualification } from './entities/staff-qualification.entity';
 import { Staff } from './entities/staff.entity';
 import { StaffService } from './staff.service';
 
+import { identityOf } from '../../shared/identity';
+
 const EDITABLE = ['photo', 'email', 'language', 'address', 'emergency_contact_name', 'emergency_contact_mobile'];
 
 const defined = <T extends object>(values: T): Partial<T> =>
@@ -58,6 +60,7 @@ export class MyStaffService {
       address: row.address,
       emergency_contact_name: row.emergency_contact_name,
       emergency_contact_mobile: row.emergency_contact_mobile,
+      ...identityOf(row),
       roles: roles.map((role) => role.name),
       editable: EDITABLE,
     };

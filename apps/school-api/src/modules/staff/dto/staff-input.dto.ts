@@ -20,6 +20,7 @@ import {
 } from 'class-validator';
 import { ListQueryDto, toBoolean } from '@app/common';
 import { IsDateOnly } from '../../../shared/dates';
+import { IdentityInputDto } from '../../../shared/identity';
 import { IsMobile, MOBILE_PATTERN, normalizeMobile } from '../../../shared/mobile';
 import { ROLES } from '../../access/access.catalog';
 import { LANGUAGES, Language } from '../../users/entities/user.entity';
@@ -80,7 +81,7 @@ export class QualificationInputDto {
   year_completed?: number | null;
 }
 
-export class StaffProfileDto {
+export class StaffProfileDto extends IdentityInputDto {
   @ApiProperty({ example: 'Priya Venkatesh' })
   @Transform(trim)
   @IsString()

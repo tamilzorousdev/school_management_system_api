@@ -1,5 +1,6 @@
 import { SchoolScopedEntity } from '@app/common';
 import { Column, Entity, Index, OneToMany } from 'typeorm';
+import { Community, Religion } from '../../../shared/identity';
 import { EmergencyContact } from './emergency-contact.entity';
 import { StudentEnrollment } from './student-enrollment.entity';
 import { StudentGuardian } from './student-guardian.entity';
@@ -15,6 +16,7 @@ export type StudentStatus = (typeof STUDENT_STATUSES)[number];
 
 @Entity('students')
 @Index('UQ_students_school_admission_no', ['school_id', 'admission_no'], { unique: true, where: 'deleted_at IS NULL' })
+@Index('IDX_students_school_community', ['school_id', 'community'], { where: 'deleted_at IS NULL' })
 export class Student extends SchoolScopedEntity {
   @Column({ type: 'varchar', length: 30 })
   admission_no: string;
@@ -87,6 +89,30 @@ export class Student extends SchoolScopedEntity {
 
   @Column({ type: 'smallint', default: 1 })
   card_version: number;
+
+  @Column({ type: 'varchar', length: 5, nullable: true })
+  community: Community | null;
+
+  @Column({ type: 'varchar', length: 80, nullable: true })
+  caste: string | null;
+
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  religion: Religion | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  nationality: string | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  mother_tongue: string | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  community_certificate_no: string | null;
+
+  @Column({ type: 'text', nullable: true, select: false })
+  aadhaar_enc: string | null;
+
+  @Column({ type: 'varchar', length: 4, nullable: true })
+  aadhaar_last4: string | null;
 
   @Column({ type: 'date', nullable: true })
   left_on: string | null;

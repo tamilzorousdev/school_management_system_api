@@ -15,6 +15,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { School } from '../schools/entities/school.entity';
 import { SequencesService } from '../schools/sequences.service';
 import { FieldCipher, lastDigits, masked } from '../security/field-cipher';
+import { AadhaarDto, identityColumns, identityOf, withoutIdentity } from '../../shared/identity';
 import { AcademicYear } from '../setup/entities/academic-year.entity';
 import { UserDevice } from '../users/entities/user-device.entity';
 import { UserRole } from '../users/entities/user-role.entity';
@@ -221,6 +222,7 @@ export class StaffService {
       emergency_contact_name: row.emergency_contact_name,
       emergency_contact_mobile: row.emergency_contact_mobile,
       left_on: row.left_on,
+      ...identityOf(row),
       qualifications: (row.qualifications ?? [])
         .sort((a, b) => (b.year_completed ?? 0) - (a.year_completed ?? 0))
         .map(({ id: qualificationId, degree, specialization, institution, year_completed }) => ({
@@ -307,6 +309,16 @@ export class StaffService {
     };
   }
 
+  async aadhaar(schoolId: number, id: number): Promise<AadhaarDto> {
+    const row = await this.staff
+      .createQueryBuilder('st')
+      .select(['st.id', 'st.aadhaar_enc'])
+      .where('st.id = :id AND st.school_id = :schoolId', { id, schoolId })
+      .getOne();
+    if (!row) throw AppException.notFound('Staff member not found', 'STAFF_NOT_FOUND');
+    return { aadhaar_no: row.aadhaar_enc ? this.cipher.decrypt(row.aadhaar_enc) : null };
+  }
+
   async create(schoolId: number, dto: CreateStaffDto, actor: AuthUser): Promise<StaffDetailDto> {
     this.assertCanGrant(dto.role_codes, actor);
     const roles = await this.access.resolveRoles(dto.role_codes, actor.roles);
@@ -373,6 +385,7 @@ export class StaffService {
           emergency_contact_name: dto.emergency_contact_name ?? null,
           emergency_contact_mobile: dto.emergency_contact_mobile ?? null,
           status: 'active',
+          ...identityColumns(dto, (plain) => this.cipher.encrypt(plain)),
         }),
       );
       if (dto.qualifications?.length) {
@@ -431,9 +444,10 @@ export class StaffService {
       if (roles) await this.replaceStaffRoles(manager, user.id, roles);
 
       const userKeys = ['name', 'mobile', 'email', 'language', 'role_codes', 'photo_file_id'];
-      const staffFields: Partial<Staff> = Object.fromEntries(
-        Object.entries(dto).filter(([key]) => !userKeys.includes(key)),
-      );
+      const staffFields: Partial<Staff> = {
+        ...Object.fromEntries(Object.entries(withoutIdentity(dto)).filter(([key]) => !userKeys.includes(key))),
+        ...identityColumns(dto, (plain) => this.cipher.encrypt(plain)),
+      };
       if (dto.status === 'resigned' && !dto.left_on && !row.left_on) {
         Object.assign(staffFields, { left_on: todayIn(this.app.timeZone) });
       }

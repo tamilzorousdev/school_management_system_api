@@ -1,10 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { UpdateDriverProfileDto } from '../../transport/dto/driver-profile.dto';
+import { IdentityDto } from '../../../shared/identity';
 import { BankDetailsDto } from './staff-response.dto';
 
 export class UpdateMyStaffProfileDto extends UpdateDriverProfileDto {}
 
-export class MyStaffProfileDto {
+export class MyStaffProfileDto extends IdentityDto {
   @ApiProperty({ example: 933 })
   user_id: number;
 

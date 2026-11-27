@@ -140,6 +140,7 @@ describe('StudentsService placement rules', () => {
     { linkFor: () => null } as never,
     {} as never,
     { timeZone: 'Asia/Kolkata' } as AppConfig,
+    {} as never,
   );
   const manager = (filled: number, rollTaken: boolean) =>
     ({
@@ -254,6 +255,7 @@ describe('StudentsService alumni status', () => {
       { linkFor: () => null } as never,
       {} as never,
       { timeZone: 'Asia/Kolkata' } as AppConfig,
+      {} as never,
     );
     return { service, repo };
   };

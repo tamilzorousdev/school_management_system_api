@@ -16,6 +16,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ApiEnvelope, ApiErrors, AuthUser, CurrentUser, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { VerifyDocumentDto } from '../../shared/verification';
+import { AadhaarDto } from '../../shared/identity';
 import { PERMISSIONS } from '../access/access.catalog';
 import { AssignmentsService } from './assignments.service';
 import {
@@ -171,6 +172,15 @@ export class StaffController {
     @Param('documentId', ParseIntPipe) documentId: number,
   ) {
     return this.staff.removeDocument(schoolId, id, documentId);
+  }
+
+  @Get(':id/aadhaar')
+  @RequirePermissions(PERMISSIONS.IDENTITY_AADHAAR)
+  @ApiOperation({ summary: 'Full Aadhaar number (decrypted). Needs the identity.aadhaar permission.' })
+  @ApiEnvelope(AadhaarDto)
+  @ApiErrors(HttpStatus.NOT_FOUND)
+  aadhaar(@SchoolId() schoolId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.staff.aadhaar(schoolId, id);
   }
 
   @Get(':id/bank')
