@@ -7,6 +7,7 @@ import { weekday } from '../../shared/school-days';
 import { StaffLeaveService } from '../staff-leave/staff-leave.service';
 import { TimetableService } from '../timetable/timetable.service';
 import { AppBannersService } from '../app-banners/app-banners.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { parentBanners, schoolBanners, teacherBanners } from './banner.logic';
 import { BannerListDto } from './dto/banner.dto';
 
@@ -21,6 +22,7 @@ export class BannerService {
     private readonly timetable: TimetableService,
     private readonly staffLeaves: StaffLeaveService,
     private readonly appBanners: AppBannersService,
+    private readonly notifications: NotificationsService,
     private readonly dataSource: DataSource,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
@@ -39,7 +41,7 @@ export class BannerService {
       combined,
       unmarked,
       [leaves],
-      [unread],
+      unread,
     ] = await Promise.all([
       this.timetable.periods(schoolId),
       query<{ reporting: string }>(`SELECT staff_reporting_time AS reporting FROM schools WHERE id = $1`, [schoolId]),
@@ -102,10 +104,7 @@ export class BannerService {
            WHERE r.school_id = $1 AND r.status = 'pending' AND r.deleted_at IS NULL AND sec.class_teacher_user_id = $2`,
         [schoolId, user.id],
       ),
-      query<{ count: string }>(
-        `SELECT COUNT(*) AS count FROM notifications WHERE user_id = $1 AND channel = 'in_app' AND read_at IS NULL`,
-        [user.id],
-      ),
+      this.notifications.unreadCount(user.id, 'staff'),
     ]);
     const startOf = (periodNo: number) => periods.find((item) => item.period_no === Number(periodNo))?.start_time ?? '';
     const posters = schoolBanners(await this.appBanners.liveFor(schoolId, 'staff'));
@@ -144,7 +143,7 @@ export class BannerService {
           unmarkedSections: unmarked.map((row) => ({ id: Number(row.id), name: row.name })),
           pendingLeaves: Number(leaves?.count ?? 0),
           staffApprovals: (await this.staffLeaves.approvals(user)).filter((leave) => leave.staff.id !== user.id).length,
-          unread: Number(unread?.count ?? 0),
+          unread,
         }),
         ...posters,
       ],

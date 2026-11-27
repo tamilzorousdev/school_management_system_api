@@ -23,7 +23,7 @@ import { Notification } from './entities/notification.entity';
 import { NotificationTemplate } from './entities/notification-template.entity';
 import { JOB_QUEUE, JobQueue } from './queue/job-queue';
 import { CallSide, devicesForSide } from './call-devices';
-import { appOf, NOTIFICATION_APPS, NotificationApp, templatesNotFor } from './notification-apps';
+import { appOf, appsSeenBy, NOTIFICATION_APPS, NotificationApp, templatesNotFor } from './notification-apps';
 import { PushResult, PushService, PushTarget } from './push.service';
 import { renderTemplate, TemplateData, toStringData } from './template.renderer';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -110,10 +110,7 @@ export class NotificationsService implements OnModuleInit {
 
   async mine(userId: number, query: MyNotificationsQueryDto): Promise<Paginated<MyNotificationDto>> {
     const where = {
-      user_id: userId,
-      channel: 'in_app' as const,
-      status: Not('expired' as const),
-      ...this.appFilter(query.app),
+      ...this.inbox(userId, query.app),
       ...(query.unread ? { read_at: IsNull() } : {}),
       ...(query.category ? { category: query.category } : {}),
     };
@@ -128,8 +125,17 @@ export class NotificationsService implements OnModuleInit {
 
   async unreadCount(userId: number, app?: NotificationApp): Promise<number> {
     return this.notifications.count({
-      where: { user_id: userId, channel: 'in_app', read_at: IsNull(), ...this.appFilter(app) },
+      where: { ...this.inbox(userId, app), read_at: IsNull() },
     });
+  }
+
+  private inbox(userId: number, app?: NotificationApp) {
+    return {
+      user_id: userId,
+      channel: 'in_app' as const,
+      status: Not('expired' as const),
+      ...this.appFilter(app),
+    };
   }
 
   private appFilter(app?: NotificationApp) {
@@ -137,7 +143,9 @@ export class NotificationsService implements OnModuleInit {
     return {
       template_code: Not(In(templatesNotFor(app))),
       data: And(
-        ...NOTIFICATION_APPS.filter((other) => other !== app).map((other) => Not(JsonContains({ app: other }))),
+        ...NOTIFICATION_APPS.filter((other) => !appsSeenBy(app).includes(other)).map((other) =>
+          Not(JsonContains({ app: other })),
+        ),
       ),
     };
   }
@@ -153,9 +161,9 @@ export class NotificationsService implements OnModuleInit {
     return this.toMine(row);
   }
 
-  async markAllRead(userId: number): Promise<{ updated: number }> {
+  async markAllRead(userId: number, app?: NotificationApp): Promise<{ updated: number }> {
     const result = await this.notifications.update(
-      { user_id: userId, channel: 'in_app', read_at: IsNull() },
+      { ...this.inbox(userId, app), read_at: IsNull() },
       { read_at: new Date(), status: 'read' },
     );
     return { updated: result.affected ?? 0 };

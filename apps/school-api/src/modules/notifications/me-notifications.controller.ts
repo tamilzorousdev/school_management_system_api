@@ -49,9 +49,13 @@ export class MeNotificationsController {
   @Post('read-all')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('All notifications marked as read')
-  @ApiOperation({ summary: 'Mark every notification as read' })
-  readAll(@CurrentUser() user: AuthUser) {
-    return this.notifications.markAllRead(user.id);
+  @ApiOperation({
+    summary: 'Mark every notification as read',
+    description:
+      'With app, only the notifications that app shows are marked, so other apps of the same account keep their unread ones.',
+  })
+  readAll(@CurrentUser() user: AuthUser, @Query() query: UnreadCountQueryDto) {
+    return this.notifications.markAllRead(user.id, query.app);
   }
 
   @Patch(':id/read')
