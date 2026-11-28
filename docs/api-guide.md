@@ -4,7 +4,17 @@ For the Flutter team and anyone calling the API. Swagger has every endpoint with
 
 ## One API, one database
 
-The Admin web and the Flutter app (Staff, Parent and Driver roles) call the same API and read the same tables. There is no separate mobile database. A mobile endpoint is a role-specific view over the same records the admin web edits.
+The Admin web and the Flutter apps call the same API and read the same tables. There is no separate mobile database. A mobile endpoint is a role-specific view over the same records the admin web edits.
+
+The Flutter repo builds three Android apps. Each one carries the Parent section plus its own, and a section the build does not carry is never shown in it:
+
+| App (Android id)                 | Sections it opens (`mobile_apps`)               | Roles                                                         | Routes                                                       |
+| -------------------------------- | ----------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------ |
+| SMS (`com.sms.app`)              | `parent`, `staff`                               | Parent, Teacher, HOD, Gate in-charge, Warden, Assistant warden | `/mobile/parent/*`, `/mobile/teacher/*`                      |
+| SMS Transport (`com.sms.driver`) | `parent`, `driver`, `transport`                 | Parent, Driver, Attendant, Transport in-charge                 | `/mobile/parent/*`, `/mobile/driver/*`, `/mobile/transport/*` |
+| SMS Office (`com.sms.office`)    | `parent`, `office`                              | Parent, AO                                                    | `/mobile/parent/*`, `/mobile/office/*`                       |
+
+All three also use the shared `/auth/*`, `/me/*` and `/files/*` routes. Each app has its own OneSignal app for pushes (see _Push notifications_).
 
 ## Base URL and versions
 
@@ -40,7 +50,7 @@ Send the app on both calls: `"app": "mobile"` in `/auth/otp/request` and `"clien
 
 | `app`              | Who can sign in                                                                           |
 | ------------------ | ----------------------------------------------------------------------------------------- |
-| `mobile` (Flutter) | Users with a Parent, Teacher, HOD, Driver, Attendant, AO, Warden or Assistant warden role |
+| `mobile` (Flutter) | Users with a Parent, Teacher, HOD, Gate in-charge, Warden, Assistant warden, Driver, Attendant, Transport in-charge or AO role |
 | `admin` (web)      | Users with Super admin, Admin, Principal, AO or Transport in-charge                       |
 
 An AO gets `mobile_apps: ["office"]` and opens the **Office** home in the app (see _AO office: wings_ below).
@@ -61,7 +71,9 @@ One person, one sign-in. A number that is both a parent and a teacher signs in o
 ]
 ```
 
-- One entry in `mobile_apps`: open that home directly.
+`mobile_apps` holds any of `parent`, `staff`, `driver`, `office` and `transport`. An app build looks only at the sections it carries (see the table under _One API, one database_): a parent who is also a teacher sees both in SMS, and only Parent in SMS Office.
+
+- One entry the build carries: open that home directly.
 - Two or more: show a chooser once, remember it on the phone, and offer "Switch to Parent / Staff" in the profile menu.
 - Switching needs no new OTP and no new token: the same `access_token` works for `/mobile/parent/*` and `/mobile/teacher/*`.
 
@@ -242,7 +254,8 @@ Show `message` to the user. Use `error` to decide what to do. Use `errors[].fiel
 
 ## Push notifications
 
-- Register the device after sign-in (or pass `client.fcm_token` in verify): `POST /me/devices` with `fcm_token`, `platform`, `app`. Call it again whenever Firebase gives a new token.
+- Register the device after sign-in (or pass `client.fcm_token` in verify): `POST /me/devices` with `fcm_token`, `platform`, `app`, `onesignal_app_id`. Call it again whenever Firebase gives a new token.
+- `onesignal_app_id` (optional, up to 64 characters) is the OneSignal app of the build that registered the device. SMS, SMS Transport and SMS Office each have their own OneSignal app, and a push sent through the wrong one is dropped, so the server sends every push through the app its device gave. A device without it uses the default `ONESIGNAL_APP_ID`. The server needs a REST key for every app id in `ONESIGNAL_APPS` (`app-id:rest-key` pairs, comma separated); a push to an app id with no key fails with `No REST API key configured for this OneSignal app`.
 - Remove on sign-out: handled by `POST /auth/logout`. To remove a token alone: `DELETE /me/devices?fcm_token=...`.
 - Push `data` always has `notification_id`, `category` and `template`, plus the values used in the message (for example `bus`, `stop`, `minutes`). Use `category` to open the right screen.
 - The notification centre is `GET /me/notifications` (in-app copy of every message), `GET /me/notifications/unread-count`, `PATCH /me/notifications/{id}/read` and `POST /me/notifications/read-all`.

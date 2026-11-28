@@ -26,7 +26,7 @@ Estimated AI-assisted hours per area: Parent 144.5, Teacher 157, Driver 189.5, O
 | Office / Management | Office app built, other roles none | 4 | 1 | 4 | |
 | All roles | Strong base, gaps in offline, crash reporting, versioning | 6 | 6 | 3 | |
 
-Corrections to earlier plans, found with the right baselines: every Flutter path exists on `dev_2.0`; Parent gallery is done; Teacher hard-coded English is small (about 6 literals plus quiz screens); HOD gate approval is not a defect because the API gives `gate.approve` to TEACHER only; the KRA commit only added a stage-track widget; Parent class-only holidays never show; Driver fuel carries `odometer_km`. Flutter CLAUDE.md still says only Staff is implemented, which is wrong.
+Corrections to earlier plans, found with the right baselines: every Flutter path exists on `dev_2.0`; Parent gallery is done; Teacher hard-coded English is small (about 6 literals plus quiz screens); HOD gate approval is not a defect because the API gives `gate.approve` to TEACHER only; the KRA commit only added a stage-track widget; Parent class-only holidays never show; Driver fuel carries `odometer_km`. Flutter CLAUDE.md said only Staff is implemented; fixed under X-U01.
 
 ## 2. Parent
 
@@ -195,7 +195,7 @@ Decisions: the approach below is a recommendation, not verified work. Prefer new
 
 | ID | Feature | Pri | Size | AI hrs | Web | Mobile | API |
 |---|---|---|---|---|---|---|---|
-| X-U01 | Update Flutter CLAUDE.md and API guide | P1 | S | 1.5 | | Replace "only Staff implemented" with the real scope. | Update docs/api-guide.md. |
+| X-U01 | Update Flutter CLAUDE.md and API guide (**Done 28 Nov 2026**) | P1 | S | 1.5 | | Done: CLAUDE.md lists the three apps (SMS: parent + staff; SMS Transport: parent + driver + transport in-charge; SMS Office: parent + office). | Done: docs/api-guide.md has the three apps, their sections and routes, every `mobile_apps` value, the full mobile sign-in role list and `onesignal_app_id` on `POST /me/devices`; API CLAUDE.md intro updated. |
 | X-C01 | Crash reporting and analytics | P1 | S | 3 | | Add crash reporting; decide privacy rules for student data in traces. | |
 | X-U02 | Real app version | P1 | S | 1 | | Send the real version (package_info_plus) instead of hard-coded 1.0.0+1. | |
 | X-C02 | Minimum-version gate | P2 | M | 7 | | Show "update required" screen. | Add a minimum-version setting to the API. |

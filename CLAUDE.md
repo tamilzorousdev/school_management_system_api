@@ -1,6 +1,6 @@
 # CLAUDE.md — School Management API
 
-NestJS 10 backend for the Tamilzorous School Management System. One API and **one PostgreSQL database** serve the Admin web (`C:\Users\DELL\Telamatics_web`) and the Flutter app (Staff, Parent and Driver roles). Bus tracking is the separate Telematics service (`C:/Users/DELL/telematics-service`); this API only reads from it.
+NestJS 10 backend for the Tamilzorous School Management System. One API and **one PostgreSQL database** serve the Admin web (`C:\Users\DELL\Telamatics_web`) and the three Flutter apps: SMS (Parent + Staff), SMS Transport (Parent + Driver + Transport in-charge) and SMS Office (Parent + AO). Bus tracking is the separate Telematics service (`C:/Users/DELL/telematics-service`); this API only reads from it.
 
 Read `docs/api-guide.md` before changing anything a client sees.
 
