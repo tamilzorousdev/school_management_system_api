@@ -22,6 +22,7 @@ import {
 } from './dto/driver-ops.dto';
 import { dutyPlace, hoursBetween, lateMinutes, reportingTime } from './driver-ops.logic';
 import { DriverDuty } from './entities/driver-ops.entity';
+import { CrewMonthDto } from '../transport-incharge/dto/transport-ops.dto';
 
 interface DayPlan {
   first_stop_time: string | null;
@@ -173,6 +174,55 @@ export class DriverDutyService {
         duty: presented.get(Number(driver.id)) ?? null,
       };
     });
+  }
+
+  async crewMonth(schoolId: number, month?: string): Promise<CrewMonthDto> {
+    const today = todayIn(this.app.timeZone);
+    const wanted = month ?? today.slice(0, 7);
+    const from = `${wanted}-01`;
+    const rows: {
+      user_id: number;
+      name: string;
+      role: 'driver' | 'attendant';
+      days_present: number;
+      late_days: number;
+      absent_days: number;
+      leave_days: number;
+    }[] = await this.dataSource.query(
+      `WITH bus_days AS (
+         SELECT DISTINCT trip_date AS day FROM transport_trips
+         WHERE school_id = $1 AND trip_date >= $2::date AND trip_date < ($2::date + interval '1 month') AND trip_date <= $3::date
+       ),
+       crew AS (
+         SELECT u.id, u.name, bool_or(r.code = $4) AS is_driver FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id
+         JOIN roles r ON r.id = ur.role_id AND r.code IN ($4, $5)
+         WHERE u.school_id = $1 AND u.deleted_at IS NULL AND u.status = 'active'
+         GROUP BY u.id, u.name
+       ),
+       leaves AS (
+         SELECT l.user_id, l.from_date, l.to_date, l.half_day FROM staff_leave_requests l
+         WHERE l.school_id = $1 AND l.deleted_at IS NULL AND l.status = 'approved'
+           AND l.from_date < ($2::date + interval '1 month') AND l.to_date >= $2::date
+       )
+       SELECT c.id AS user_id, c.name, CASE WHEN c.is_driver THEN 'driver' ELSE 'attendant' END AS role,
+              (SELECT COUNT(*) FROM driver_duties d WHERE d.user_id = c.id AND d.deleted_at IS NULL
+                 AND d.duty_date >= $2::date AND d.duty_date < ($2::date + interval '1 month'))::int AS days_present,
+              (SELECT COUNT(*) FROM driver_duties d WHERE d.user_id = c.id AND d.deleted_at IS NULL AND d.late_minutes > 0
+                 AND d.duty_date >= $2::date AND d.duty_date < ($2::date + interval '1 month'))::int AS late_days,
+              (SELECT COUNT(*) FROM bus_days b
+                WHERE NOT EXISTS (SELECT 1 FROM driver_duties d WHERE d.user_id = c.id AND d.deleted_at IS NULL AND d.duty_date = b.day)
+                  AND NOT EXISTS (SELECT 1 FROM leaves l WHERE l.user_id = c.id AND b.day BETWEEN l.from_date AND l.to_date))::int AS absent_days,
+              (SELECT COALESCE(SUM(CASE WHEN l.half_day THEN 0.5
+                        ELSE LEAST(l.to_date, ($2::date + interval '1 month')::date - 1) - GREATEST(l.from_date, $2::date) + 1 END), 0)
+                 FROM leaves l WHERE l.user_id = c.id)::float AS leave_days
+       FROM crew c ORDER BY c.is_driver DESC, c.name`,
+      [schoolId, from, today, ROLES.DRIVER, ROLES.ATTENDANT],
+    );
+    return {
+      month: wanted,
+      items: rows.map((row) => ({ ...row, user_id: Number(row.user_id), leave_days: Number(row.leave_days) })),
+    };
   }
 
   async present(rows: DriverDuty[]): Promise<DutyDto[]> {

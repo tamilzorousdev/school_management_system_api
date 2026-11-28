@@ -7,10 +7,11 @@ import { TrackingModule } from '../tracking/tracking.module';
 import { TransportModule } from '../transport/transport.module';
 import { MobileTransportController } from './transport-incharge.controller';
 import { TransportInchargeService } from './transport-incharge.service';
+import { TransportOpsService } from './transport-ops.service';
 
 @Module({
   imports: [DriverOpsModule, TransportModule, CrewModule, TrackingModule, FleetOpsModule, StaffLeaveModule],
   controllers: [MobileTransportController],
-  providers: [TransportInchargeService],
+  providers: [TransportInchargeService, TransportOpsService],
 })
 export class TransportInchargeModule {}

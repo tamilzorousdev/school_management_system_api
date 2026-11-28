@@ -82,6 +82,6 @@ import { VehicleExpensesService } from './vehicle-expenses.service';
     FleetJobsService,
     DriverVehicleService,
   ],
-  exports: [MaintenanceService, FuelService],
+  exports: [MaintenanceService, FuelService, PreTripChecksService, MaintenanceSchedulesService, FleetReportsService],
 })
 export class FleetOpsModule {}

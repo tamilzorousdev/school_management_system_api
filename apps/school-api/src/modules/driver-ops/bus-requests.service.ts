@@ -23,6 +23,7 @@ import {
   StudentHandoverDto,
 } from './dto/driver-ops.dto';
 import { BusOptOut, BusPickupPerson, OptOutTrip } from './entities/driver-ops.entity';
+import { BusRequestsDayDto } from '../transport-incharge/dto/transport-ops.dto';
 
 const OPT_OUT_DAYS_AHEAD = 30;
 const PICKUP_DAYS_AHEAD = 7;
@@ -210,6 +211,69 @@ export class BusRequestsService {
         medical_note: medical.length ? medical.join('; ') : null,
       };
     });
+  }
+
+  async forDate(schoolId: number, date?: string): Promise<BusRequestsDayDto> {
+    const day = date ?? todayIn(this.app.timeZone);
+    const [optOuts, pickups] = await Promise.all([
+      this.optOuts.find({ where: { school_id: schoolId, opt_date: day }, order: { created_at: 'ASC' } }),
+      this.pickups.find({ where: { school_id: schoolId, pickup_date: day }, order: { created_at: 'ASC' } }),
+    ]);
+    const ids = [...new Set([...optOuts, ...pickups].map((row) => row.student_id))];
+    const [riders, files] = await Promise.all([
+      ids.length
+        ? (this.dataSource.query(
+            `SELECT s.id, concat_ws(' ', s.first_name, s.last_name) AS name,
+                    (SELECT concat_ws(' - ', c.name, sec.name) FROM student_enrollments e
+                       JOIN academic_years y ON y.id = e.academic_year_id AND y.is_current
+                       JOIN classes c ON c.id = e.class_id JOIN sections sec ON sec.id = e.section_id
+                      WHERE e.student_id = s.id LIMIT 1) AS class_section,
+                    r.name AS route_name, v.name AS bus_name
+             FROM students s
+             LEFT JOIN student_transport t ON t.student_id = s.id AND t.school_id = $1 AND t.deleted_at IS NULL
+             LEFT JOIN transport_routes r ON r.id = t.route_id
+             LEFT JOIN route_bus_swaps w ON w.route_id = r.id AND w.swap_date = $3 AND w.deleted_at IS NULL
+             LEFT JOIN vehicles v ON v.id = COALESCE(w.vehicle_id, r.vehicle_id)
+             WHERE s.id = ANY($2)`,
+            [schoolId, ids, day],
+          ) as Promise<
+            {
+              id: number;
+              name: string;
+              class_section: string | null;
+              route_name: string | null;
+              bus_name: string | null;
+            }[]
+          >)
+        : Promise.resolve([]),
+      this.files.presentMany(pickups.map((row) => row.photo_file_id)),
+    ]);
+    const rider = (studentId: number) => {
+      const row = riders.find((item) => Number(item.id) === studentId);
+      return {
+        student: { id: studentId, name: row?.name ?? '', class_section: row?.class_section ?? null },
+        route_name: row?.route_name ?? null,
+        bus_name: row?.bus_name ?? null,
+      };
+    };
+    return {
+      date: day,
+      opt_outs: optOuts.map((row) => ({
+        id: row.id,
+        ...rider(row.student_id),
+        mode: row.trip,
+        reason: row.reason,
+        created_at: row.created_at,
+      })),
+      pickup_persons: pickups.map((row) => ({
+        id: row.id,
+        ...rider(row.student_id),
+        name: row.name,
+        mobile: row.mobile,
+        relation: row.relation || null,
+        photo_url: row.photo_file_id ? (files.get(row.photo_file_id)?.url ?? null) : null,
+      })),
+    };
   }
 
   private async assignment(schoolId: number, studentId: number): Promise<{ route_id: number }> {

@@ -5,6 +5,7 @@ import { BoardExceptionDto, StudentsTodaySummaryDto } from '../../driver-ops/dto
 import { StaffLeaveDto } from '../../staff-leave/dto/staff-leave.dto';
 import { AlertDto } from '../../tracking/dto/fleet-alert.dto';
 import { ExpiryDto, VehicleDocumentDto, VehicleDto } from '../../transport/dto/transport.dto';
+import { OpsCountsDto } from './transport-ops.dto';
 
 export const CREW_LEAVE_FILTERS = ['waiting', 'approved', 'rejected'] as const;
 export type CrewLeaveFilter = (typeof CREW_LEAVE_FILTERS)[number];
@@ -85,6 +86,13 @@ export class TransportHomeDto {
 
   @ApiProperty({ type: [StaffLeaveDto], description: 'Drivers and attendants on approved leave that day' })
   crew_on_leave: StaffLeaveDto[];
+
+  @ApiPropertyOptional({
+    type: OpsCountsDto,
+    description:
+      'Counts for the operations tiles: open incidents, failed pre-trip checks, late trips, alerts, passes on hold, overdue maintenance',
+  })
+  ops?: OpsCountsDto;
 }
 
 export class BusDetailDto {

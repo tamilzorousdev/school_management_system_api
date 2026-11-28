@@ -18,6 +18,7 @@ import { VehicleDocumentsService } from '../transport/vehicle-documents.service'
 import { VehiclesService } from '../transport/vehicles.service';
 import { BusDetailDto, CrewLeaveFilter, CrewMemberDto, TransportHomeDto } from './dto/transport-incharge.dto';
 import { paperCounts } from './transport-incharge.logic';
+import { TransportOpsService } from './transport-ops.service';
 
 const PAPER_WINDOW_DAYS = 30;
 
@@ -33,6 +34,7 @@ export class TransportInchargeService {
     private readonly alerts: FleetAlertsService,
     private readonly fuel: FuelService,
     private readonly leaves: StaffLeaveService,
+    private readonly ops: TransportOpsService,
     @Inject(appConfig.KEY) private readonly app: AppConfig,
   ) {}
 
@@ -47,6 +49,7 @@ export class TransportInchargeService {
       this.leaves.crewWaiting(schoolId),
       this.leaves.crewOnLeave(schoolId, day),
     ]);
+    const ops = await this.ops.opsCounts(schoolId, board);
     return {
       date: day,
       trips: board.summary,
@@ -58,6 +61,7 @@ export class TransportInchargeService {
       fuel_pending: fuel.total,
       leaves_pending: leavesPending,
       crew_on_leave: onLeave,
+      ops,
     };
   }
 
@@ -99,6 +103,11 @@ export class TransportInchargeService {
           }
         : null,
     };
+  }
+
+  async approveDuty(schoolId: number, id: number, actor: AuthUser): Promise<CrewMemberDto> {
+    await this.crew.approve(schoolId, id, actor);
+    return this.crewMember(schoolId, id);
   }
 
   activeSos(schoolId: number): Promise<AlertDto[]> {

@@ -37,6 +37,6 @@ import { StudentsTodayService } from './students-today.service';
     DriverStudentsService,
     StudentsTodayService,
   ],
-  exports: [OperationsService, StudentsTodayService],
+  exports: [OperationsService, StudentsTodayService, IncidentsService, DriverDutyService, BusRequestsService],
 })
 export class DriverOpsModule {}

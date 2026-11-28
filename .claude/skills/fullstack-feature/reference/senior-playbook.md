@@ -33,7 +33,7 @@ Stop and wait only when the answer changes scope or the data model. Otherwise st
 Reuse existing widgets and services. Keep diffs small and additive. Do not reformat files you only touched a little. Names explain the code. Tests sit next to the logic. Update `docs/api-guide.md` and the clients' types in the same change.
 
 ## 5. Prove it
-- API: unit tests for each rule and error code, then lint, type check and tests. If the API is running, call it with `qa-test-runner/scripts/call.js`. A new migration or template needs the user to restart their API first.
+- API: unit tests for each rule and error code, then lint, type check and tests. While the developer's `start:dev` is running, use `npx tsc --noEmit` instead of `npm run build`: the build rewrites `dist/` and drops the watch-mode API for a while. If the API is running, call it with `qa-test-runner/scripts/call.js`. A new migration or template needs the user to restart their API first.
 - Apps: analyze, the repo guards and model tests. If an emulator or phone is connected (`adb devices`), look at the real behaviour instead of assuming: `adb -s <id> exec-out screencap -p > shot.png` and view the image, `adb -s <id> logcat -d -s flutter:V` for errors. Tap with `adb shell input tap x y` only on an emulator, or when the user has agreed. Say plainly what you could not run.
 - **Hot reload does not refresh translations, route lists or const maps.** After adding a screen or strings, tell the user to stop and run the app again, and name a check ("the tile must read Teacher feedback").
 - Give the user a numbered test script per role: who signs in, what to tap, what to expect, plus one failure case (closed, empty, duplicate).

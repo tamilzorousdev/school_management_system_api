@@ -272,6 +272,14 @@ const TAGS: [string, string][] = [
     'Active SOS with acknowledge, fuel entries to review, and driver and attendant leave requests to approve',
   ],
   [
+    'Mobile · Transport · Module 4: Operations & Safety',
+    'Incidents, live map, late and missed trips, pre-trip failures, driver attendance, fleet alerts, parent bus requests, passes on hold; allow a stopped bus today and approve crew for duty',
+  ],
+  [
+    'Mobile · Transport · Module 5: Reports',
+    'Driver ratings, maintenance due and the monthly summary (trips on time, incidents, leave and fuel per bus)',
+  ],
+  [
     'Admin · Office',
     'AO office: wings and AO assignment, wing to class to section to student drill-down, full student history, AO monitor',
   ],
@@ -489,7 +497,7 @@ const AUDIENCES: AudienceConfig[] = [
     jsonSlug: 'mobile-transport',
     title: 'Tamilzorous School Management API · Mobile · Transport In-charge',
     intro:
-      'Routes for the transport in-charge in the Transport app: Modules 1 to 3 (home and today, buses and drivers, safety, fuel and crew leave), plus sign-in, `/me`, `/me/staff` (check-in, attendance) and files.',
+      'Routes for the transport in-charge in the Transport app: Modules 1 to 5 (home and today, buses and drivers, safety, fuel and crew leave, operations and safety, reports), plus sign-in, `/me`, `/me/staff` (check-in, attendance) and files.',
     owns: /^\/api\/v\d+\/mobile\/transport\//,
     stripPrefix: 'Mobile · Transport · ',
   },
@@ -838,7 +846,7 @@ export function setupSwagger(app: INestApplication): void {
     { name: 'Mobile · Parent App (Modules 1 - 11)', url: '/api/docs/mobile-parent-json' },
     { name: 'Mobile · Driver App (Modules 1 - 5)', url: '/api/docs/mobile-driver-json' },
     { name: 'Mobile · Office App (Modules 1 - 4)', url: '/api/docs/mobile-office-json' },
-    { name: 'Mobile · Transport In-charge (Modules 1 - 3)', url: '/api/docs/mobile-transport-json' },
+    { name: 'Mobile · Transport In-charge (Modules 1 - 5)', url: '/api/docs/mobile-transport-json' },
   ];
 
   for (const audience of AUDIENCES) {
