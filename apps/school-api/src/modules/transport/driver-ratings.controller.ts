@@ -1,6 +1,6 @@
-import { Controller, Get, HttpStatus, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Put, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ApiEnvelope, ApiErrors, RequirePermissions } from '@app/common';
+import { ApiEnvelope, ApiErrors, RequirePermissions, ResponseMessage } from '@app/common';
 import { ApiSchoolHeader, SchoolId } from '../../shared/school-context';
 import { PERMISSIONS } from '../access/access.catalog';
 import { DriverRatingsService } from './driver-ratings.service';
@@ -8,6 +8,8 @@ import {
   DriverRatingDto,
   DriverRatingInsightsDto,
   DriverRatingQueryDto,
+  DriverRatingSettingsDto,
+  DriverRatingSettingsInputDto,
   DriverRatingSummaryDto,
 } from './dto/driver-rating.dto';
 
@@ -18,6 +20,28 @@ import {
 @Controller('admin/transport/driver-ratings')
 export class DriverRatingsController {
   constructor(private readonly ratings: DriverRatingsService) {}
+
+  @Get('settings')
+  @RequirePermissions(PERMISSIONS.FLEET_VIEW)
+  @ApiOperation({ summary: 'What counts as a low driver rating and when a driver sees an average' })
+  @ApiEnvelope(DriverRatingSettingsDto)
+  settings(@SchoolId() schoolId: number) {
+    return this.ratings.settings(schoolId);
+  }
+
+  @Put('settings')
+  @RequirePermissions(PERMISSIONS.FLEET_RATINGS)
+  @ResponseMessage('Driver rating settings saved')
+  @ApiOperation({
+    summary:
+      'Set the low rating line (2 or 3 stars, default 2) and the ratings a driver needs before seeing an average',
+    description:
+      'Transport in-charge, AO and school admin. Low ratings need a reason from the parent and alert the office.',
+  })
+  @ApiEnvelope(DriverRatingSettingsDto, { message: 'Driver rating settings saved' })
+  updateSettings(@SchoolId() schoolId: number, @Body() dto: DriverRatingSettingsInputDto) {
+    return this.ratings.updateSettings(schoolId, dto);
+  }
 
   @Get('insights')
   @RequirePermissions(PERMISSIONS.FLEET_VIEW)

@@ -20,8 +20,13 @@ export function ratingMonth(date: string): string {
   return date.slice(0, 7);
 }
 
-export function lowRatingProblem(rating: number, tags: RatingTag[], comment: string | null): string | null {
-  if (rating > LOW_RATING) return null;
+export function lowRatingProblem(
+  rating: number,
+  tags: RatingTag[],
+  comment: string | null,
+  lowMax: number = LOW_RATING,
+): string | null {
+  if (rating > lowMax) return null;
   if (comment?.trim() || tags.some((tag) => !RATING_TAG_INFO[tag].positive)) return null;
   return 'Tell us what went wrong: pick a reason or write a few words';
 }
@@ -46,4 +51,23 @@ export function topTags(tagLists: RatingTag[][], limit = 3) {
       positive: RATING_TAG_INFO[code].positive,
       count,
     }));
+}
+
+export interface RatedDriverRow {
+  driver: { name: string };
+  vehicle: { name: string; registration_no: string } | null;
+  needs_attention: boolean;
+}
+
+export function filterRatedDrivers<T extends RatedDriverRow>(
+  rows: T[],
+  search: string | undefined,
+  needsAttention: boolean | undefined,
+): T[] {
+  const words = (search ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+  return rows.filter((row) => {
+    if (needsAttention && !row.needs_attention) return false;
+    const text = [row.driver.name, row.vehicle?.name, row.vehicle?.registration_no].join(' ').toLowerCase();
+    return words.every((word) => text.includes(word));
+  });
 }

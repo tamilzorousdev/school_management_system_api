@@ -58,6 +58,7 @@ export const PERMISSIONS = {
   CHAT_AUDIT: 'chat.audit',
   FLEET_VIEW: 'fleet.view',
   FLEET_MANAGE: 'fleet.manage',
+  FLEET_RATINGS: 'fleet.ratings',
   LIBRARY_VIEW: 'library.view',
   LIBRARY_MANAGE: 'library.manage',
   LIBRARY_FINES: 'library.fines',
@@ -276,6 +277,7 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   },
   { code: PERMISSIONS.FLEET_VIEW, name: 'See buses on the map and their live status', group: 'Fleet' },
   { code: PERMISSIONS.FLEET_MANAGE, name: 'Manage buses, routes and stops', group: 'Fleet' },
+  { code: PERMISSIONS.FLEET_RATINGS, name: 'Set what counts as a low driver rating', group: 'Fleet' },
   {
     code: PERMISSIONS.LIBRARY_VIEW,
     name: 'See the library catalogue, loans, members, fines, attendance and reports',
@@ -551,6 +553,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
       PERMISSIONS.EVENTS_MANAGE,
       PERMISSIONS.CHAT_AUDIT,
       PERMISSIONS.FLEET_VIEW,
+      PERMISSIONS.FLEET_RATINGS,
       PERMISSIONS.EMERGENCY_VIEW,
       PERMISSIONS.EMERGENCY_SEND,
       PERMISSIONS.LIBRARY_VIEW,
@@ -605,6 +608,7 @@ export const ROLE_CATALOG: RoleDefinition[] = [
     permissions: [
       PERMISSIONS.FLEET_VIEW,
       PERMISSIONS.FLEET_MANAGE,
+      PERMISSIONS.FLEET_RATINGS,
       PERMISSIONS.STUDENTS_VIEW,
       PERMISSIONS.NOTIFICATIONS_VIEW,
     ],

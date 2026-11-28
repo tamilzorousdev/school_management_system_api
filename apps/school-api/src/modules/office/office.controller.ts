@@ -57,6 +57,14 @@ import { OfficeTeachersService } from './office-teachers.service';
 import { OfficeBusService } from './office-bus.service';
 import { OfficeDriverDto, SectionBusDto } from './dto/office-bus.dto';
 import { OfficeService } from './office.service';
+import { DriverRatingsService } from '../transport/driver-ratings.service';
+import { filterRatedDrivers } from '../transport/driver-rating.logic';
+import {
+  DriverRatingSettingsInputDto,
+  OfficeDriverRatingSettingsDto,
+  OfficeRatedDriversDto,
+  OfficeRatedDriversQueryDto,
+} from '../transport/dto/driver-rating.dto';
 
 const SCOPE_NOTE =
   'A wing AO sees only the classes of their wings; anything else is 404. The head AO (AO with no wing), principal and admin see the whole school.';
@@ -355,6 +363,7 @@ export class MobileOfficeController {
     private readonly cards: ReportCardsService,
     private readonly teachersService: OfficeTeachersService,
     private readonly busService: OfficeBusService,
+    private readonly driverRatings: DriverRatingsService,
   ) {}
 
   @Get('home')
@@ -462,6 +471,54 @@ export class MobileOfficeController {
     @Query() query: ReportCardQueryDto,
   ) {
     return pdfFile(await this.cards.pdf(user.school_id!, id, query));
+  }
+
+  @Get('rated-drivers')
+  @ApiTags(OFFICE_MODULE_TAGS.MODULE_2)
+  @RequirePermissions(PERMISSIONS.OFFICE_VIEW)
+  @ApiOperation({
+    summary:
+      'Every driver with parent rating figures: search by driver, bus name or registration; needs_attention filter',
+    description:
+      'Lowest average first, drivers without ratings last. needs_attention_count counts the whole school whatever the search. Same figures as the admin Driver ratings tab. Open a driver with GET drivers/{userId}.',
+  })
+  @ApiEnvelope(OfficeRatedDriversDto)
+  async ratedDrivers(
+    @CurrentUser() user: AuthUser,
+    @Query() query: OfficeRatedDriversQueryDto,
+  ): Promise<OfficeRatedDriversDto> {
+    const all = await this.driverRatings.summary(user.school_id!);
+    const items = filterRatedDrivers(all, query.search, query.needs_attention);
+    return { total: items.length, needs_attention_count: all.filter((row) => row.needs_attention).length, items };
+  }
+
+  @Get('driver-rating-settings')
+  @ApiTags(OFFICE_MODULE_TAGS.MODULE_2)
+  @RequirePermissions(PERMISSIONS.OFFICE_VIEW)
+  @ApiOperation({
+    summary: 'What counts as a low driver rating, and the ratings a driver needs before seeing an average',
+    description: 'can_edit is true for the transport in-charge, AO and school admin.',
+  })
+  @ApiEnvelope(OfficeDriverRatingSettingsDto)
+  async driverRatingSettings(@CurrentUser() user: AuthUser): Promise<OfficeDriverRatingSettingsDto> {
+    const settings = await this.driverRatings.settings(user.school_id!);
+    return { ...settings, can_edit: user.permissions.includes(PERMISSIONS.FLEET_RATINGS) };
+  }
+
+  @Put('driver-rating-settings')
+  @ApiTags(OFFICE_MODULE_TAGS.MODULE_2)
+  @RequirePermissions(PERMISSIONS.FLEET_RATINGS)
+  @ResponseMessage('Driver rating settings saved')
+  @ApiOperation({
+    summary: 'Set the low driver rating line (2 or 3 stars) and the minimum ratings for a driver average',
+  })
+  @ApiEnvelope(OfficeDriverRatingSettingsDto, { message: 'Driver rating settings saved' })
+  async saveDriverRatingSettings(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: DriverRatingSettingsInputDto,
+  ): Promise<OfficeDriverRatingSettingsDto> {
+    const settings = await this.driverRatings.updateSettings(user.school_id!, dto);
+    return { ...settings, can_edit: true };
   }
 
   @Get('teachers')

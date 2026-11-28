@@ -3,7 +3,7 @@ import { Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { ListQueryDto } from '@app/common';
 import { RefDto } from '../../students/dto/student-response.dto';
-import { BEHAVIOURS, Behaviour, RATING_CYCLES } from '../entities/feedback.entity';
+import { BEHAVIOURS, Behaviour, RATING_CYCLES, RATING_PERIODS } from '../entities/feedback.entity';
 
 export class FeedbackSettingsInputDto {
   @ApiPropertyOptional({ example: true, description: 'Parents can rate their child’s teachers' })
@@ -20,6 +20,28 @@ export class FeedbackSettingsInputDto {
   @Type(() => Number)
   @IsIn(RATING_CYCLES, { message: 'teacher_rating_months must be 1, 2, 3, 6 or 12' })
   teacher_rating_months?: number;
+
+  @ApiPropertyOptional({
+    enum: RATING_PERIODS,
+    example: 'term',
+    description: 'months = every teacher_rating_months, term = once per academic term, year = once a year',
+  })
+  @IsOptional()
+  @IsIn(RATING_PERIODS, { message: 'teacher_rating_period must be months, term or year' })
+  teacher_rating_period?: string;
+
+  @ApiPropertyOptional({
+    example: 5,
+    minimum: 1,
+    maximum: 50,
+    description: 'A teacher sees an average only after this many ratings',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  teacher_rating_min_responses?: number;
 
   @ApiPropertyOptional({ example: true, description: 'Teachers can give each student feedback once a term' })
   @IsOptional()
@@ -49,6 +71,12 @@ export class FeedbackSettingsDto {
 
   @ApiProperty({ enum: RATING_CYCLES, example: 3 })
   teacher_rating_months: number;
+
+  @ApiProperty({ enum: RATING_PERIODS, example: 'months' })
+  teacher_rating_period: string;
+
+  @ApiProperty({ example: 1 })
+  teacher_rating_min_responses: number;
 
   @ApiProperty({ example: true })
   student_feedback_enabled: boolean;
@@ -242,6 +270,9 @@ export class OwnRemarkDto {
 export class OwnRatingsDto {
   @ApiProperty()
   enabled: boolean;
+
+  @ApiProperty({ example: 5, description: 'Averages stay hidden (null) until this many ratings' })
+  min_responses: number;
 
   @ApiProperty({ type: RatingSummaryDto, description: 'This academic year' })
   summary: RatingSummaryDto;

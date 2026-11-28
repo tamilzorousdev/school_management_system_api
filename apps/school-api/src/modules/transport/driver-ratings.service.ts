@@ -9,21 +9,24 @@ import { FilesService } from '../files/files.service';
 import { TEMPLATES } from '../notifications/notification-templates.catalog';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
+  DriverOwnRatingsDto,
   DriverRatingDto,
   DriverRatingInputDto,
   DriverRatingInsightsDto,
   DriverRatingQueryDto,
+  DriverRatingSettingsDto,
+  DriverRatingSettingsInputDto,
   DriverRatingSummaryDto,
   ParentDriverRatingDto,
   RatedBusDto,
   RatedDriverDto,
 } from './dto/driver-rating.dto';
-import { DriverRating, RatingTag } from './entities/driver-rating.entity';
+import { School } from '../schools/entities/school.entity';
+import { DriverRating, RATING_TAGS, RatingTag } from './entities/driver-rating.entity';
 import { StudentTransport } from './entities/student-transport.entity';
 import { TransportRoute } from './entities/transport-route.entity';
 import { Vehicle } from './entities/vehicle.entity';
 import {
-  LOW_RATING,
   lowRatingProblem,
   RATING_TAG_INFO,
   ratingMonth,
@@ -63,6 +66,7 @@ export class DriverRatingsService {
       vehicle: bus?.vehicle ? busRef(bus.vehicle) : null,
       month,
       can_rate: Boolean(bus?.driver),
+      low_rating_max: await this.lowMax(schoolId),
       my_rating: mine
         ? { rating: mine.rating, tags: mine.tags, comment: mine.comment, updated_at: mine.updated_at }
         : null,
@@ -81,11 +85,12 @@ export class DriverRatingsService {
     if (!bus.driver) throw AppException.badRequest('This bus has no driver yet', 'NO_DRIVER');
     const tags = dto.tags ?? [];
     const comment = dto.comment || null;
-    const problem = lowRatingProblem(dto.rating, tags, comment);
+    const lowMax = await this.lowMax(schoolId);
+    const problem = lowRatingProblem(dto.rating, tags, comment, lowMax);
     if (problem) throw AppException.validation([{ field: 'comment', message: problem }]);
     const month = this.month();
     const existing = await this.ratings.findOneBy({ parent_user_id: parentId, driver_user_id: bus.driver.id, month });
-    const wasLow = existing ? existing.rating <= LOW_RATING : false;
+    const wasLow = existing ? existing.rating <= lowMax : false;
     await this.ratings.save(
       existing
         ? this.ratings.merge(existing, { rating: dto.rating, tags, comment, student_id: studentId })
@@ -102,7 +107,7 @@ export class DriverRatingsService {
             created_by: parentId,
           }),
     );
-    if (dto.rating <= LOW_RATING && !wasLow)
+    if (dto.rating <= lowMax && !wasLow)
       await this.tellOffice(schoolId, parentId, studentId, bus, dto.rating, tags, comment);
     return this.forParent(schoolId, parentId, studentId);
   }
@@ -117,7 +122,7 @@ export class DriverRatingsService {
     if (query.driver_user_id) qb.andWhere('r.driver_user_id = :driver', { driver: query.driver_user_id });
     if (query.vehicle_id) qb.andWhere('r.vehicle_id = :vehicle', { vehicle: query.vehicle_id });
     if (query.rating) qb.andWhere('r.rating = :rating', { rating: query.rating });
-    if (query.low) qb.andWhere('r.rating <= :low', { low: LOW_RATING });
+    if (query.low) qb.andWhere('r.rating <= :low', { low: await this.lowMax(schoolId) });
     if (query.from)
       qb.andWhere(`r.updated_at >= (:from::date AT TIME ZONE :tz)`, { from: query.from, tz: this.app.timeZone });
     if (query.to) {
@@ -137,6 +142,7 @@ export class DriverRatingsService {
       this.vehicles.find({ where: { school_id: schoolId, status: 'active' }, order: { name: 'ASC' } }),
     ]);
     const month = this.month();
+    const lowMax = await this.lowMax(schoolId);
     const driverIds = [
       ...new Set([
         ...buses.map((bus) => bus.driver_user_id).filter((id): id is number => Boolean(id)),
@@ -160,9 +166,13 @@ export class DriverRatingsService {
             count: all.count,
             month_average: thisMonth.average,
             month_count: thisMonth.count,
-            low_count: own.filter((row) => row.rating <= LOW_RATING).length,
+            low_count: own.filter((row) => row.rating <= lowMax).length,
             distribution: all.distribution,
-            top_tags: topTags(own.map((row) => row.tags)),
+            top_tags: topTags(
+              own.map((row) => row.tags),
+              RATING_TAGS.length,
+            ),
+            needs_attention: thisMonth.average !== null && thisMonth.average <= lowMax,
           },
         ];
       })
@@ -175,12 +185,13 @@ export class DriverRatingsService {
       select: ['driver_user_id', 'rating', 'month'],
     });
     const month = this.month();
+    const lowMax = await this.lowMax(schoolId);
     const thisMonth = rows.filter((row) => row.month === month);
     return {
       average: ratingStats(rows.map((row) => row.rating)).average,
       count: rows.length,
       month_count: thisMonth.length,
-      month_low: thisMonth.filter((row) => row.rating <= LOW_RATING).length,
+      month_low: thisMonth.filter((row) => row.rating <= lowMax).length,
       drivers_rated: new Set(rows.map((row) => row.driver_user_id)).size,
     };
   }
@@ -290,7 +301,7 @@ export class DriverRatingsService {
     await this.notifications
       .dispatch({
         template: TEMPLATES.DRIVER_LOW_RATING,
-        audience: { roles: [ROLES.ADMIN, ROLES.TRANSPORT_INCHARGE], school_id: schoolId },
+        audience: { roles: [ROLES.ADMIN, ROLES.TRANSPORT_INCHARGE, ROLES.AO], school_id: schoolId },
         data: {
           driver: bus.driver?.name ?? '',
           bus: bus.vehicle ? `${bus.vehicle.name} (${bus.vehicle.registration_no})` : 'the school bus',
@@ -301,6 +312,50 @@ export class DriverRatingsService {
         },
       })
       .catch((error: Error) => this.logger.warn(`Low rating alert failed: ${error.message}`));
+  }
+
+  async settings(schoolId: number): Promise<DriverRatingSettingsDto> {
+    const school = await this.dataSource.getRepository(School).findOneByOrFail({ id: schoolId });
+    return { low_rating_max: school.driver_low_rating_max, min_responses: school.driver_rating_min_responses };
+  }
+
+  async updateSettings(schoolId: number, dto: DriverRatingSettingsInputDto): Promise<DriverRatingSettingsDto> {
+    const changes: Partial<School> = {};
+    if (dto.low_rating_max !== undefined) changes.driver_low_rating_max = dto.low_rating_max;
+    if (dto.min_responses !== undefined) changes.driver_rating_min_responses = dto.min_responses;
+    if (Object.keys(changes).length) await this.dataSource.getRepository(School).update(schoolId, changes);
+    return this.settings(schoolId);
+  }
+
+  async ownRatings(schoolId: number, driverUserId: number): Promise<DriverOwnRatingsDto> {
+    const { min_responses } = await this.settings(schoolId);
+    const rows = await this.ratings.find({
+      where: { school_id: schoolId, driver_user_id: driverUserId },
+      select: ['rating', 'tags', 'month'],
+    });
+    const enough = rows.length >= min_responses;
+    const month = this.month();
+    const thisMonth = ratingStats(rows.filter((row) => row.month === month).map((row) => row.rating));
+    const all = ratingStats(rows.map((row) => row.rating));
+    return {
+      min_responses,
+      count: rows.length,
+      enough,
+      average: enough ? all.average : null,
+      month_average: enough ? thisMonth.average : null,
+      month_count: thisMonth.count,
+      distribution: enough ? all.distribution : [0, 0, 0, 0, 0],
+      top_tags: enough
+        ? topTags(
+            rows.map((row) => row.tags),
+            RATING_TAGS.length,
+          )
+        : [],
+    };
+  }
+
+  private async lowMax(schoolId: number): Promise<number> {
+    return (await this.settings(schoolId)).low_rating_max;
   }
 
   private month(): string {

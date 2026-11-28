@@ -32,7 +32,15 @@ import {
   TermRefDto,
 } from './dto/feedback.dto';
 import { StudentFeedback, TeacherRating } from './entities/feedback.entity';
-import { PaperRow, rankTeachers, ratingCycle, starLabel, subjectResults, summariseRatings } from './feedback.logic';
+import {
+  PaperRow,
+  RatingSummary,
+  rankTeachers,
+  ratingCycle,
+  starLabel,
+  subjectResults,
+  summariseRatings,
+} from './feedback.logic';
 
 interface ChildRow {
   school_id: number;
@@ -61,8 +69,10 @@ export class FeedbackService {
     return {
       teacher_rating_enabled: school.teacher_rating_enabled,
       teacher_rating_months: school.teacher_rating_months,
+      teacher_rating_period: school.teacher_rating_period,
+      teacher_rating_min_responses: school.teacher_rating_min_responses,
       student_feedback_enabled: school.student_feedback_enabled,
-      cycle: year ? this.cycle(school, year) : null,
+      cycle: year ? await this.cycle(school, year) : null,
       term: year ? await this.term(schoolId, year) : null,
     };
   }
@@ -72,6 +82,10 @@ export class FeedbackService {
     const changes: Partial<School> = {};
     if (dto.teacher_rating_enabled !== undefined) changes.teacher_rating_enabled = dto.teacher_rating_enabled;
     if (dto.teacher_rating_months !== undefined) changes.teacher_rating_months = dto.teacher_rating_months;
+    if (dto.teacher_rating_period !== undefined) changes.teacher_rating_period = dto.teacher_rating_period;
+    if (dto.teacher_rating_min_responses !== undefined) {
+      changes.teacher_rating_min_responses = dto.teacher_rating_min_responses;
+    }
     if (dto.student_feedback_enabled !== undefined) changes.student_feedback_enabled = dto.student_feedback_enabled;
     if (Object.keys(changes).length) await this.dataSource.getRepository(School).update(schoolId, changes);
     return this.settings(schoolId);
@@ -81,7 +95,7 @@ export class FeedbackService {
     const child = await this.child(parentUserId, studentId);
     const school = await this.school(child.school_id);
     const year = await this.viewedYear(child.school_id);
-    const cycle = this.cycle(school, year);
+    const cycle = await this.cycle(school, year);
     const teachers = await this.childTeachers(child, year.id);
     const mine = cycle
       ? await this.dataSource.getRepository(TeacherRating).findBy({
@@ -120,7 +134,7 @@ export class FeedbackService {
       throw AppException.forbidden('The school has not opened teacher ratings now', 'RATING_CLOSED');
     }
     const year = await this.viewedYear(child.school_id);
-    const cycle = this.cycle(school, year);
+    const cycle = await this.cycle(school, year);
     if (!cycle) throw AppException.forbidden('Teacher ratings open during the academic year', 'RATING_CLOSED');
     const teacher = (await this.childTeachers(child, year.id)).find(
       (item) => item.teacher_user_id === dto.teacher_user_id,
@@ -204,16 +218,20 @@ export class FeedbackService {
     const schoolId = this.schoolOf(teacher);
     const school = await this.school(schoolId);
     const year = await this.viewedYear(schoolId);
-    const cycle = this.cycle(school, year);
+    const cycle = await this.cycle(school, year);
     const rows = await this.dataSource.getRepository(TeacherRating).find({
       where: { school_id: schoolId, academic_year_id: year.id, teacher_user_id: teacher.id },
       order: { cycle_start: 'DESC', stars: 'DESC', behaviour: 'DESC' },
     });
     const current = cycle ? rows.filter((row) => row.cycle_start === cycle.start) : [];
+    const minResponses = school.teacher_rating_min_responses;
+    const guarded = (summary: RatingSummary): RatingSummary =>
+      summary.ratings >= minResponses ? summary : { ...summary, average_stars: null, good_percent: null };
     return {
       enabled: school.teacher_rating_enabled,
-      summary: summariseRatings(rows),
-      this_cycle: cycle ? summariseRatings(current) : null,
+      min_responses: minResponses,
+      summary: guarded(summariseRatings(rows)),
+      this_cycle: cycle ? guarded(summariseRatings(current)) : null,
       cycle,
       remarks: rows.map((row) => ({
         stars: row.stars,
@@ -731,7 +749,15 @@ export class FeedbackService {
     return new Map(rows.map((row) => [Number(row.id), row.name]));
   }
 
-  private cycle(school: School, year: AcademicYear): PeriodDto | null {
+  private async cycle(school: School, year: AcademicYear): Promise<PeriodDto | null> {
+    if (school.teacher_rating_period === 'year') {
+      const today = this.today();
+      return today >= year.start_date && today <= year.end_date ? { start: year.start_date, end: year.end_date } : null;
+    }
+    if (school.teacher_rating_period === 'term') {
+      const term = await this.term(school.id, year);
+      return term ? { start: term.start, end: term.end } : null;
+    }
     return ratingCycle(year.start_date, year.end_date, this.today(), school.teacher_rating_months);
   }
 

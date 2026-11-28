@@ -22,6 +22,7 @@ import { RouteBusSwap } from './entities/route-bus-swap.entity';
 import { BusFeeReminder, BusPass, BusPassSettings } from './entities/bus-pass.entity';
 import { BusPassController } from './bus-pass.controller';
 import { BusPassService } from './bus-pass.service';
+import { MobileDriverRatingsController } from './mobile-driver-ratings.controller';
 import { MobileDriverProfileController } from './mobile-driver-profile.controller';
 
 @Module({
@@ -49,6 +50,7 @@ import { MobileDriverProfileController } from './mobile-driver-profile.controlle
     StudentTransportController,
     MobileDriverController,
     MobileDriverProfileController,
+    MobileDriverRatingsController,
     DriverRatingsController,
     BusPassController,
   ],

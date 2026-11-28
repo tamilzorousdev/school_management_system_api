@@ -6,6 +6,7 @@ export type Behaviour = (typeof BEHAVIOURS)[number];
 
 export const RATING_CYCLES = [1, 2, 3, 6, 12] as const;
 export type RatingCycle = (typeof RATING_CYCLES)[number];
+export const RATING_PERIODS = ['months', 'term', 'year'] as const;
 
 @Entity('teacher_ratings')
 @Index('UQ_teacher_ratings_cycle', ['parent_user_id', 'teacher_user_id', 'student_id', 'cycle_start'], {

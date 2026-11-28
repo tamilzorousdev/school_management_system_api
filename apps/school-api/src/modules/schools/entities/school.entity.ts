@@ -102,6 +102,18 @@ export class School extends TrackedEntity {
   @Column({ type: 'smallint', default: 3 })
   teacher_rating_months: number;
 
+  @Column({ type: 'varchar', length: 10, default: 'months' })
+  teacher_rating_period: string;
+
+  @Column({ type: 'smallint', default: 1 })
+  teacher_rating_min_responses: number;
+
+  @Column({ type: 'smallint', default: 2 })
+  driver_low_rating_max: number;
+
+  @Column({ type: 'smallint', default: 3 })
+  driver_rating_min_responses: number;
+
   @Column({ type: 'boolean', default: false })
   student_feedback_enabled: boolean;
 

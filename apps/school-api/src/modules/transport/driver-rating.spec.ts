@@ -1,4 +1,4 @@
-import { lowRatingProblem, ratingMonth, ratingStats, topTags } from './driver-rating.logic';
+import { filterRatedDrivers, lowRatingProblem, ratingMonth, ratingStats, topTags } from './driver-rating.logic';
 
 describe('driver rating', () => {
   it('keeps one rating per month', () => {
@@ -11,6 +11,8 @@ describe('driver rating', () => {
     expect(lowRatingProblem(1, ['rash_driving'], null)).toBeNull();
     expect(lowRatingProblem(2, [], 'Drove too fast near school')).toBeNull();
     expect(lowRatingProblem(3, [], null)).toBeNull();
+    expect(lowRatingProblem(3, [], null, 3)).toMatch(/what went wrong/);
+    expect(lowRatingProblem(3, ['rude'], null, 3)).toBeNull();
   });
 
   it('averages to one decimal with a 1 to 5 star count', () => {
@@ -25,5 +27,41 @@ describe('driver rating', () => {
       ['polite', 2],
     ]);
     expect(tags[0]).toMatchObject({ label: 'On time', positive: true });
+  });
+});
+
+describe('filterRatedDrivers', () => {
+  const rows = [
+    {
+      driver: { name: 'Ganesan Pillai' },
+      vehicle: { name: 'Bus 1', registration_no: 'TN 09 AB 1234' },
+      needs_attention: true,
+    },
+    {
+      driver: { name: 'Muthu Krishnan' },
+      vehicle: { name: 'Bus 2', registration_no: 'TN 09 CD 5678' },
+      needs_attention: false,
+    },
+    { driver: { name: 'Spare Driver' }, vehicle: null, needs_attention: false },
+  ];
+
+  it('returns everyone without a search or filter', () => {
+    expect(filterRatedDrivers(rows, undefined, undefined)).toHaveLength(3);
+    expect(filterRatedDrivers(rows, '  ', false)).toHaveLength(3);
+  });
+
+  it('matches every word against the driver, bus name or registration', () => {
+    expect(filterRatedDrivers(rows, 'ganesan', undefined).map((r) => r.driver.name)).toEqual(['Ganesan Pillai']);
+    expect(filterRatedDrivers(rows, 'muthu bus', undefined).map((r) => r.driver.name)).toEqual(['Muthu Krishnan']);
+    expect(filterRatedDrivers(rows, 'cd 5678', undefined)).toHaveLength(1);
+    expect(filterRatedDrivers(rows, 'ganesan muthu', undefined)).toHaveLength(0);
+  });
+
+  it('keeps drivers without a bus searchable by name', () => {
+    expect(filterRatedDrivers(rows, 'spare', undefined)).toHaveLength(1);
+  });
+
+  it('shows only drivers needing attention when asked', () => {
+    expect(filterRatedDrivers(rows, undefined, true).map((r) => r.driver.name)).toEqual(['Ganesan Pillai']);
   });
 });

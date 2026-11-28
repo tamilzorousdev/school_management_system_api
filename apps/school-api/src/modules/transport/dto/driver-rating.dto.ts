@@ -81,6 +81,9 @@ export class ParentDriverRatingDto {
   @ApiProperty({ example: true, description: 'false when the child does not use the bus or the bus has no driver' })
   can_rate: boolean;
 
+  @ApiProperty({ example: 2, description: 'Ratings at or below this many stars need a reason' })
+  low_rating_max: number;
+
   @ApiProperty({ type: MyDriverRatingDto, nullable: true, description: 'My rating for this driver this month' })
   my_rating: MyDriverRatingDto | null;
 
@@ -222,8 +225,11 @@ export class DriverRatingSummaryDto {
   @ApiProperty({ type: [Number], example: [0, 1, 2, 6, 9], description: 'How many 1, 2, 3, 4 and 5 star ratings' })
   distribution: number[];
 
-  @ApiProperty({ type: [TopTagDto], description: 'Most picked chips, most first' })
+  @ApiProperty({ type: [TopTagDto], description: 'Every chip parents picked with its count, most first' })
   top_tags: TopTagDto[];
+
+  @ApiProperty({ example: true, description: 'This month’s average is at or below the low rating line' })
+  needs_attention: boolean;
 }
 
 export class DriverRatingInsightsDto {
@@ -241,4 +247,95 @@ export class DriverRatingInsightsDto {
 
   @ApiProperty({ example: 3 })
   drivers_rated: number;
+}
+
+export class DriverRatingSettingsInputDto {
+  @ApiPropertyOptional({ example: 2, enum: [2, 3], description: 'Ratings at or below this many stars are low' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsIn([2, 3], { message: 'low_rating_max must be 2 or 3' })
+  low_rating_max?: number;
+
+  @ApiPropertyOptional({
+    example: 3,
+    minimum: 1,
+    maximum: 50,
+    description: 'A driver sees an average after this many ratings',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  min_responses?: number;
+}
+
+export class DriverRatingSettingsDto {
+  @ApiProperty({ example: 2 })
+  low_rating_max: number;
+
+  @ApiProperty({ example: 3 })
+  min_responses: number;
+}
+
+export class OfficeDriverRatingSettingsDto extends DriverRatingSettingsDto {
+  @ApiProperty({ example: true, description: 'false when my role may only read the settings' })
+  can_edit: boolean;
+}
+
+export class DriverOwnRatingsDto {
+  @ApiProperty({ example: 3 })
+  min_responses: number;
+
+  @ApiProperty({ example: 5, description: 'Ratings received, always shown' })
+  count: number;
+
+  @ApiProperty({
+    example: true,
+    description: 'false until count reaches min_responses; the fields below are then empty',
+  })
+  enough: boolean;
+
+  @ApiProperty({ nullable: true, type: Number, example: 4.2 })
+  average: number | null;
+
+  @ApiProperty({ nullable: true, type: Number, example: 4.5, description: 'This month' })
+  month_average: number | null;
+
+  @ApiProperty({ example: 2 })
+  month_count: number;
+
+  @ApiProperty({ type: [Number], example: [0, 0, 1, 2, 2], description: 'Counts for 1 to 5 stars' })
+  distribution: number[];
+
+  @ApiProperty({
+    type: [TopTagDto],
+    description: 'Every chip parents picked with its count, most first. Parents and comments are never shown',
+  })
+  top_tags: TopTagDto[];
+}
+
+export class OfficeRatedDriversQueryDto {
+  @ApiPropertyOptional({ example: 'ganesan', description: 'Driver name, bus name or registration number' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  search?: string;
+
+  @ApiPropertyOptional({ example: true, description: 'Only drivers whose month average is at or below the low line' })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  needs_attention?: boolean;
+}
+
+export class OfficeRatedDriversDto {
+  @ApiProperty({ example: 2, description: 'Drivers after the search and filter' })
+  total: number;
+
+  @ApiProperty({ example: 1, description: 'Drivers needing attention in the whole school, whatever the search' })
+  needs_attention_count: number;
+
+  @ApiProperty({ type: [DriverRatingSummaryDto], description: 'Lowest average first; drivers without ratings last' })
+  items: DriverRatingSummaryDto[];
 }
